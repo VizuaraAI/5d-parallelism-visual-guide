@@ -1374,18 +1374,22 @@ model_sizes = [<span class="str">'small'</span>, <span class="str">'medium'</spa
         <div class="chart-mock loss-chart-mock">
           <div class="mock-line-area">
             <svg viewBox="0 0 200 100" preserveAspectRatio="none">
-              <!-- Two clusters of lines converging -->
-              <polyline points="10,10 50,30 100,48 150,60 190,68" fill="none" stroke="#37474F" stroke-width="2.5"/>
-              <polyline points="10,10 50,30 100,48 150,60 190,68" fill="none" stroke="#FF5722" stroke-width="1.5" stroke-dasharray="4"/>
-              <polyline points="10,10 50,30 100,48 150,60 190,68" fill="none" stroke="#1E88E5" stroke-width="1.5"/>
-              <!-- DDP 2G and 4G converge together but differently from above -->
-              <polyline points="10,62 50,68 100,74 150,80 190,84" fill="none" stroke="#2E7D32" stroke-width="2.5"/>
-              <polyline points="10,62 50,68 100,74 150,80 190,84" fill="none" stroke="#2E7D32" stroke-width="1.5" stroke-dasharray="6,2"/>
+              <!-- Three clusters grouped by GPU count -->
+              <!-- Cluster 1: Single GPU (1G) — highest loss -->
+              <polyline points="10,8 50,22 100,38 150,50 190,58" fill="none" stroke="#37474F" stroke-width="2.5"/>
+              <!-- Cluster 2: 2-GPU modes (dp_naive 2G, dp_interleaved 2G, ddp_builtin 2G) — middle -->
+              <polyline points="10,25 50,38 100,50 150,60 190,68" fill="none" stroke="#FF5722" stroke-width="1.5" stroke-dasharray="4"/>
+              <polyline points="10,25 50,38 100,50 150,60 190,68" fill="none" stroke="#1E88E5" stroke-width="1.5"/>
+              <polyline points="10,25 50,38 100,50 150,60 190,68" fill="none" stroke="#2E7D32" stroke-width="1.5"/>
+              <!-- Cluster 3: 4-GPU modes (dp_naive 4G, dp_interleaved 4G, ddp_builtin 4G) — lowest -->
+              <polyline points="10,60 50,68 100,76 150,82 190,88" fill="none" stroke="#FF5722" stroke-width="1.5" stroke-dasharray="4"/>
+              <polyline points="10,60 50,68 100,76 150,82 190,88" fill="none" stroke="#1E88E5" stroke-width="1.5"/>
+              <polyline points="10,60 50,68 100,76 150,82 190,88" fill="none" stroke="#2E7D32" stroke-width="1.5"/>
             </svg>
             <span class="mock-y-label" style="font-size:0.65rem;">Loss</span>
           </div>
         </div>
-        <p><strong>The Researcher's Mindset:</strong> There are <strong>two distinct clusters</strong>: single_gpu/naive/interleaved all overlap (upper), while DDP sits lower. <strong>Why?</strong> Our naive and interleaved code produces <em>mathematically identical</em> gradients to single-GPU — same seed, same data, <code>AllReduce(SUM)/N</code> = same gradient as computing on the full batch. So they follow the exact same trajectory. DDP differs because its <strong>gradient bucketing</strong> changes the floating-point accumulation order — flattening multiple gradients into ~25MB buffers before AllReduce. Over thousands of steps, these ~1e-7 rounding differences compound, pushing DDP to a different (equally valid) local minimum. Both clusters are correct — the difference is numerical noise, not algorithmic.</p>
+        <p><strong>The Researcher's Mindset:</strong> There are <strong>three distinct clusters</strong>, grouped by <strong>GPU count</strong>: single GPU (1G) sits highest, 2-GPU modes (dp_naive, dp_interleaved, ddp_builtin) cluster together in the middle, and 4-GPU modes cluster at the bottom. <strong>Why?</strong> Within each GPU-count group, all modes (naive, interleaved, DDP) produce <em>nearly identical</em> loss curves — they're all doing the same math with <code>AllReduce(SUM)/N</code>. The difference between clusters comes from <strong>effective batch size</strong>: with more GPUs, each step processes more data (the batch is split but gradients are averaged), which changes the optimization trajectory. More GPUs = larger effective batch = different (often lower) loss curve. All three clusters are converging correctly — the separation is a natural consequence of scaling, not an error.</p>
       </div>
 
       <!-- Chart 6: Throughput -->
