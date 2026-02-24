@@ -48,29 +48,54 @@
     <h1>ShallowSpeed on <span class="gradient-text">GPU</span></h1>
     <p class="hero-subtitle">A visual, from-first-principles walkthrough of data-parallel training — from a single GPU baseline to production-grade PyTorch DDP.</p>
 
-    <!-- Colab CTA -->
-    <a href="https://colab.research.google.com/github/VizuaraAI/shallowspeed-visual-guide/blob/main/ShallowSpeed_GPU_Benchmark.ipynb" target="_blank" rel="noopener noreferrer" class="colab-cta">
-      <div class="colab-cta-inner">
-        <div class="colab-icon">
-          <svg viewBox="0 0 24 24" width="36" height="36" fill="none">
-            <path d="M4.54 9.46a8.03 8.03 0 0 1 14.92 0" stroke="#F9AB00" stroke-width="2.2" stroke-linecap="round"/>
-            <path d="M19.46 14.54a8.03 8.03 0 0 1-14.92 0" stroke="#F9AB00" stroke-width="2.2" stroke-linecap="round"/>
-            <circle cx="12" cy="12" r="3.8" fill="#F9AB00"/>
-            <circle cx="6.5" cy="12" r="2.6" fill="#E8710A"/>
-            <circle cx="17.5" cy="12" r="2.6" fill="#E8710A"/>
-          </svg>
+    <!-- Colab CTAs -->
+    <div class="colab-cta-row">
+      <a href="https://colab.research.google.com/github/VizuaraAI/shallowspeed-visual-guide/blob/main/ShallowSpeed_GPU_Benchmark.ipynb" target="_blank" rel="noopener noreferrer" class="colab-cta">
+        <div class="colab-cta-inner">
+          <div class="colab-icon">
+            <svg viewBox="0 0 24 24" width="36" height="36" fill="none">
+              <path d="M4.54 9.46a8.03 8.03 0 0 1 14.92 0" stroke="#F9AB00" stroke-width="2.2" stroke-linecap="round"/>
+              <path d="M19.46 14.54a8.03 8.03 0 0 1-14.92 0" stroke="#F9AB00" stroke-width="2.2" stroke-linecap="round"/>
+              <circle cx="12" cy="12" r="3.8" fill="#F9AB00"/>
+              <circle cx="6.5" cy="12" r="2.6" fill="#E8710A"/>
+              <circle cx="17.5" cy="12" r="2.6" fill="#E8710A"/>
+            </svg>
+          </div>
+          <div class="colab-cta-text">
+            <span class="colab-cta-title">Basic Benchmark</span>
+            <span class="colab-cta-desc">4 training modes, 2-4 GPUs, FP32. Start here.</span>
+          </div>
+          <div class="colab-arrow">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 17L17 7M17 7H7M17 7v10"/>
+            </svg>
+          </div>
         </div>
-        <div class="colab-cta-text">
-          <span class="colab-cta-title">Run the Full Benchmark in Google Colab</span>
-          <span class="colab-cta-desc">Open the training notebook — all 4 modes, charts, and analysis. Runs on free GPU runtime.</span>
+      </a>
+
+      <a href="https://colab.research.google.com/github/VizuaraAI/shallowspeed-visual-guide/blob/main/ShallowSpeed_Advanced_Benchmark.ipynb" target="_blank" rel="noopener noreferrer" class="colab-cta colab-cta-advanced">
+        <div class="colab-cta-inner">
+          <div class="colab-icon">
+            <svg viewBox="0 0 24 24" width="36" height="36" fill="none">
+              <path d="M4.54 9.46a8.03 8.03 0 0 1 14.92 0" stroke="#F9AB00" stroke-width="2.2" stroke-linecap="round"/>
+              <path d="M19.46 14.54a8.03 8.03 0 0 1-14.92 0" stroke="#F9AB00" stroke-width="2.2" stroke-linecap="round"/>
+              <circle cx="12" cy="12" r="3.8" fill="#F9AB00"/>
+              <circle cx="6.5" cy="12" r="2.6" fill="#E8710A"/>
+              <circle cx="17.5" cy="12" r="2.6" fill="#E8710A"/>
+            </svg>
+          </div>
+          <div class="colab-cta-text">
+            <span class="colab-cta-title">Advanced Benchmark</span>
+            <span class="colab-cta-desc">8 GPUs, Mixed Precision, Gradient Accumulation, torch.profiler traces.</span>
+          </div>
+          <div class="colab-arrow">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 17L17 7M17 7H7M17 7v10"/>
+            </svg>
+          </div>
         </div>
-        <div class="colab-arrow">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M7 17L17 7M17 7H7M17 7v10"/>
-          </svg>
-        </div>
-      </div>
-    </a>
+      </a>
+    </div>
 
     <div class="hero-cards">
       <div class="hero-stat-card">

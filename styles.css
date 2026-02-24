@@ -229,11 +229,18 @@ code, pre { font-family: var(--font-mono); }
   margin: 0 auto 40px;
 }
 
-/* --- Colab CTA Button --- */
+/* --- Colab CTA Buttons --- */
+.colab-cta-row {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 36px;
+}
+
 .colab-cta {
   display: inline-block;
   text-decoration: none;
-  margin-bottom: 36px;
   border-radius: 16px;
   background: linear-gradient(135deg, rgba(249,171,0,0.12) 0%, rgba(232,113,10,0.10) 100%);
   border: 1px solid rgba(249,171,0,0.25);
@@ -317,6 +324,33 @@ code, pre { font-family: var(--font-mono); }
 .colab-cta:hover .colab-arrow {
   color: #F9AB00;
   transform: translate(2px, -2px);
+}
+
+.colab-cta-advanced {
+  background: linear-gradient(135deg, rgba(0,212,106,0.12) 0%, rgba(0,200,230,0.10) 100%);
+  border-color: rgba(0,212,106,0.25);
+}
+
+.colab-cta-advanced:hover {
+  border-color: rgba(0,212,106,0.5);
+  box-shadow: 0 8px 32px rgba(0,212,106,0.15), 0 0 0 1px rgba(0,212,106,0.1);
+}
+
+.colab-cta-advanced .colab-icon {
+  background: rgba(0,212,106,0.1);
+  border-color: rgba(0,212,106,0.15);
+}
+
+.colab-cta-advanced .colab-cta-title {
+  color: var(--primary);
+}
+
+.colab-cta-advanced .colab-arrow {
+  color: rgba(0,212,106,0.6);
+}
+
+.colab-cta-advanced:hover .colab-arrow {
+  color: var(--primary);
 }
 
 .hero-cards {
