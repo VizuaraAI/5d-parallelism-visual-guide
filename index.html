@@ -20,7 +20,6 @@
     <div class="nav-links">
       <a href="#overview">Overview</a>
       <a href="#concepts">Concepts</a>
-      <a href="#ring-allreduce">Ring AllReduce</a>
       <a href="#env-check">Environment</a>
       <a href="#model">Model</a>
       <a href="#single-gpu">Single GPU</a>
@@ -29,6 +28,7 @@
       <a href="#ddp">PyTorch DDP</a>
       <a href="#benchmark">Benchmark</a>
       <a href="#results">Results</a>
+      <a href="#ring-allreduce">Ring AllReduce</a>
     </div>
   </div>
 </nav>
@@ -232,499 +232,6 @@
       </div>
     </div>
     <p class="ar-caption">Every GPU ends up with the <strong>same averaged gradient</strong>. This ensures weight updates are identical across all GPUs, keeping models in sync.</p>
-  </div>
-</section>
-
-
-<!-- ============ RING ALLREDUCE DEEP DIVE ============ -->
-<section class="section section-dark" id="ring-allreduce">
-  <div class="container">
-    <div class="section-heading">
-      <span class="section-label">The Algorithm That Makes It All Work</span>
-      <h2>How <span class="gradient-text">Ring AllReduce</span> Actually Works</h2>
-      <p class="section-subtitle">AllReduce is the operation that synchronizes gradients across GPUs. Understanding <em>how</em> it works explains every number in our benchmarks.</p>
-    </div>
-
-    <!-- ===== PART 1: THE PROBLEM ===== -->
-    <div class="ring-explainer-card">
-      <div class="ring-explainer-num">1</div>
-      <h3>The Problem: Every GPU Needs the Same Average Gradient</h3>
-      <div class="ring-explainer-body">
-        <p>In data-parallel training, each GPU processes a <strong>different shard of the batch</strong> and computes its own gradient vector. But to update the weights, <strong>every GPU must end up with the same gradient</strong> — the average across all GPUs.</p>
-
-        <div class="ring-scenario-visual">
-          <div class="ring-scenario-box">
-            <div class="rsb-title">Setup: 4 GPUs, each with a gradient vector</div>
-            <div class="rsb-gpus">
-              <div class="rsb-gpu"><span class="rsb-label">GPU 0</span><span class="rsb-grad" style="background:rgba(0,212,106,0.15);border-color:var(--primary);">G<sub>0</sub></span><span class="rsb-desc">gradient from batch shard 0</span></div>
-              <div class="rsb-gpu"><span class="rsb-label">GPU 1</span><span class="rsb-grad" style="background:rgba(66,165,245,0.15);border-color:var(--blue);">G<sub>1</sub></span><span class="rsb-desc">gradient from batch shard 1</span></div>
-              <div class="rsb-gpu"><span class="rsb-label">GPU 2</span><span class="rsb-grad" style="background:rgba(0,200,230,0.15);border-color:var(--secondary);">G<sub>2</sub></span><span class="rsb-desc">gradient from batch shard 2</span></div>
-              <div class="rsb-gpu"><span class="rsb-label">GPU 3</span><span class="rsb-grad" style="background:rgba(167,139,250,0.15);border-color:var(--accent);">G<sub>3</sub></span><span class="rsb-desc">gradient from batch shard 3</span></div>
-            </div>
-          </div>
-          <div class="ring-scenario-arrow">
-            <svg viewBox="0 0 40 40" width="40" height="40"><polygon points="20,35 5,15 35,15" fill="var(--primary)" opacity="0.5"/></svg>
-          </div>
-          <div class="ring-scenario-box goal-box">
-            <div class="rsb-title">Goal: Every GPU has the SAME average</div>
-            <div class="rsb-gpus">
-              <div class="rsb-gpu"><span class="rsb-label">GPU 0</span><span class="rsb-grad hl-done">(G₀+G₁+G₂+G₃)/4</span></div>
-              <div class="rsb-gpu"><span class="rsb-label">GPU 1</span><span class="rsb-grad hl-done">(G₀+G₁+G₂+G₃)/4</span></div>
-              <div class="rsb-gpu"><span class="rsb-label">GPU 2</span><span class="rsb-grad hl-done">(G₀+G₁+G₂+G₃)/4</span></div>
-              <div class="rsb-gpu"><span class="rsb-label">GPU 3</span><span class="rsb-grad hl-done">(G₀+G₁+G₂+G₃)/4</span></div>
-            </div>
-          </div>
-        </div>
-
-        <p>Each gradient vector G<sub>i</sub> is a <strong>huge array of numbers</strong> — one number per model parameter. For our XLarge model, that's <strong>52 million float32 numbers = 208 MB</strong> per GPU. The question is: <em>how do we get the average of four 208 MB arrays onto all four GPUs as fast as possible?</em></p>
-      </div>
-    </div>
-
-    <!-- ===== PART 2: THE NAIVE WAY ===== -->
-    <div class="ring-explainer-card">
-      <div class="ring-explainer-num">2</div>
-      <h3>The Naive Way: Send Everything to One GPU</h3>
-      <div class="ring-explainer-body">
-        <p>The simplest approach: pick one GPU (say GPU 0) as the "leader." Every other GPU sends its entire gradient to GPU 0. GPU 0 adds them all up, divides by N, and sends the result back.</p>
-
-        <div class="ring-naive-timeline">
-          <div class="rnt-step">
-            <div class="rnt-step-num">Step 1</div>
-            <div class="rnt-step-desc">
-              <strong>Gather:</strong> GPU 1, 2, 3 each send their full gradient (208 MB) to GPU 0.
-              <div class="rnt-detail">GPU 0 receives 3 × 208 MB = <strong>624 MB</strong> of data through its single network link.</div>
-            </div>
-          </div>
-          <div class="rnt-step">
-            <div class="rnt-step-num">Step 2</div>
-            <div class="rnt-step-desc">
-              <strong>Compute:</strong> GPU 0 sums all four gradients and divides by 4.
-              <div class="rnt-detail">G<sub>avg</sub> = (G₀ + G₁ + G₂ + G₃) / 4</div>
-            </div>
-          </div>
-          <div class="rnt-step">
-            <div class="rnt-step-num">Step 3</div>
-            <div class="rnt-step-desc">
-              <strong>Broadcast:</strong> GPU 0 sends the averaged gradient back to GPU 1, 2, 3.
-              <div class="rnt-detail">GPU 0 sends 3 × 208 MB = <strong>624 MB</strong> out through its single network link.</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="ring-problem-callout">
-          <h4>The Bottleneck Problem</h4>
-          <p>GPU 0's network link must handle <strong>624 MB in + 624 MB out = 1,248 MB total</strong>. Meanwhile, GPU 1, 2, 3 are <strong>sitting idle</strong> — they only use their links once to send and once to receive.</p>
-          <p>With N GPUs, GPU 0 must transfer <code>2 × (N-1) × D</code> data, where D is the gradient size. This <strong>grows linearly with N</strong>. With 100 GPUs, GPU 0 would need to transfer 198 × 208 MB = <strong>41 GB</strong>. That would take <em>minutes</em>.</p>
-          <p>The core problem: <strong>one GPU does all the work while the others wait.</strong> We're wasting N-1 perfectly good network links.</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===== PART 3: THE KEY INSIGHT ===== -->
-    <div class="ring-explainer-card">
-      <div class="ring-explainer-num">3</div>
-      <h3>The Key Insight: Split the Gradient Into Chunks</h3>
-      <div class="ring-explainer-body">
-        <p>Here's the insight that makes Ring AllReduce work: <strong>you don't have to send the entire gradient as one big blob.</strong></p>
-
-        <p>Think of each gradient vector as a long array of 52 million numbers. We can <strong>split it into N equal pieces</strong> (one piece per GPU). For 4 GPUs:</p>
-
-        <div class="ring-chunk-visual">
-          <div class="rcv-label">GPU 0's gradient (52M parameters):</div>
-          <div class="rcv-bar">
-            <div class="rcv-chunk c0" style="width:25%"><span>Chunk 0</span><small>13M params</small></div>
-            <div class="rcv-chunk c1" style="width:25%"><span>Chunk 1</span><small>13M params</small></div>
-            <div class="rcv-chunk c2" style="width:25%"><span>Chunk 2</span><small>13M params</small></div>
-            <div class="rcv-chunk c3" style="width:25%"><span>Chunk 3</span><small>13M params</small></div>
-          </div>
-        </div>
-
-        <p><strong>Why split?</strong> Because now we can make each GPU <em>responsible for averaging just one chunk</em>. GPU 0 collects and averages Chunk 0 from all GPUs. GPU 1 collects and averages Chunk 1 from all GPUs. And so on. <strong>All four GPUs work in parallel</strong> — no bottleneck!</p>
-
-        <p>But there's a problem: if GPU 0 needs Chunk 0 from all other GPUs, and GPU 1 needs Chunk 1 from all other GPUs, etc., we'd need all-to-all communication — which has the same bottleneck. We need a smarter pattern for <em>how</em> the chunks travel between GPUs. That's where the <strong>ring topology</strong> comes in.</p>
-      </div>
-    </div>
-
-    <!-- ===== PART 4: THE RING TOPOLOGY ===== -->
-    <div class="ring-explainer-card">
-      <div class="ring-explainer-num">4</div>
-      <h3>The Ring: Each GPU Only Talks to Its Neighbors</h3>
-      <div class="ring-explainer-body">
-        <p>Arrange the GPUs in a <strong>logical ring</strong>. Each GPU has exactly two connections:</p>
-        <ul>
-          <li>It sends data to its <strong>right neighbor</strong></li>
-          <li>It receives data from its <strong>left neighbor</strong></li>
-        </ul>
-
-        <div class="ring-topo-visual">
-          <svg viewBox="0 0 320 220" class="ring-svg-large">
-            <!-- Ring circle -->
-            <circle cx="160" cy="110" r="80" fill="none" stroke="var(--border)" stroke-width="2" stroke-dasharray="6"/>
-            <!-- GPU nodes -->
-            <circle cx="160" cy="30" r="26" fill="#1a1a2e" stroke="var(--primary)" stroke-width="2.5"/>
-            <text x="160" y="34" text-anchor="middle" fill="var(--fg)" font-size="11" font-weight="600">GPU 0</text>
-            <circle cx="240" cy="110" r="26" fill="#1a1a2e" stroke="var(--blue)" stroke-width="2.5"/>
-            <text x="240" y="114" text-anchor="middle" fill="var(--fg)" font-size="11" font-weight="600">GPU 1</text>
-            <circle cx="160" cy="190" r="26" fill="#1a1a2e" stroke="var(--secondary)" stroke-width="2.5"/>
-            <text x="160" y="194" text-anchor="middle" fill="var(--fg)" font-size="11" font-weight="600">GPU 2</text>
-            <circle cx="80" cy="110" r="26" fill="#1a1a2e" stroke="var(--accent)" stroke-width="2.5"/>
-            <text x="80" y="114" text-anchor="middle" fill="var(--fg)" font-size="11" font-weight="600">GPU 3</text>
-            <!-- Arrows around ring (clockwise) -->
-            <defs><marker id="arRing" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="var(--primary)"/></marker></defs>
-            <path d="M183 40 L218 88" stroke="var(--primary)" stroke-width="2.5" marker-end="url(#arRing)"/>
-            <path d="M236 136 L183 180" stroke="var(--blue)" stroke-width="2.5" marker-end="url(#arRing)"/>
-            <path d="M137 180 L104 136" stroke="var(--secondary)" stroke-width="2.5" marker-end="url(#arRing)"/>
-            <path d="M104 88 L137 40" stroke="var(--accent)" stroke-width="2.5" marker-end="url(#arRing)"/>
-            <!-- Labels -->
-            <text x="210" y="58" fill="var(--fg-muted)" font-size="8">sends →</text>
-            <text x="246" y="160" fill="var(--fg-muted)" font-size="8">sends →</text>
-            <text x="96" y="168" fill="var(--fg-muted)" font-size="8">← sends</text>
-            <text x="90" y="58" fill="var(--fg-muted)" font-size="8">← sends</text>
-          </svg>
-        </div>
-
-        <p><strong>The crucial property:</strong> At every step, <strong>all four GPUs send and receive simultaneously</strong>. No GPU is ever idle. No GPU is ever overloaded. Every network link in the system is used at full bandwidth, all the time.</p>
-
-        <p>The algorithm runs in <strong>two phases</strong>:</p>
-        <ol>
-          <li><strong>Scatter-Reduce</strong> — Pass chunks around the ring, <em>adding</em> as you go. After N-1 steps, each GPU has the <strong>complete sum</strong> of one chunk.</li>
-          <li><strong>AllGather</strong> — Pass the completed chunks around the ring, <em>replacing</em> as you go. After N-1 more steps, every GPU has <strong>all chunks</strong>.</li>
-        </ol>
-
-        <p>Let's walk through both phases step by step.</p>
-      </div>
-    </div>
-
-    <!-- ===== PART 5: SCATTER-REDUCE ===== -->
-    <div class="ring-explainer-card">
-      <div class="ring-explainer-num">5</div>
-      <h3>Phase 1: Scatter-Reduce — Building Up the Sum</h3>
-      <div class="ring-explainer-body">
-        <p>Recall: each GPU's gradient is split into 4 chunks. We label them: GPU 0 has chunks <strong>[A₀, A₁, A₂, A₃]</strong>, GPU 1 has <strong>[B₀, B₁, B₂, B₃]</strong>, etc. The subscript is the chunk index, the letter is which GPU it came from.</p>
-
-        <p>The goal of Phase 1: make GPU 0 hold the sum A₀+B₀+C₀+D₀ (all GPUs' chunk 0), GPU 1 hold A₁+B₁+C₁+D₁, etc.</p>
-
-        <div class="ring-step-grid">
-          <!-- Initial State -->
-          <div class="ring-step-card">
-            <div class="rs-label">Initial State</div>
-            <div class="rs-gpus">
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 0</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0">A₀</span><span class="rs-chunk c1">A₁</span><span class="rs-chunk c2">A₂</span><span class="rs-chunk c3">A₃</span>
-                </div>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 1</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0">B₀</span><span class="rs-chunk c1">B₁</span><span class="rs-chunk c2">B₂</span><span class="rs-chunk c3">B₃</span>
-                </div>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 2</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0">C₀</span><span class="rs-chunk c1">C₁</span><span class="rs-chunk c2">C₂</span><span class="rs-chunk c3">C₃</span>
-                </div>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 3</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0">D₀</span><span class="rs-chunk c1">D₁</span><span class="rs-chunk c2">D₂</span><span class="rs-chunk c3">D₃</span>
-                </div>
-              </div>
-            </div>
-            <p class="rs-note">Each GPU has its own gradient, split into 4 equal chunks (52 MB each for our XLarge model).</p>
-          </div>
-
-          <!-- Step 1 -->
-          <div class="ring-step-card">
-            <div class="rs-label">Step 1</div>
-            <div class="rs-action">GPU 0 sends <span class="c0-text">A₀</span> → GPU 1. &nbsp; GPU 1 sends <span class="c1-text">B₁</span> → GPU 2. &nbsp; GPU 2 sends <span class="c2-text">C₂</span> → GPU 3. &nbsp; GPU 3 sends <span class="c3-text">D₃</span> → GPU 0.</div>
-            <div class="rs-gpus">
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 0</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0">A₀</span><span class="rs-chunk c1">A₁</span><span class="rs-chunk c2">A₂</span><span class="rs-chunk c3 hl-add">A₃+D₃</span>
-                </div>
-                <span class="rs-detail">received D₃ from GPU 3, added to own A₃</span>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 1</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0 hl-add">B₀+A₀</span><span class="rs-chunk c1">B₁</span><span class="rs-chunk c2">B₂</span><span class="rs-chunk c3">B₃</span>
-                </div>
-                <span class="rs-detail">received A₀ from GPU 0, added to own B₀</span>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 2</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0">C₀</span><span class="rs-chunk c1 hl-add">C₁+B₁</span><span class="rs-chunk c2">C₂</span><span class="rs-chunk c3">C₃</span>
-                </div>
-                <span class="rs-detail">received B₁ from GPU 1, added to own C₁</span>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 3</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0">D₀</span><span class="rs-chunk c1">D₁</span><span class="rs-chunk c2 hl-add">D₂+C₂</span><span class="rs-chunk c3">D₃</span>
-                </div>
-                <span class="rs-detail">received C₂ from GPU 2, added to own D₂</span>
-              </div>
-            </div>
-            <p class="rs-note"><strong>Key rule:</strong> Each GPU sends one chunk to the right, receives one chunk from the left, and <strong>adds</strong> the received chunk to its own. Notice: all 4 GPUs send/receive <strong>simultaneously</strong>.</p>
-          </div>
-
-          <!-- Step 2 -->
-          <div class="ring-step-card">
-            <div class="rs-label">Step 2</div>
-            <div class="rs-action">Now each GPU sends the chunk it just <em>updated</em> (the one with 2 GPUs' worth of data) to the next GPU.</div>
-            <div class="rs-gpus">
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 0</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0">A₀</span><span class="rs-chunk c1">A₁</span><span class="rs-chunk c2 hl-add">A₂+D₂+C₂</span><span class="rs-chunk c3">A₃+D₃</span>
-                </div>
-                <span class="rs-detail">received (D₂+C₂) from GPU 3, added to own A₂ → now has 3 GPUs' data</span>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 1</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0">B₀+A₀</span><span class="rs-chunk c1">B₁</span><span class="rs-chunk c2">B₂</span><span class="rs-chunk c3 hl-add">B₃+A₃+D₃</span>
-                </div>
-                <span class="rs-detail">received (A₃+D₃) from GPU 0, added to own B₃ → 3 GPUs' data</span>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 2</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0 hl-add">C₀+B₀+A₀</span><span class="rs-chunk c1">C₁+B₁</span><span class="rs-chunk c2">C₂</span><span class="rs-chunk c3">C₃</span>
-                </div>
-                <span class="rs-detail">received (B₀+A₀) from GPU 1, added to own C₀ → 3 GPUs' data</span>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 3</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0">D₀</span><span class="rs-chunk c1 hl-add">D₁+C₁+B₁</span><span class="rs-chunk c2">D₂+C₂</span><span class="rs-chunk c3">D₃</span>
-                </div>
-                <span class="rs-detail">received (C₁+B₁) from GPU 2, added to own D₁ → 3 GPUs' data</span>
-              </div>
-            </div>
-            <p class="rs-note">After step 2, the highlighted chunks contain partial sums from <strong>3 out of 4 GPUs</strong>. One more step to go.</p>
-          </div>
-
-          <!-- Step 3 — DETAILED BREAKDOWN -->
-          <div class="ring-step-card">
-            <div class="rs-label">Step 3 — Scatter-Reduce Complete!</div>
-            <div class="rs-action">Each GPU sends its 3-GPU partial sum onward. The receiver <strong>adds</strong> it to its own untouched value → complete sum of all 4 GPUs.<br>
-            GPU 0 sends <code>A₂+D₂+C₂</code> → GPU 1. &nbsp; GPU 1 sends <code>B₃+A₃+D₃</code> → GPU 2. &nbsp; GPU 2 sends <code>C₀+B₀+A₀</code> → GPU 3. &nbsp; GPU 3 sends <code>D₁+C₁+B₁</code> → GPU 0.</div>
-
-            <div class="rs-gpus">
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 0</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0">A₀</span><span class="rs-chunk c1 hl-done">A₁+B₁+C₁+D₁</span><span class="rs-chunk c2">A₂+D₂+C₂</span><span class="rs-chunk c3">A₃+D₃</span>
-                </div>
-                <span class="rs-detail">chunk 1: own A₁ + received (D₁+C₁+B₁) = ALL 4 GPUs</span>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 1</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0">B₀+A₀</span><span class="rs-chunk c1">B₁</span><span class="rs-chunk c2 hl-done">A₂+B₂+C₂+D₂</span><span class="rs-chunk c3">B₃+A₃+D₃</span>
-                </div>
-                <span class="rs-detail">chunk 2: own B₂ + received (A₂+D₂+C₂) = ALL 4 GPUs</span>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 2</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0">C₀+B₀+A₀</span><span class="rs-chunk c1">C₁+B₁</span><span class="rs-chunk c2">C₂</span><span class="rs-chunk c3 hl-done">A₃+B₃+C₃+D₃</span>
-                </div>
-                <span class="rs-detail">chunk 3: own C₃ + received (B₃+A₃+D₃) = ALL 4 GPUs</span>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 3</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0 hl-done">A₀+B₀+C₀+D₀</span><span class="rs-chunk c1">D₁+C₁+B₁</span><span class="rs-chunk c2">D₂+C₂</span><span class="rs-chunk c3">D₃</span>
-                </div>
-                <span class="rs-detail">chunk 0: own D₀ + received (C₀+B₀+A₀) = ALL 4 GPUs</span>
-              </div>
-            </div>
-
-            <p class="rs-note"><strong>Why does this work?</strong> The accumulation <em>rotated</em> through chunks: Step 1 updated chunk 3/0/1/2, Step 2 updated chunk 2/3/0/1, Step 3 updated chunk 1/2/3/0. Each GPU had <strong>one chunk untouched</strong> for steps 1-2 — the chunk that received the final 3-GPU sum in Step 3, completing the full sum. Each GPU now holds 1/4 of the complete result. Phase 2 distributes these.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===== PART 6: ALLGATHER ===== -->
-    <div class="ring-explainer-card">
-      <div class="ring-explainer-num">6</div>
-      <h3>Phase 2: AllGather — Distributing the Completed Chunks</h3>
-      <div class="ring-explainer-body">
-        <p>After Scatter-Reduce, each GPU has the complete sum of one chunk. Now we need to <strong>distribute</strong> those completed chunks so every GPU has all of them.</p>
-
-        <p>We use the same ring pattern — each GPU sends its completed chunk to the right, receives a completed chunk from the left — but this time we <strong>replace</strong> instead of adding (the incoming chunk is already the final sum, so we just overwrite).</p>
-
-        <div class="ring-step-grid">
-          <div class="ring-step-card">
-            <div class="rs-label">AllGather Step 1</div>
-            <div class="rs-gpus">
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 0</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk c2">...</span><span class="rs-chunk c3">...</span>
-                </div>
-                <span class="rs-detail">Had Σchunk₁, received Σchunk₀ from GPU 3</span>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 1</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0">...</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk c3">...</span>
-                </div>
-                <span class="rs-detail">Had Σchunk₂, received Σchunk₁ from GPU 0</span>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 2</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk c0">...</span><span class="rs-chunk c1">...</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk hl-done">Σchunk₃</span>
-                </div>
-                <span class="rs-detail">Had Σchunk₃, received Σchunk₂ from GPU 1</span>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 3</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk c1">...</span><span class="rs-chunk c2">...</span><span class="rs-chunk hl-done">Σchunk₃</span>
-                </div>
-                <span class="rs-detail">Had Σchunk₀, received Σchunk₃ from GPU 2</span>
-              </div>
-            </div>
-            <p class="rs-note">Each GPU now has 2 completed chunks. 2 more steps to distribute the remaining ones...</p>
-          </div>
-
-          <div class="ring-step-card final">
-            <div class="rs-label">After 3 AllGather Steps — Done!</div>
-            <div class="rs-gpus">
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 0</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk hl-done">Σchunk₃</span>
-                </div>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 1</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk hl-done">Σchunk₃</span>
-                </div>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 2</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk hl-done">Σchunk₃</span>
-                </div>
-              </div>
-              <div class="rs-gpu">
-                <span class="rs-name">GPU 3</span>
-                <div class="rs-chunks">
-                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk hl-done">Σchunk₃</span>
-                </div>
-              </div>
-            </div>
-            <p class="rs-note"><strong>Every GPU now has the identical, fully-summed gradient vector.</strong> Divide by N (=4) to get the average, then update weights. Every GPU updates identically.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===== PART 7: COMPARISON TABLE ===== -->
-    <div class="ring-explainer-card">
-      <div class="ring-explainer-num">7</div>
-      <h3>Naive vs Ring AllReduce — The Numbers</h3>
-      <div class="ring-explainer-body">
-        <p>Let's compare the two approaches concretely for our XLarge model (D = 208 MB) on 4 GPUs:</p>
-
-        <table class="ring-compare-table">
-          <thead>
-            <tr>
-              <th></th>
-              <th>Naive (Central Server)</th>
-              <th>Ring AllReduce</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>Data GPU 0 must send</strong></td>
-              <td class="val-bad">(N-1) × D = 3 × 208 = 624 MB</td>
-              <td class="val-good">2 × (N-1) × D/N = 2 × 3/4 × 208 = 312 MB</td>
-            </tr>
-            <tr>
-              <td><strong>Data GPU 0 must receive</strong></td>
-              <td class="val-bad">(N-1) × D = 624 MB</td>
-              <td class="val-good">2 × (N-1) × D/N = 312 MB</td>
-            </tr>
-            <tr>
-              <td><strong>Bottleneck GPU's total load</strong></td>
-              <td class="val-bad">1,248 MB (GPU 0 does everything)</td>
-              <td class="val-good">624 MB (spread equally across all GPUs)</td>
-            </tr>
-            <tr>
-              <td><strong>GPUs idle during transfer?</strong></td>
-              <td class="val-bad">Yes — GPU 1,2,3 idle while GPU 0 works</td>
-              <td class="val-good">No — all GPUs send/receive simultaneously</td>
-            </tr>
-            <tr>
-              <td><strong>Scales to 100 GPUs?</strong></td>
-              <td class="val-bad">GPU 0 transfers 99×208 = 20.6 GB</td>
-              <td class="val-good">Each GPU transfers ~2×208 = 416 MB</td>
-            </tr>
-            <tr>
-              <td><strong>Steps required</strong></td>
-              <td>2 (gather + broadcast)</td>
-              <td>2×(N-1) = 6 steps (more latency per step)</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <p>The critical difference: with naive, the bottleneck GPU's load <strong>grows linearly with N</strong>. With Ring AllReduce, each GPU's load approaches <strong>2D regardless of N</strong>. At N=100, the naive approach is <strong>50× slower</strong> than Ring AllReduce.</p>
-      </div>
-    </div>
-
-    <!-- ===== PART 8: THE MATH ===== -->
-    <div class="ring-math-card">
-      <h4>The Math: Why 2(N-1)/N Data Per GPU?</h4>
-      <div class="ring-math-grid">
-        <div class="rm-block">
-          <h5>Chunk Size</h5>
-          <p>Gradient has D bytes total, split into N chunks → each chunk is <strong>D/N</strong> bytes.</p>
-        </div>
-        <div class="rm-block">
-          <h5>Per Step</h5>
-          <p>Each GPU sends exactly <strong>one chunk (D/N bytes)</strong> to its right neighbor and receives one chunk from its left.</p>
-        </div>
-        <div class="rm-block">
-          <h5>Scatter-Reduce</h5>
-          <p>Takes <strong>N-1 steps</strong>. Each step, every GPU sends D/N. Total sent per GPU: <code>(N-1) × D/N</code></p>
-        </div>
-        <div class="rm-block">
-          <h5>AllGather</h5>
-          <p>Takes another <strong>N-1 steps</strong> with D/N per step. Total sent per GPU: <code>(N-1) × D/N</code></p>
-        </div>
-        <div class="rm-block highlight-math" style="grid-column: 1 / -1;">
-          <h5>Grand Total Per GPU</h5>
-          <p style="font-size:1.1rem;">
-            <code>2 × (N-1) × D/N = 2(N-1)/N × D</code>
-          </p>
-          <div class="ring-math-examples">
-            <div class="rme"><strong>N=2 GPUs:</strong> 2 × 1/2 × D = <strong>1.0 × D</strong> (each GPU sends 208 MB)</div>
-            <div class="rme"><strong>N=4 GPUs:</strong> 2 × 3/4 × D = <strong>1.5 × D</strong> (each GPU sends 312 MB)</div>
-            <div class="rme"><strong>N=8 GPUs:</strong> 2 × 7/8 × D = <strong>1.75 × D</strong> (each GPU sends 364 MB)</div>
-            <div class="rme"><strong>N=1000:</strong> 2 × 999/1000 × D ≈ <strong>2.0 × D</strong> (each GPU sends ~416 MB)</div>
-          </div>
-          <p>As N→∞, the total approaches <strong>2D</strong> — essentially constant, <em>independent of how many GPUs you have!</em></p>
-        </div>
-      </div>
-      <div class="ring-math-insight">
-        <p><strong>This is the beauty of Ring AllReduce:</strong> Adding more GPUs barely increases the per-GPU communication cost. Compare to the naive approach where the bottleneck GPU must handle <code>2(N-1) × D</code> — which grows <em>linearly</em> with N. Ring AllReduce is why distributed training can scale to <strong>hundreds or thousands of GPUs</strong>.</p>
-        <p><strong>The catch:</strong> More GPUs means more <strong>sequential steps</strong> (N-1 per phase). Each step has fixed latency (~10-50μs for NCCL kernel launch + network round-trip). With 4 GPUs: 6 steps. With 8 GPUs: 14 steps. This per-step latency is why AllReduce time <em>does</em> grow somewhat with GPU count — our benchmarks show communication going from 50ms (2 GPUs) to 94ms (4 GPUs) for XLarge. But it grows <em>much slower</em> than the naive approach would.</p>
-      </div>
-    </div>
   </div>
 </section>
 
@@ -1938,6 +1445,501 @@ model_sizes = [<span class="str">'small'</span>, <span class="str">'medium'</spa
     </div>
   </div>
 </section>
+
+
+
+<!-- ============ RING ALLREDUCE DEEP DIVE ============ -->
+<section class="section section-dark" id="ring-allreduce">
+  <div class="container">
+    <div class="section-heading">
+      <span class="section-label">The Algorithm That Makes It All Work</span>
+      <h2>How <span class="gradient-text">Ring AllReduce</span> Actually Works</h2>
+      <p class="section-subtitle">AllReduce is the operation that synchronizes gradients across GPUs. Understanding <em>how</em> it works explains every number in our benchmarks.</p>
+    </div>
+
+    <!-- ===== PART 1: THE PROBLEM ===== -->
+    <div class="ring-explainer-card">
+      <div class="ring-explainer-num">1</div>
+      <h3>The Problem: Every GPU Needs the Same Average Gradient</h3>
+      <div class="ring-explainer-body">
+        <p>In data-parallel training, each GPU processes a <strong>different shard of the batch</strong> and computes its own gradient vector. But to update the weights, <strong>every GPU must end up with the same gradient</strong> — the average across all GPUs.</p>
+
+        <div class="ring-scenario-visual">
+          <div class="ring-scenario-box">
+            <div class="rsb-title">Setup: 4 GPUs, each with a gradient vector</div>
+            <div class="rsb-gpus">
+              <div class="rsb-gpu"><span class="rsb-label">GPU 0</span><span class="rsb-grad" style="background:rgba(0,212,106,0.15);border-color:var(--primary);">G<sub>0</sub></span><span class="rsb-desc">gradient from batch shard 0</span></div>
+              <div class="rsb-gpu"><span class="rsb-label">GPU 1</span><span class="rsb-grad" style="background:rgba(66,165,245,0.15);border-color:var(--blue);">G<sub>1</sub></span><span class="rsb-desc">gradient from batch shard 1</span></div>
+              <div class="rsb-gpu"><span class="rsb-label">GPU 2</span><span class="rsb-grad" style="background:rgba(0,200,230,0.15);border-color:var(--secondary);">G<sub>2</sub></span><span class="rsb-desc">gradient from batch shard 2</span></div>
+              <div class="rsb-gpu"><span class="rsb-label">GPU 3</span><span class="rsb-grad" style="background:rgba(167,139,250,0.15);border-color:var(--accent);">G<sub>3</sub></span><span class="rsb-desc">gradient from batch shard 3</span></div>
+            </div>
+          </div>
+          <div class="ring-scenario-arrow">
+            <svg viewBox="0 0 40 40" width="40" height="40"><polygon points="20,35 5,15 35,15" fill="var(--primary)" opacity="0.5"/></svg>
+          </div>
+          <div class="ring-scenario-box goal-box">
+            <div class="rsb-title">Goal: Every GPU has the SAME average</div>
+            <div class="rsb-gpus">
+              <div class="rsb-gpu"><span class="rsb-label">GPU 0</span><span class="rsb-grad hl-done">(G₀+G₁+G₂+G₃)/4</span></div>
+              <div class="rsb-gpu"><span class="rsb-label">GPU 1</span><span class="rsb-grad hl-done">(G₀+G₁+G₂+G₃)/4</span></div>
+              <div class="rsb-gpu"><span class="rsb-label">GPU 2</span><span class="rsb-grad hl-done">(G₀+G₁+G₂+G₃)/4</span></div>
+              <div class="rsb-gpu"><span class="rsb-label">GPU 3</span><span class="rsb-grad hl-done">(G₀+G₁+G₂+G₃)/4</span></div>
+            </div>
+          </div>
+        </div>
+
+        <p>Each gradient vector G<sub>i</sub> is a <strong>huge array of numbers</strong> — one number per model parameter. For our XLarge model, that's <strong>52 million float32 numbers = 208 MB</strong> per GPU. The question is: <em>how do we get the average of four 208 MB arrays onto all four GPUs as fast as possible?</em></p>
+      </div>
+    </div>
+
+    <!-- ===== PART 2: THE NAIVE WAY ===== -->
+    <div class="ring-explainer-card">
+      <div class="ring-explainer-num">2</div>
+      <h3>The Naive Way: Send Everything to One GPU</h3>
+      <div class="ring-explainer-body">
+        <p>The simplest approach: pick one GPU (say GPU 0) as the "leader." Every other GPU sends its entire gradient to GPU 0. GPU 0 adds them all up, divides by N, and sends the result back.</p>
+
+        <div class="ring-naive-timeline">
+          <div class="rnt-step">
+            <div class="rnt-step-num">Step 1</div>
+            <div class="rnt-step-desc">
+              <strong>Gather:</strong> GPU 1, 2, 3 each send their full gradient (208 MB) to GPU 0.
+              <div class="rnt-detail">GPU 0 receives 3 × 208 MB = <strong>624 MB</strong> of data through its single network link.</div>
+            </div>
+          </div>
+          <div class="rnt-step">
+            <div class="rnt-step-num">Step 2</div>
+            <div class="rnt-step-desc">
+              <strong>Compute:</strong> GPU 0 sums all four gradients and divides by 4.
+              <div class="rnt-detail">G<sub>avg</sub> = (G₀ + G₁ + G₂ + G₃) / 4</div>
+            </div>
+          </div>
+          <div class="rnt-step">
+            <div class="rnt-step-num">Step 3</div>
+            <div class="rnt-step-desc">
+              <strong>Broadcast:</strong> GPU 0 sends the averaged gradient back to GPU 1, 2, 3.
+              <div class="rnt-detail">GPU 0 sends 3 × 208 MB = <strong>624 MB</strong> out through its single network link.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ring-problem-callout">
+          <h4>The Bottleneck Problem</h4>
+          <p>GPU 0's network link must handle <strong>624 MB in + 624 MB out = 1,248 MB total</strong>. Meanwhile, GPU 1, 2, 3 are <strong>sitting idle</strong> — they only use their links once to send and once to receive.</p>
+          <p>With N GPUs, GPU 0 must transfer <code>2 × (N-1) × D</code> data, where D is the gradient size. This <strong>grows linearly with N</strong>. With 100 GPUs, GPU 0 would need to transfer 198 × 208 MB = <strong>41 GB</strong>. That would take <em>minutes</em>.</p>
+          <p>The core problem: <strong>one GPU does all the work while the others wait.</strong> We're wasting N-1 perfectly good network links.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== PART 3: THE KEY INSIGHT ===== -->
+    <div class="ring-explainer-card">
+      <div class="ring-explainer-num">3</div>
+      <h3>The Key Insight: Split the Gradient Into Chunks</h3>
+      <div class="ring-explainer-body">
+        <p>Here's the insight that makes Ring AllReduce work: <strong>you don't have to send the entire gradient as one big blob.</strong></p>
+
+        <p>Think of each gradient vector as a long array of 52 million numbers. We can <strong>split it into N equal pieces</strong> (one piece per GPU). For 4 GPUs:</p>
+
+        <div class="ring-chunk-visual">
+          <div class="rcv-label">GPU 0's gradient (52M parameters):</div>
+          <div class="rcv-bar">
+            <div class="rcv-chunk c0" style="width:25%"><span>Chunk 0</span><small>13M params</small></div>
+            <div class="rcv-chunk c1" style="width:25%"><span>Chunk 1</span><small>13M params</small></div>
+            <div class="rcv-chunk c2" style="width:25%"><span>Chunk 2</span><small>13M params</small></div>
+            <div class="rcv-chunk c3" style="width:25%"><span>Chunk 3</span><small>13M params</small></div>
+          </div>
+        </div>
+
+        <p><strong>Why split?</strong> Because now we can make each GPU <em>responsible for averaging just one chunk</em>. GPU 0 collects and averages Chunk 0 from all GPUs. GPU 1 collects and averages Chunk 1 from all GPUs. And so on. <strong>All four GPUs work in parallel</strong> — no bottleneck!</p>
+
+        <p>But there's a problem: if GPU 0 needs Chunk 0 from all other GPUs, and GPU 1 needs Chunk 1 from all other GPUs, etc., we'd need all-to-all communication — which has the same bottleneck. We need a smarter pattern for <em>how</em> the chunks travel between GPUs. That's where the <strong>ring topology</strong> comes in.</p>
+      </div>
+    </div>
+
+    <!-- ===== PART 4: THE RING TOPOLOGY ===== -->
+    <div class="ring-explainer-card">
+      <div class="ring-explainer-num">4</div>
+      <h3>The Ring: Each GPU Only Talks to Its Neighbors</h3>
+      <div class="ring-explainer-body">
+        <p>Arrange the GPUs in a <strong>logical ring</strong>. Each GPU has exactly two connections:</p>
+        <ul>
+          <li>It sends data to its <strong>right neighbor</strong></li>
+          <li>It receives data from its <strong>left neighbor</strong></li>
+        </ul>
+
+        <div class="ring-topo-visual">
+          <svg viewBox="0 0 320 220" class="ring-svg-large">
+            <!-- Ring circle -->
+            <circle cx="160" cy="110" r="80" fill="none" stroke="var(--border)" stroke-width="2" stroke-dasharray="6"/>
+            <!-- GPU nodes -->
+            <circle cx="160" cy="30" r="26" fill="#1a1a2e" stroke="var(--primary)" stroke-width="2.5"/>
+            <text x="160" y="34" text-anchor="middle" fill="var(--fg)" font-size="11" font-weight="600">GPU 0</text>
+            <circle cx="240" cy="110" r="26" fill="#1a1a2e" stroke="var(--blue)" stroke-width="2.5"/>
+            <text x="240" y="114" text-anchor="middle" fill="var(--fg)" font-size="11" font-weight="600">GPU 1</text>
+            <circle cx="160" cy="190" r="26" fill="#1a1a2e" stroke="var(--secondary)" stroke-width="2.5"/>
+            <text x="160" y="194" text-anchor="middle" fill="var(--fg)" font-size="11" font-weight="600">GPU 2</text>
+            <circle cx="80" cy="110" r="26" fill="#1a1a2e" stroke="var(--accent)" stroke-width="2.5"/>
+            <text x="80" y="114" text-anchor="middle" fill="var(--fg)" font-size="11" font-weight="600">GPU 3</text>
+            <!-- Arrows around ring (clockwise) -->
+            <defs><marker id="arRing" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="var(--primary)"/></marker></defs>
+            <path d="M183 40 L218 88" stroke="var(--primary)" stroke-width="2.5" marker-end="url(#arRing)"/>
+            <path d="M236 136 L183 180" stroke="var(--blue)" stroke-width="2.5" marker-end="url(#arRing)"/>
+            <path d="M137 180 L104 136" stroke="var(--secondary)" stroke-width="2.5" marker-end="url(#arRing)"/>
+            <path d="M104 88 L137 40" stroke="var(--accent)" stroke-width="2.5" marker-end="url(#arRing)"/>
+            <!-- Labels -->
+            <text x="210" y="58" fill="var(--fg-muted)" font-size="8">sends →</text>
+            <text x="246" y="160" fill="var(--fg-muted)" font-size="8">sends →</text>
+            <text x="96" y="168" fill="var(--fg-muted)" font-size="8">← sends</text>
+            <text x="90" y="58" fill="var(--fg-muted)" font-size="8">← sends</text>
+          </svg>
+        </div>
+
+        <p><strong>The crucial property:</strong> At every step, <strong>all four GPUs send and receive simultaneously</strong>. No GPU is ever idle. No GPU is ever overloaded. Every network link in the system is used at full bandwidth, all the time.</p>
+
+        <p>The algorithm runs in <strong>two phases</strong>:</p>
+        <ol>
+          <li><strong>Scatter-Reduce</strong> — Pass chunks around the ring, <em>adding</em> as you go. After N-1 steps, each GPU has the <strong>complete sum</strong> of one chunk.</li>
+          <li><strong>AllGather</strong> — Pass the completed chunks around the ring, <em>replacing</em> as you go. After N-1 more steps, every GPU has <strong>all chunks</strong>.</li>
+        </ol>
+
+        <p>Let's walk through both phases step by step.</p>
+      </div>
+    </div>
+
+    <!-- ===== PART 5: SCATTER-REDUCE ===== -->
+    <div class="ring-explainer-card">
+      <div class="ring-explainer-num">5</div>
+      <h3>Phase 1: Scatter-Reduce — Building Up the Sum</h3>
+      <div class="ring-explainer-body">
+        <p>Recall: each GPU's gradient is split into 4 chunks. We label them: GPU 0 has chunks <strong>[A₀, A₁, A₂, A₃]</strong>, GPU 1 has <strong>[B₀, B₁, B₂, B₃]</strong>, etc. The subscript is the chunk index, the letter is which GPU it came from.</p>
+
+        <p>The goal of Phase 1: make GPU 0 hold the sum A₀+B₀+C₀+D₀ (all GPUs' chunk 0), GPU 1 hold A₁+B₁+C₁+D₁, etc.</p>
+
+        <div class="ring-step-grid">
+          <!-- Initial State -->
+          <div class="ring-step-card">
+            <div class="rs-label">Initial State</div>
+            <div class="rs-gpus">
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 0</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">A₀</span><span class="rs-chunk c1">A₁</span><span class="rs-chunk c2">A₂</span><span class="rs-chunk c3">A₃</span>
+                </div>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 1</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">B₀</span><span class="rs-chunk c1">B₁</span><span class="rs-chunk c2">B₂</span><span class="rs-chunk c3">B₃</span>
+                </div>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 2</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">C₀</span><span class="rs-chunk c1">C₁</span><span class="rs-chunk c2">C₂</span><span class="rs-chunk c3">C₃</span>
+                </div>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 3</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">D₀</span><span class="rs-chunk c1">D₁</span><span class="rs-chunk c2">D₂</span><span class="rs-chunk c3">D₃</span>
+                </div>
+              </div>
+            </div>
+            <p class="rs-note">Each GPU has its own gradient, split into 4 equal chunks (52 MB each for our XLarge model).</p>
+          </div>
+
+          <!-- Step 1 -->
+          <div class="ring-step-card">
+            <div class="rs-label">Step 1</div>
+            <div class="rs-action">GPU 0 sends <span class="c0-text">A₀</span> → GPU 1. &nbsp; GPU 1 sends <span class="c1-text">B₁</span> → GPU 2. &nbsp; GPU 2 sends <span class="c2-text">C₂</span> → GPU 3. &nbsp; GPU 3 sends <span class="c3-text">D₃</span> → GPU 0.</div>
+            <div class="rs-gpus">
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 0</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">A₀</span><span class="rs-chunk c1">A₁</span><span class="rs-chunk c2">A₂</span><span class="rs-chunk c3 hl-add">A₃+D₃</span>
+                </div>
+                <span class="rs-detail">received D₃ from GPU 3, added to own A₃</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 1</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0 hl-add">B₀+A₀</span><span class="rs-chunk c1">B₁</span><span class="rs-chunk c2">B₂</span><span class="rs-chunk c3">B₃</span>
+                </div>
+                <span class="rs-detail">received A₀ from GPU 0, added to own B₀</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 2</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">C₀</span><span class="rs-chunk c1 hl-add">C₁+B₁</span><span class="rs-chunk c2">C₂</span><span class="rs-chunk c3">C₃</span>
+                </div>
+                <span class="rs-detail">received B₁ from GPU 1, added to own C₁</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 3</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">D₀</span><span class="rs-chunk c1">D₁</span><span class="rs-chunk c2 hl-add">D₂+C₂</span><span class="rs-chunk c3">D₃</span>
+                </div>
+                <span class="rs-detail">received C₂ from GPU 2, added to own D₂</span>
+              </div>
+            </div>
+            <p class="rs-note"><strong>Key rule:</strong> Each GPU sends one chunk to the right, receives one chunk from the left, and <strong>adds</strong> the received chunk to its own. Notice: all 4 GPUs send/receive <strong>simultaneously</strong>.</p>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="ring-step-card">
+            <div class="rs-label">Step 2</div>
+            <div class="rs-action">Now each GPU sends the chunk it just <em>updated</em> (the one with 2 GPUs' worth of data) to the next GPU.</div>
+            <div class="rs-gpus">
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 0</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">A₀</span><span class="rs-chunk c1">A₁</span><span class="rs-chunk c2 hl-add">A₂+D₂+C₂</span><span class="rs-chunk c3">A₃+D₃</span>
+                </div>
+                <span class="rs-detail">received (D₂+C₂) from GPU 3, added to own A₂ → now has 3 GPUs' data</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 1</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">B₀+A₀</span><span class="rs-chunk c1">B₁</span><span class="rs-chunk c2">B₂</span><span class="rs-chunk c3 hl-add">B₃+A₃+D₃</span>
+                </div>
+                <span class="rs-detail">received (A₃+D₃) from GPU 0, added to own B₃ → 3 GPUs' data</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 2</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0 hl-add">C₀+B₀+A₀</span><span class="rs-chunk c1">C₁+B₁</span><span class="rs-chunk c2">C₂</span><span class="rs-chunk c3">C₃</span>
+                </div>
+                <span class="rs-detail">received (B₀+A₀) from GPU 1, added to own C₀ → 3 GPUs' data</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 3</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">D₀</span><span class="rs-chunk c1 hl-add">D₁+C₁+B₁</span><span class="rs-chunk c2">D₂+C₂</span><span class="rs-chunk c3">D₃</span>
+                </div>
+                <span class="rs-detail">received (C₁+B₁) from GPU 2, added to own D₁ → 3 GPUs' data</span>
+              </div>
+            </div>
+            <p class="rs-note">After step 2, the highlighted chunks contain partial sums from <strong>3 out of 4 GPUs</strong>. One more step to go.</p>
+          </div>
+
+          <!-- Step 3 — DETAILED BREAKDOWN -->
+          <div class="ring-step-card">
+            <div class="rs-label">Step 3 — Scatter-Reduce Complete!</div>
+            <div class="rs-action">Each GPU sends its 3-GPU partial sum onward. The receiver <strong>adds</strong> it to its own untouched value → complete sum of all 4 GPUs.<br>
+            GPU 0 sends <code>A₂+D₂+C₂</code> → GPU 1. &nbsp; GPU 1 sends <code>B₃+A₃+D₃</code> → GPU 2. &nbsp; GPU 2 sends <code>C₀+B₀+A₀</code> → GPU 3. &nbsp; GPU 3 sends <code>D₁+C₁+B₁</code> → GPU 0.</div>
+
+            <div class="rs-gpus">
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 0</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">A₀</span><span class="rs-chunk c1 hl-done">A₁+B₁+C₁+D₁</span><span class="rs-chunk c2">A₂+D₂+C₂</span><span class="rs-chunk c3">A₃+D₃</span>
+                </div>
+                <span class="rs-detail">chunk 1: own A₁ + received (D₁+C₁+B₁) = ALL 4 GPUs</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 1</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">B₀+A₀</span><span class="rs-chunk c1">B₁</span><span class="rs-chunk c2 hl-done">A₂+B₂+C₂+D₂</span><span class="rs-chunk c3">B₃+A₃+D₃</span>
+                </div>
+                <span class="rs-detail">chunk 2: own B₂ + received (A₂+D₂+C₂) = ALL 4 GPUs</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 2</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">C₀+B₀+A₀</span><span class="rs-chunk c1">C₁+B₁</span><span class="rs-chunk c2">C₂</span><span class="rs-chunk c3 hl-done">A₃+B₃+C₃+D₃</span>
+                </div>
+                <span class="rs-detail">chunk 3: own C₃ + received (B₃+A₃+D₃) = ALL 4 GPUs</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 3</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0 hl-done">A₀+B₀+C₀+D₀</span><span class="rs-chunk c1">D₁+C₁+B₁</span><span class="rs-chunk c2">D₂+C₂</span><span class="rs-chunk c3">D₃</span>
+                </div>
+                <span class="rs-detail">chunk 0: own D₀ + received (C₀+B₀+A₀) = ALL 4 GPUs</span>
+              </div>
+            </div>
+
+            <p class="rs-note"><strong>Why does this work?</strong> The accumulation <em>rotated</em> through chunks: Step 1 updated chunk 3/0/1/2, Step 2 updated chunk 2/3/0/1, Step 3 updated chunk 1/2/3/0. Each GPU had <strong>one chunk untouched</strong> for steps 1-2 — the chunk that received the final 3-GPU sum in Step 3, completing the full sum. Each GPU now holds 1/4 of the complete result. Phase 2 distributes these.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== PART 6: ALLGATHER ===== -->
+    <div class="ring-explainer-card">
+      <div class="ring-explainer-num">6</div>
+      <h3>Phase 2: AllGather — Distributing the Completed Chunks</h3>
+      <div class="ring-explainer-body">
+        <p>After Scatter-Reduce, each GPU has the complete sum of one chunk. Now we need to <strong>distribute</strong> those completed chunks so every GPU has all of them.</p>
+
+        <p>We use the same ring pattern — each GPU sends its completed chunk to the right, receives a completed chunk from the left — but this time we <strong>replace</strong> instead of adding (the incoming chunk is already the final sum, so we just overwrite).</p>
+
+        <div class="ring-step-grid">
+          <div class="ring-step-card">
+            <div class="rs-label">AllGather Step 1</div>
+            <div class="rs-gpus">
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 0</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk c2">...</span><span class="rs-chunk c3">...</span>
+                </div>
+                <span class="rs-detail">Had Σchunk₁, received Σchunk₀ from GPU 3</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 1</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">...</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk c3">...</span>
+                </div>
+                <span class="rs-detail">Had Σchunk₂, received Σchunk₁ from GPU 0</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 2</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">...</span><span class="rs-chunk c1">...</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk hl-done">Σchunk₃</span>
+                </div>
+                <span class="rs-detail">Had Σchunk₃, received Σchunk₂ from GPU 1</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 3</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk c1">...</span><span class="rs-chunk c2">...</span><span class="rs-chunk hl-done">Σchunk₃</span>
+                </div>
+                <span class="rs-detail">Had Σchunk₀, received Σchunk₃ from GPU 2</span>
+              </div>
+            </div>
+            <p class="rs-note">Each GPU now has 2 completed chunks. 2 more steps to distribute the remaining ones...</p>
+          </div>
+
+          <div class="ring-step-card final">
+            <div class="rs-label">After 3 AllGather Steps — Done!</div>
+            <div class="rs-gpus">
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 0</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk hl-done">Σchunk₃</span>
+                </div>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 1</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk hl-done">Σchunk₃</span>
+                </div>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 2</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk hl-done">Σchunk₃</span>
+                </div>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 3</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk hl-done">Σchunk₃</span>
+                </div>
+              </div>
+            </div>
+            <p class="rs-note"><strong>Every GPU now has the identical, fully-summed gradient vector.</strong> Divide by N (=4) to get the average, then update weights. Every GPU updates identically.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== PART 7: COMPARISON TABLE ===== -->
+    <div class="ring-explainer-card">
+      <div class="ring-explainer-num">7</div>
+      <h3>Naive vs Ring AllReduce — The Numbers</h3>
+      <div class="ring-explainer-body">
+        <p>Let's compare the two approaches concretely for our XLarge model (D = 208 MB) on 4 GPUs:</p>
+
+        <table class="ring-compare-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Naive (Central Server)</th>
+              <th>Ring AllReduce</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Data GPU 0 must send</strong></td>
+              <td class="val-bad">(N-1) × D = 3 × 208 = 624 MB</td>
+              <td class="val-good">2 × (N-1) × D/N = 2 × 3/4 × 208 = 312 MB</td>
+            </tr>
+            <tr>
+              <td><strong>Data GPU 0 must receive</strong></td>
+              <td class="val-bad">(N-1) × D = 624 MB</td>
+              <td class="val-good">2 × (N-1) × D/N = 312 MB</td>
+            </tr>
+            <tr>
+              <td><strong>Bottleneck GPU's total load</strong></td>
+              <td class="val-bad">1,248 MB (GPU 0 does everything)</td>
+              <td class="val-good">624 MB (spread equally across all GPUs)</td>
+            </tr>
+            <tr>
+              <td><strong>GPUs idle during transfer?</strong></td>
+              <td class="val-bad">Yes — GPU 1,2,3 idle while GPU 0 works</td>
+              <td class="val-good">No — all GPUs send/receive simultaneously</td>
+            </tr>
+            <tr>
+              <td><strong>Scales to 100 GPUs?</strong></td>
+              <td class="val-bad">GPU 0 transfers 99×208 = 20.6 GB</td>
+              <td class="val-good">Each GPU transfers ~2×208 = 416 MB</td>
+            </tr>
+            <tr>
+              <td><strong>Steps required</strong></td>
+              <td>2 (gather + broadcast)</td>
+              <td>2×(N-1) = 6 steps (more latency per step)</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>The critical difference: with naive, the bottleneck GPU's load <strong>grows linearly with N</strong>. With Ring AllReduce, each GPU's load approaches <strong>2D regardless of N</strong>. At N=100, the naive approach is <strong>50× slower</strong> than Ring AllReduce.</p>
+      </div>
+    </div>
+
+    <!-- ===== PART 8: THE MATH ===== -->
+    <div class="ring-math-card">
+      <h4>The Math: Why 2(N-1)/N Data Per GPU?</h4>
+      <div class="ring-math-grid">
+        <div class="rm-block">
+          <h5>Chunk Size</h5>
+          <p>Gradient has D bytes total, split into N chunks → each chunk is <strong>D/N</strong> bytes.</p>
+        </div>
+        <div class="rm-block">
+          <h5>Per Step</h5>
+          <p>Each GPU sends exactly <strong>one chunk (D/N bytes)</strong> to its right neighbor and receives one chunk from its left.</p>
+        </div>
+        <div class="rm-block">
+          <h5>Scatter-Reduce</h5>
+          <p>Takes <strong>N-1 steps</strong>. Each step, every GPU sends D/N. Total sent per GPU: <code>(N-1) × D/N</code></p>
+        </div>
+        <div class="rm-block">
+          <h5>AllGather</h5>
+          <p>Takes another <strong>N-1 steps</strong> with D/N per step. Total sent per GPU: <code>(N-1) × D/N</code></p>
+        </div>
+        <div class="rm-block highlight-math" style="grid-column: 1 / -1;">
+          <h5>Grand Total Per GPU</h5>
+          <p style="font-size:1.1rem;">
+            <code>2 × (N-1) × D/N = 2(N-1)/N × D</code>
+          </p>
+          <div class="ring-math-examples">
+            <div class="rme"><strong>N=2 GPUs:</strong> 2 × 1/2 × D = <strong>1.0 × D</strong> (each GPU sends 208 MB)</div>
+            <div class="rme"><strong>N=4 GPUs:</strong> 2 × 3/4 × D = <strong>1.5 × D</strong> (each GPU sends 312 MB)</div>
+            <div class="rme"><strong>N=8 GPUs:</strong> 2 × 7/8 × D = <strong>1.75 × D</strong> (each GPU sends 364 MB)</div>
+            <div class="rme"><strong>N=1000:</strong> 2 × 999/1000 × D ≈ <strong>2.0 × D</strong> (each GPU sends ~416 MB)</div>
+          </div>
+          <p>As N→∞, the total approaches <strong>2D</strong> — essentially constant, <em>independent of how many GPUs you have!</em></p>
+        </div>
+      </div>
+      <div class="ring-math-insight">
+        <p><strong>This is the beauty of Ring AllReduce:</strong> Adding more GPUs barely increases the per-GPU communication cost. Compare to the naive approach where the bottleneck GPU must handle <code>2(N-1) × D</code> — which grows <em>linearly</em> with N. Ring AllReduce is why distributed training can scale to <strong>hundreds or thousands of GPUs</strong>.</p>
+        <p><strong>The catch:</strong> More GPUs means more <strong>sequential steps</strong> (N-1 per phase). Each step has fixed latency (~10-50μs for NCCL kernel launch + network round-trip). With 4 GPUs: 6 steps. With 8 GPUs: 14 steps. This per-step latency is why AllReduce time <em>does</em> grow somewhat with GPU count — our benchmarks show communication going from 50ms (2 GPUs) to 94ms (4 GPUs) for XLarge. But it grows <em>much slower</em> than the naive approach would.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 
 
 <!-- ============ KEY TAKEAWAYS ============ -->
