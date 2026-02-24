@@ -229,6 +229,96 @@ code, pre { font-family: var(--font-mono); }
   margin: 0 auto 40px;
 }
 
+/* --- Colab CTA Button --- */
+.colab-cta {
+  display: inline-block;
+  text-decoration: none;
+  margin-bottom: 36px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(249,171,0,0.12) 0%, rgba(232,113,10,0.10) 100%);
+  border: 1px solid rgba(249,171,0,0.25);
+  padding: 3px;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.colab-cta::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(249,171,0,0.08), rgba(232,113,10,0.04));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.colab-cta:hover {
+  text-decoration: none;
+  border-color: rgba(249,171,0,0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(249,171,0,0.15), 0 0 0 1px rgba(249,171,0,0.1);
+}
+
+.colab-cta:hover::before {
+  opacity: 1;
+}
+
+.colab-cta-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px;
+  border-radius: 13px;
+  background: rgba(10,10,10,0.7);
+  backdrop-filter: blur(8px);
+  position: relative;
+  z-index: 1;
+}
+
+.colab-icon {
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(249,171,0,0.1);
+  border-radius: 12px;
+  border: 1px solid rgba(249,171,0,0.15);
+}
+
+.colab-cta-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.colab-cta-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #F9AB00;
+  letter-spacing: -0.01em;
+}
+
+.colab-cta-desc {
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+
+.colab-arrow {
+  flex-shrink: 0;
+  color: rgba(249,171,0,0.6);
+  transition: all 0.3s ease;
+}
+
+.colab-cta:hover .colab-arrow {
+  color: #F9AB00;
+  transform: translate(2px, -2px);
+}
+
 .hero-cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1555,6 +1645,12 @@ pre code {
   .code-panel { position: static; }
   .speedup-panels { grid-template-columns: repeat(2, 1fr); }
   .chart-bar-viz { height: 240px; }
+  .colab-cta-inner { padding: 12px 16px; gap: 12px; }
+  .colab-cta-title { font-size: 0.85rem; }
+  .colab-cta-desc { font-size: 0.75rem; }
+  .colab-icon { width: 44px; height: 44px; }
+  .colab-icon svg { width: 28px; height: 28px; }
+  .colab-arrow { display: none; }
 }
 
 @media (max-width: 480px) {
