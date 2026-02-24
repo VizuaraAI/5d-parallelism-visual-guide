@@ -1389,7 +1389,31 @@ model_sizes = [<span class="str">'small'</span>, <span class="str">'medium'</spa
             <span class="mock-y-label" style="font-size:0.65rem;">Loss</span>
           </div>
         </div>
-        <p><strong>The Researcher's Mindset:</strong> There are <strong>three distinct clusters</strong>, grouped by <strong>GPU count</strong>: single GPU (1G) sits highest, 2-GPU modes (dp_naive, dp_interleaved, ddp_builtin) cluster together in the middle, and 4-GPU modes cluster at the bottom. <strong>Why?</strong> Within each GPU-count group, all modes (naive, interleaved, DDP) produce <em>nearly identical</em> loss curves — they're all doing the same math with <code>AllReduce(SUM)/N</code>. The difference between clusters comes from <strong>effective batch size</strong>: with more GPUs, each step processes more data (the batch is split but gradients are averaged), which changes the optimization trajectory. More GPUs = larger effective batch = different (often lower) loss curve. All three clusters are converging correctly — the separation is a natural consequence of scaling, not an error.</p>
+        <p><strong>The Researcher's Mindset:</strong> There are <strong>three distinct clusters</strong>, grouped by <strong>GPU count</strong>: single GPU (1G) sits highest, 2-GPU modes (dp_naive, dp_interleaved, ddp_builtin) cluster together in the middle, and 4-GPU modes cluster at the bottom.</p>
+
+        <p><strong>Why do modes within the same GPU count produce identical curves?</strong> Because they're all doing the same math. Regardless of whether you use naive, interleaved, or DDP — every mode does <code>AllReduce(SUM)/N</code> on the gradients. The gradient update is mathematically identical. The only difference is <em>when</em> the AllReduce happens (after all layers vs. per-layer), not <em>what</em> it computes.</p>
+
+        <p><strong>But why do different GPU counts produce different clusters?</strong> This is actually a <strong>logging artifact</strong>, not a real training difference. Here's what the code does:</p>
+
+        <div style="background:rgba(0,0,0,0.3); border-radius:8px; padding:16px; margin:12px 0; font-family:monospace; font-size:0.85rem; line-height:1.6;">
+          <span style="color:#888;">// Each GPU computes loss on its LOCAL shard only</span><br>
+          <span style="color:#42A5F5;">out</span> = model(<span style="color:#66BB6A;">x_local</span>) &nbsp;&nbsp;<span style="color:#888;">// x_local = 512 samples for 2 GPUs, 256 for 4 GPUs</span><br>
+          <span style="color:#42A5F5;">loss</span> = loss_fn(out, y_local)<br>
+          loss.backward()<br>
+          <br>
+          <span style="color:#888;">// AllReduce syncs GRADIENTS — but NOT the loss value</span><br>
+          dist.all_reduce(param.<span style="color:#FF7043;">grad</span>) &nbsp;&nbsp;<span style="color:#888;">// ← only gradients are synchronized</span><br>
+          <br>
+          epoch_loss += <span style="color:#FF7043;">loss.item()</span> &nbsp;&nbsp;<span style="color:#888;">// ← logs rank 0's LOCAL loss, not the global average</span>
+        </div>
+
+        <p>The <strong>effective batch size is actually the same</strong> across all GPU counts (1024 samples). The batch is split across GPUs, each GPU computes gradients on its shard, and <code>AllReduce(SUM)/N</code> produces the exact same averaged gradient as a single GPU processing all 1024 samples. The models are learning identically.</p>
+
+        <p>The visual separation happens because <code>loss.item()</code> captures rank 0's <strong>local micro-batch loss</strong> (computed on 1024, 512, or 256 samples depending on GPU count) — and rank 0 always sees the same fixed slice of each batch (indices <code>[0:chunk]</code>) since the dataset isn't shuffled. These fixed subsets have systematically different average loss values.</p>
+
+        <p><strong>Why not log the true average loss?</strong> You'd need an extra <code>dist.all_reduce(loss_tensor)</code> call every step just for monitoring. This adds communication overhead that would distort the timing benchmarks — which is the whole point of this notebook. For production training you'd want the averaged loss, but for benchmarking speed, this shortcut is acceptable.</p>
+
+        <p><strong>Key takeaway:</strong> If you plotted loss vs <strong>total samples seen</strong> (instead of loss vs step), or if you averaged the loss across all ranks before logging, all three clusters would collapse onto the <strong>same curve</strong>. The training is identical — only the monitoring differs.</p>
       </div>
 
       <!-- Chart 6: Throughput -->
