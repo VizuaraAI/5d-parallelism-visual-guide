@@ -243,6 +243,22 @@ code, pre { font-family: var(--font-mono); }
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
 
+/* PRESET BUTTONS */
+.preset-btn {
+  padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--fg-muted); font-size: 0.72rem;
+  font-family: var(--font-mono); cursor: pointer; transition: all 0.2s;
+}
+.preset-btn:hover { border-color: var(--primary); color: var(--primary); background: rgba(0,212,106,0.08); }
+
+/* CALC OOM STATE */
+.calc-result.oom { background: rgba(255,112,67,0.08); border-color: rgba(255,112,67,0.3); }
+.calc-result.oom .calc-result-big {
+  background: linear-gradient(135deg, var(--red), var(--orange));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.calc-result.ok { background: rgba(0,212,106,0.06); border-color: rgba(0,212,106,0.2); }
+
 /* SENSITIVITY CHART */
 .chart-container {
   background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
@@ -684,6 +700,10 @@ input[type="range"] { width: 100%; accent-color: var(--primary); cursor: pointer
       <p class="section-subtitle">Enter your GPU specs and model config. Get the theoretical maximum local batch size computed in real time.</p>
     </div>
 
+    <div class="callout callout-info fade-in" style="max-width: 800px; margin: 0 auto 24px auto;">
+      <strong>How this calculator works:</strong> It computes <code style="color: var(--secondary);">b_max = floor((M_GPU × 0.9 − M_fixed / D) / M_act_per_sample)</code> where <strong>M_fixed = 16N</strong> bytes (params + gradients + optimizer), <strong>D</strong> = number of GPUs (with ZeRO-3, fixed memory is sharded), and <strong>M_act_per_sample</strong> depends on the model architecture. The 0.9 factor reserves 10% for CUDA overhead. Try changing the values below and watch the result update in real time!
+    </div>
+
     <div class="calc-panel fade-in" style="max-width: 800px; margin: 0 auto;">
       <div class="grid-2" style="gap: 32px;">
         <div>
@@ -692,6 +712,11 @@ input[type="range"] { width: 100%; accent-color: var(--primary); cursor: pointer
             <div class="calc-label">GPU Memory</div>
             <input type="number" id="calc-gpu" class="calc-input" value="80">
             <span class="calc-unit">GiB</span>
+          </div>
+          <div class="calc-row">
+            <div class="calc-label">Number of GPUs</div>
+            <input type="number" id="calc-ngpus" class="calc-input" value="1" min="1" step="1">
+            <span class="calc-unit" style="font-size: 0.72rem;">ZeRO-3 sharding</span>
           </div>
           <div class="calc-row">
             <div class="calc-label">Training Precision</div>
@@ -713,33 +738,62 @@ input[type="range"] { width: 100%; accent-color: var(--primary); cursor: pointer
           <h4 style="font-size: 0.92rem; font-weight: 600; margin-bottom: 16px; color: var(--accent);">Model Config</h4>
           <div class="calc-row">
             <div class="calc-label">Parameters (N)</div>
-            <input type="number" id="calc-N" class="calc-input" value="7" step="0.1">
+            <input type="number" id="calc-N" class="calc-input" value="1" step="0.1">
             <span class="calc-unit">Billion</span>
           </div>
           <div class="calc-row">
             <div class="calc-label">Hidden Size (H)</div>
-            <input type="number" id="calc-H" class="calc-input" value="4096">
+            <input type="number" id="calc-H" class="calc-input" value="2048">
           </div>
           <div class="calc-row">
             <div class="calc-label">Layers (L)</div>
-            <input type="number" id="calc-L" class="calc-input" value="32">
+            <input type="number" id="calc-L" class="calc-input" value="24">
           </div>
           <div class="calc-row">
             <div class="calc-label">Attention Heads</div>
-            <input type="number" id="calc-heads" class="calc-input" value="32">
+            <input type="number" id="calc-heads" class="calc-input" value="16">
           </div>
           <div class="calc-row">
             <div class="calc-label">Sequence Length (S)</div>
             <input type="number" id="calc-S" class="calc-input" value="2048">
+          </div>
+          <div class="calc-row" style="margin-top: 8px;">
+            <div class="calc-label" style="color: var(--fg-muted); font-size: 0.78rem;">Quick presets:</div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <button class="preset-btn" onclick="setPreset(1, 2048, 24, 16)">1B</button>
+              <button class="preset-btn" onclick="setPreset(3, 3200, 26, 32)">3B</button>
+              <button class="preset-btn" onclick="setPreset(7, 4096, 32, 32)">7B</button>
+              <button class="preset-btn" onclick="setPreset(13, 5120, 40, 40)">13B</button>
+              <button class="preset-btn" onclick="setPreset(70, 8192, 80, 64)">70B</button>
+            </div>
           </div>
         </div>
       </div>
 
       <div class="calc-result" id="calc-result">
         <div style="text-align: center;">
-          <div style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1px; color: var(--fg-muted); margin-bottom: 4px;">Maximum Local Batch Size</div>
+          <div style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1px; color: var(--fg-muted); margin-bottom: 4px;">Maximum Local Batch Size (per GPU)</div>
           <div class="calc-result-big" id="calc-bmax">—</div>
           <div style="font-size: 0.85rem; color: var(--fg-muted); margin-top: 8px;" id="calc-breakdown"></div>
+          <div id="calc-explanation" style="margin-top: 12px; font-size: 0.82rem; max-width: 600px; margin-left: auto; margin-right: auto;"></div>
+        </div>
+      </div>
+
+      <!-- Memory bar visualization -->
+      <div id="calc-membar" style="margin-top: 20px; padding: 0 8px;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--fg-muted); margin-bottom: 6px;">
+          <span>Memory Usage Breakdown</span>
+          <span id="calc-membar-pct"></span>
+        </div>
+        <div style="height: 28px; border-radius: 8px; overflow: hidden; background: var(--bg); border: 1px solid var(--border); display: flex;">
+          <div id="calc-bar-fixed" style="background: var(--accent); transition: width 0.3s;" title="Fixed (model states)"></div>
+          <div id="calc-bar-act" style="background: var(--secondary); transition: width 0.3s;" title="Activations"></div>
+          <div id="calc-bar-buffer" style="background: rgba(255,255,255,0.05); transition: width 0.3s;" title="Buffer (10%)"></div>
+        </div>
+        <div style="display: flex; gap: 16px; margin-top: 6px; font-size: 0.72rem; color: var(--fg-muted);">
+          <span><span style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--accent); vertical-align: middle;"></span> Fixed (model states)</span>
+          <span><span style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--secondary); vertical-align: middle;"></span> Activations (b<sub>max</sub> samples)</span>
+          <span><span style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: rgba(255,255,255,0.1); vertical-align: middle;"></span> CUDA buffer (10%)</span>
         </div>
       </div>
     </div>
@@ -848,7 +902,7 @@ input[type="range"] { width: 100%; accent-color: var(--primary); cursor: pointer
       <div class="takeaway-card">
         <div class="takeaway-num">4</div>
         <h4>Three ways to increase b<sub>max</sub></h4>
-        <p>Mixed precision (reduce fixed cost), activation checkpointing (reduce per-sample cost), and ZeRO/FSDP (shard fixed cost across GPUs).</p>
+        <p>Mixed precision (halve activation memory per sample), activation checkpointing (reduce per-sample cost by ~90%), and ZeRO/FSDP (shard the 16N fixed cost across GPUs).</p>
       </div>
       <div class="takeaway-card">
         <div class="takeaway-num">5</div>
@@ -925,13 +979,22 @@ function actPerSampleGiB(H, L, heads, S, ckpt) {
   return toGiB((linear_elems + quad_elems) * 2);
 }
 
-function maxBatch(gpuGiB, N_billion, H, L, heads, S, precision, ckpt) {
-  const fixed = fixedMemGiB(N_billion, precision);
+function maxBatch(gpuGiB, N_billion, H, L, heads, S, precision, ckpt, nGPUs) {
+  nGPUs = nGPUs || 1;
+  const fixed = fixedMemGiB(N_billion, precision) / nGPUs; // ZeRO-3 shards across GPUs
   const available = gpuGiB * 0.9 - fixed; // 10% buffer for CUDA overhead
   if (available <= 0) return 0;
   const perSample = actPerSampleGiB(H, L, heads, S, ckpt);
   if (perSample <= 0) return 999;
   return Math.floor(available / perSample);
+}
+
+function setPreset(N, H, L, heads) {
+  document.getElementById('calc-N').value = N;
+  document.getElementById('calc-H').value = H;
+  document.getElementById('calc-L').value = L;
+  document.getElementById('calc-heads').value = heads;
+  updateCalc();
 }
 
 // ===========================
@@ -1060,28 +1123,82 @@ document.getElementById('oom-run-btn').addEventListener('click', function() {
 // ===========================
 function updateCalc() {
   const gpuGiB = parseFloat(document.getElementById('calc-gpu').value) || 80;
-  const N = parseFloat(document.getElementById('calc-N').value) || 7;
-  const H = parseInt(document.getElementById('calc-H').value) || 4096;
-  const L = parseInt(document.getElementById('calc-L').value) || 32;
-  const heads = parseInt(document.getElementById('calc-heads').value) || 32;
+  const nGPUs = Math.max(1, parseInt(document.getElementById('calc-ngpus').value) || 1);
+  const N = parseFloat(document.getElementById('calc-N').value) || 1;
+  const H = parseInt(document.getElementById('calc-H').value) || 2048;
+  const L = parseInt(document.getElementById('calc-L').value) || 24;
+  const heads = parseInt(document.getElementById('calc-heads').value) || 16;
   const S = parseInt(document.getElementById('calc-S').value) || 2048;
   const precision = document.getElementById('calc-precision').value;
   const ckpt = document.getElementById('calc-ckpt').value;
 
-  const fixed = fixedMemGiB(N, precision);
+  const fixedTotal = fixedMemGiB(N, precision);
+  const fixedPerGPU = fixedTotal / nGPUs;
   const perSample = actPerSampleGiB(H, L, heads, S, ckpt);
-  const bmax = maxBatch(gpuGiB, N, H, L, heads, S, precision, ckpt);
+  const bmax = maxBatch(gpuGiB, N, H, L, heads, S, precision, ckpt, nGPUs);
+  const bufferGiB = gpuGiB * 0.1;
+  const available = Math.max(0, gpuGiB * 0.9 - fixedPerGPU);
+  const actUsed = bmax * perSample;
 
-  document.getElementById('calc-bmax').textContent = bmax <= 0 ? '0 (OOM)' : bmax;
-  document.getElementById('calc-bmax').style.color = bmax <= 0 ? '' : '';
+  // Result text
+  const resultEl = document.getElementById('calc-result');
+  const bmaxEl = document.getElementById('calc-bmax');
+  if (bmax <= 0) {
+    bmaxEl.textContent = '0 (OOM)';
+    resultEl.classList.add('oom');
+    resultEl.classList.remove('ok');
+  } else {
+    bmaxEl.textContent = bmax;
+    resultEl.classList.add('ok');
+    resultEl.classList.remove('oom');
+  }
 
+  // Breakdown line
+  const shardNote = nGPUs > 1 ? ` (${fixedTotal.toFixed(1)} ÷ ${nGPUs} GPUs)` : '';
   document.getElementById('calc-breakdown').innerHTML =
-    `Fixed: <strong>${fixed.toFixed(1)} GiB</strong> | ` +
+    `Fixed/GPU: <strong>${fixedPerGPU.toFixed(1)} GiB</strong>${shardNote} | ` +
     `Act/sample: <strong>${perSample.toFixed(2)} GiB</strong> | ` +
-    `Available (with 10% buffer): <strong>${Math.max(0, gpuGiB * 0.9 - fixed).toFixed(1)} GiB</strong>`;
+    `Available: <strong>${available.toFixed(1)} GiB</strong>`;
+
+  // Contextual explanation
+  const explEl = document.getElementById('calc-explanation');
+  if (bmax <= 0 && fixedPerGPU >= gpuGiB * 0.9) {
+    const neededGPUs = Math.ceil(fixedTotal / (gpuGiB * 0.7));
+    explEl.innerHTML = `<div style="color: var(--red); line-height: 1.5;">
+      <strong>Model states alone need ${fixedPerGPU.toFixed(1)} GiB</strong>, which exceeds the usable GPU memory (${(gpuGiB * 0.9).toFixed(1)} GiB).
+      Even batch size 1 won't fit. Try: <strong>increase GPUs to ${neededGPUs}+</strong> (ZeRO-3 shards the ${fixedTotal.toFixed(1)} GiB across them),
+      or use a smaller model.
+    </div>`;
+  } else if (bmax <= 0) {
+    explEl.innerHTML = `<div style="color: var(--orange); line-height: 1.5;">
+      After fixed memory, only ${available.toFixed(1)} GiB remains, but 1 sample needs ${perSample.toFixed(2)} GiB in activations.
+      Try: <strong>enable activation checkpointing</strong>, reduce sequence length, or add more GPUs.
+    </div>`;
+  } else if (bmax <= 2) {
+    explEl.innerHTML = `<div style="color: var(--yellow); line-height: 1.5;">
+      Tight fit! Only ${available.toFixed(1)} GiB left for activations (${perSample.toFixed(2)} GiB per sample).
+      Consider activation checkpointing or more GPUs to increase headroom.
+    </div>`;
+  } else {
+    explEl.innerHTML = `<div style="color: var(--green); line-height: 1.5;">
+      ${available.toFixed(1)} GiB available for activations &rarr; <strong>${bmax} samples</strong> fit
+      (using ${actUsed.toFixed(1)} GiB, ${(gpuGiB - fixedPerGPU - actUsed - bufferGiB).toFixed(1)} GiB spare).
+    </div>`;
+  }
+
+  // Memory bar
+  const fixedPct = Math.min(100, (fixedPerGPU / gpuGiB) * 100);
+  const actPct = Math.min(100 - fixedPct, (actUsed / gpuGiB) * 100);
+  const bufPct = 10; // always 10%
+  document.getElementById('calc-bar-fixed').style.width = fixedPct + '%';
+  document.getElementById('calc-bar-act').style.width = actPct + '%';
+  document.getElementById('calc-bar-buffer').style.width = bufPct + '%';
+  const totalUsedPct = fixedPct + actPct + bufPct;
+  document.getElementById('calc-membar-pct').textContent =
+    `${Math.min(100, totalUsedPct).toFixed(0)}% of ${gpuGiB} GiB used`;
 }
 
-['calc-gpu','calc-N','calc-H','calc-L','calc-heads','calc-S','calc-precision','calc-ckpt'].forEach(id => {
+['calc-gpu','calc-ngpus','calc-N','calc-H','calc-L','calc-heads','calc-S','calc-precision','calc-ckpt'].forEach(id => {
   document.getElementById(id).addEventListener('input', updateCalc);
   document.getElementById(id).addEventListener('change', updateCalc);
 });
