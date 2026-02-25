@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gradient Synchronization — Naive DP vs DDP Overlap</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #121212;
+  --bg-card-hover: #1a1a1a;
+  --bg-section-alt: #0f0f0f;
+  --fg: #f2f2f2;
+  --fg-muted: #a3a3a3;
+  --border: #262626;
+  --border-light: #333;
+  --primary: #00d46a;
+  --primary-dim: #00a854;
+  --secondary: #00c8e6;
+  --accent: #a78bfa;
+  --red: #FF7043;
+  --orange: #FF9800;
+  --yellow: #FFCA28;
+  --blue: #42A5F5;
+  --green: #66BB6A;
+  --pink: #F06292;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --max-w: 1280px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-sans);
+  line-height: 1.7; -webkit-font-smoothing: antialiased; overflow-x: hidden;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: var(--font-mono); }
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+
+/* NAVBAR */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,10,0.85); backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.1rem; }
+.brand-tag {
+  font-size: 0.7rem; background: var(--primary); color: #000;
+  padding: 2px 8px; border-radius: 9999px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+/* HERO */
+.hero {
+  position: relative; min-height: 100vh; display: flex;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 120px 24px 80px; overflow: hidden;
+}
+.hero-bg-orbs { position: absolute; inset: 0; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.12; }
+.orb-green { width: 500px; height: 500px; background: var(--primary); top: 10%; left: 10%; animation: float-slow 20s ease-in-out infinite; }
+.orb-cyan { width: 400px; height: 400px; background: var(--secondary); top: 40%; right: 5%; animation: float-slow 25s ease-in-out infinite reverse; }
+.orb-purple { width: 350px; height: 350px; background: var(--accent); bottom: 10%; left: 30%; animation: float-slow 22s ease-in-out infinite; }
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(30px, -20px); }
+  50% { transform: translate(-20px, 30px); }
+  75% { transform: translate(20px, 20px); }
+}
+.hero-content { position: relative; z-index: 1; max-width: 800px; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3);
+  border-radius: 9999px; padding: 6px 18px; font-size: 0.82rem;
+  font-weight: 500; color: var(--primary); margin-bottom: 24px;
+}
+.pulse-dot { width: 8px; height: 8px; background: var(--primary); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }
+.hero h1 { font-family: var(--font-serif); font-style: italic; font-size: clamp(2.5rem, 7vw, 4.5rem); font-weight: 400; line-height: 1.1; margin-bottom: 20px; }
+.hero-subtitle { font-size: 1.1rem; color: var(--fg-muted); line-height: 1.7; max-width: 650px; margin: 0 auto 40px; }
+.hero-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.hero-stat-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 12px; transition: border-color 0.3s, transform 0.2s;
+}
+.hero-stat-card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-2px); }
+.stat-number {
+  font-size: 1.8rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.stat-label { font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* SECTIONS */
+.section { padding: 100px 0; position: relative; }
+.section-dark { background: var(--bg-section-alt); }
+.section-heading { text-align: center; margin-bottom: 60px; }
+.section-label {
+  display: inline-block; font-size: 0.78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.5px; color: var(--primary); margin-bottom: 12px;
+}
+.section-heading h2 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; line-height: 1.2; margin-bottom: 16px;
+}
+.section-subtitle { color: var(--fg-muted); font-size: 1.05rem; max-width: 650px; margin: 0 auto; }
+
+/* CARDS */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; transition: border-color 0.3s, transform 0.2s;
+}
+.card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-3px); }
+.card h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; }
+.card p, .card li { font-size: 0.88rem; color: var(--fg-muted); line-height: 1.6; }
+.card code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.82rem; color: var(--secondary); }
+
+/* GRIDS */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+@media (max-width: 900px) { .grid-2, .grid-3, .hero-cards { grid-template-columns: 1fr; } }
+
+/* EQUATION BOX */
+.equation-box {
+  background: #0d0d1a; border: 1px solid rgba(0,200,230,0.2); border-radius: 10px;
+  padding: 16px 20px; margin: 16px 0; font-family: var(--font-mono);
+  font-size: 0.88rem; color: var(--secondary); text-align: center;
+}
+.eq-label { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--fg-muted); margin-bottom: 8px; font-family: var(--font-sans); }
+.eq-highlight { color: var(--primary); font-weight: 600; }
+
+/* CALLOUTS */
+.callout { border-radius: 12px; padding: 20px 24px; margin: 20px 0; font-size: 0.88rem; line-height: 1.6; }
+.callout-info { background: rgba(66,165,245,0.06); border: 1px solid rgba(66,165,245,0.2); color: var(--fg); }
+.callout-warn { background: rgba(255,112,67,0.06); border: 1px solid rgba(255,112,67,0.2); }
+.callout-success { background: rgba(0,212,106,0.06); border: 1px solid rgba(0,212,106,0.2); }
+
+/* TIMELINE DIAGRAM */
+.timeline-container {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 24px 0; overflow-x: auto;
+}
+.timeline-title { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.timeline-sub { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+.tl-row { display: flex; align-items: center; margin-bottom: 8px; min-width: 700px; }
+.tl-label { width: 100px; font-size: 0.75rem; font-weight: 600; color: var(--fg-muted); font-family: var(--font-mono); flex-shrink: 0; }
+.tl-track { flex: 1; display: flex; height: 36px; position: relative; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,0.02); }
+.tl-block {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.65rem; font-weight: 600; color: #fff; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; padding: 0 6px;
+  transition: opacity 0.3s;
+}
+.tl-block:hover { opacity: 0.85; }
+.tl-idle { background: rgba(255,255,255,0.03); }
+.tl-fwd { background: #66BB6A; }
+.tl-bwd { background: #F06292; }
+.tl-allreduce { background: #42A5F5; }
+.tl-optim { background: #FF9800; }
+.tl-sync { background: #a78bfa; }
+.tl-overlap-bwd { background: linear-gradient(135deg, #F06292 50%, #42A5F5 50%); }
+
+.tl-time-axis { display: flex; min-width: 700px; padding-left: 100px; margin-top: 4px; }
+.tl-time-tick { font-size: 0.62rem; color: var(--fg-muted); font-family: var(--font-mono); }
+
+/* INTERACTIVE ANIMATION */
+.anim-container {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 24px 0;
+}
+.anim-controls {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
+}
+.anim-btn {
+  padding: 8px 20px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--fg); font-size: 0.82rem; font-weight: 500;
+  cursor: pointer; transition: all 0.2s; font-family: var(--font-sans);
+}
+.anim-btn:hover { border-color: var(--primary); color: var(--primary); }
+.anim-btn.active { background: rgba(0,212,106,0.12); border-color: var(--primary); color: var(--primary); }
+.anim-speed { font-size: 0.78rem; color: var(--fg-muted); }
+
+/* GPU DIAGRAM */
+.gpu-row {
+  display: flex; gap: 24px; margin: 20px 0; flex-wrap: wrap; justify-content: center;
+}
+.gpu-box {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px; width: 280px; text-align: center;
+}
+.gpu-box h4 { font-size: 0.88rem; font-weight: 600; margin-bottom: 12px; }
+.gpu-stream {
+  height: 28px; border-radius: 6px; margin: 6px 0; overflow: hidden;
+  display: flex; background: rgba(255,255,255,0.03);
+}
+.gpu-stream-label { font-size: 0.68rem; color: var(--fg-muted); margin-bottom: 2px; text-align: left; }
+
+/* BUCKET VISUAL */
+.bucket-vis {
+  display: flex; gap: 4px; align-items: flex-end; justify-content: center;
+  height: 120px; padding: 12px 0;
+}
+.bucket-bar {
+  width: 40px; border-radius: 4px 4px 0 0; transition: height 0.5s, background 0.3s;
+  display: flex; align-items: flex-end; justify-content: center;
+  font-size: 0.6rem; font-weight: 600; color: #fff; padding-bottom: 4px;
+}
+
+/* COMPARISON TABLE */
+.comp-table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  background: var(--bg-card); border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--border); margin: 20px 0;
+}
+.comp-table th {
+  padding: 14px 16px; font-size: 0.78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  background: rgba(0,212,106,0.06); color: var(--primary);
+  text-align: left;
+}
+.comp-table td {
+  padding: 12px 16px; font-size: 0.85rem; border-top: 1px solid var(--border);
+  color: var(--fg-muted);
+}
+.comp-table tr:hover td { background: rgba(255,255,255,0.02); }
+.val-good { color: var(--green) !important; font-weight: 600; }
+.val-bad { color: var(--red) !important; font-weight: 600; }
+.val-neutral { color: var(--yellow) !important; font-weight: 600; }
+
+/* TAKEAWAYS */
+.takeaway-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; border-top: 3px solid transparent;
+  background-image: linear-gradient(var(--bg-card), var(--bg-card)), linear-gradient(135deg, var(--primary), var(--secondary));
+  background-origin: border-box; background-clip: padding-box, border-box;
+  border-top: 3px solid; border-image: linear-gradient(135deg, var(--primary), var(--secondary)) 1;
+  border-image-slice: 1 1 0 0;
+}
+.takeaway-num {
+  font-size: 2rem; font-weight: 700; font-family: var(--font-mono);
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  margin-bottom: 8px;
+}
+.takeaway-card h4 { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+.takeaway-card p { font-size: 0.85rem; color: var(--fg-muted); line-height: 1.6; }
+
+/* FOOTER */
+.footer { padding: 60px 0 40px; border-top: 1px solid var(--border); text-align: center; }
+.footer-brand { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
+.footer p { font-size: 0.82rem; color: var(--fg-muted); }
+
+/* SCROLL ANIMATIONS */
+.fade-in { opacity: 0; transform: translateY(20px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+
+/* CODE BLOCK */
+.code-block {
+  background: #0d0d1a; border: 1px solid rgba(167,139,250,0.15); border-radius: 10px;
+  padding: 16px 20px; margin: 16px 0; overflow-x: auto; font-size: 0.8rem; line-height: 1.6;
+}
+.code-block .kw { color: var(--accent); }
+.code-block .fn { color: var(--secondary); }
+.code-block .cm { color: #6a6a8a; }
+.code-block .st { color: var(--green); }
+.code-block .num { color: var(--orange); }
+
+/* STRATEGY TOGGLE */
+.strat-toggle {
+  display: flex; gap: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--border);
+  margin: 0 auto 24px; width: fit-content;
+}
+.strat-btn {
+  padding: 10px 24px; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  background: var(--bg); color: var(--fg-muted); border: none; transition: all 0.2s;
+  font-family: var(--font-sans);
+}
+.strat-btn:hover { color: var(--fg); }
+.strat-btn.active-naive { background: rgba(255,112,67,0.15); color: var(--red); }
+.strat-btn.active-ddp { background: rgba(0,212,106,0.15); color: var(--primary); }
+
+/* STEP PROGRESS */
+.step-progress {
+  display: flex; align-items: center; gap: 0; margin: 20px 0; justify-content: center;
+}
+.step-dot {
+  width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-size: 0.72rem; font-weight: 700; font-family: var(--font-mono);
+  background: var(--bg); border: 2px solid var(--border); color: var(--fg-muted);
+  transition: all 0.3s;
+}
+.step-dot.active { border-color: var(--primary); color: var(--primary); background: rgba(0,212,106,0.1); }
+.step-dot.done { border-color: var(--primary); color: #fff; background: var(--primary); }
+.step-line { width: 40px; height: 2px; background: var(--border); transition: background 0.3s; }
+.step-line.done { background: var(--primary); }
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+  .hero h1 { font-size: 2.2rem; }
+  .tl-row, .tl-time-axis { min-width: 500px; }
+  .gpu-box { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <span>ShallowSpeed</span>
+      <span class="brand-tag">Gradient Sync</span>
+    </div>
+    <div class="nav-links">
+      <a href="#problem">The Problem</a>
+      <a href="#naive">Naive DP</a>
+      <a href="#ddp">DDP Overlap</a>
+      <a href="#animation">Live Animation</a>
+      <a href="#profiler">Profiler</a>
+      <a href="#comparison">Comparison</a>
+      <a href="#takeaways">Takeaways</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-green"></div>
+    <div class="orb orb-cyan"></div>
+    <div class="orb orb-purple"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge"><span class="pulse-dot"></span> Data Parallelism &mdash; Deep Dive</div>
+    <h1><span class="gradient-text">Gradient Synchronization</span></h1>
+    <p class="hero-subtitle">Why does PyTorch DDP train faster than naive data parallelism? The secret is <strong>overlapping communication with computation</strong>. Let's see exactly how it works, step by step.</p>
+    <div class="hero-cards">
+      <div class="hero-stat-card">
+        <div class="stat-number">2 GPUs</div>
+        <div class="stat-label">Data parallel workers</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">~35%</div>
+        <div class="stat-label">Communication overhead (naive)</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">~0%</div>
+        <div class="stat-label">Visible overhead (DDP overlap)</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">Buckets</div>
+        <div class="stat-label">The key DDP mechanism</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ THE PROBLEM ============ -->
+<section class="section" id="problem">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">The Problem</div>
+      <h2><span class="gradient-text">Why Synchronize Gradients?</span></h2>
+      <p class="section-subtitle">In data parallelism, each GPU processes a different mini-batch but must end up with the <strong>same updated weights</strong>. This requires an AllReduce on every gradient.</p>
+    </div>
+
+    <div class="grid-2 fade-in">
+      <div class="card">
+        <h3>Data Parallelism Basics</h3>
+        <p>Each GPU holds a <strong>full copy</strong> of the model. The training batch is split across GPUs — each computes forward + backward on its local shard. But before the optimizer can step, all GPUs must <strong>agree on the same gradients</strong>.</p>
+        <div class="equation-box" style="margin-top: 16px;">
+          <span class="eq-label">Gradient averaging (AllReduce)</span>
+          g<sub>avg</sub> = <span class="eq-highlight">1/N</span> &times; &sum;<sub>i=1..N</sub> g<sub>i</sub>
+        </div>
+      </div>
+      <div class="card">
+        <h3>The Cost of Communication</h3>
+        <p>For a model with <code>P</code> parameters, each AllReduce must transfer <code>~2P</code> bytes (reduce-scatter + all-gather) across the network. For a <strong>7B model</strong>, that's ~28 GB of data per step!</p>
+        <p style="margin-top: 12px;">The question is: <strong>when</strong> does this communication happen? That's what makes all the difference.</p>
+      </div>
+    </div>
+
+    <!-- Two approaches overview -->
+    <div class="grid-2 fade-in" style="margin-top: 24px;">
+      <div class="card" style="border-top: 3px solid var(--red);">
+        <h3 style="color: var(--red);">Naive DP: Sequential</h3>
+        <p>Compute ALL gradients first, THEN communicate ALL of them. The GPU sits <strong>idle</strong> during communication.</p>
+        <div style="font-family: var(--font-mono); font-size: 0.78rem; margin-top: 12px; color: var(--fg-muted); background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 8px;">
+          <span style="color: var(--green);">forward</span> &rarr; <span style="color: var(--pink);">backward</span> &rarr; <span style="color: var(--blue);">AllReduce</span> &rarr; <span style="color: var(--orange);">optim</span>
+        </div>
+      </div>
+      <div class="card" style="border-top: 3px solid var(--primary);">
+        <h3 style="color: var(--primary);">DDP: Overlapped</h3>
+        <p>Start communicating gradients <strong>as soon as they're ready</strong>, while backward is still running. Communication is <strong>hidden behind computation</strong>.</p>
+        <div style="font-family: var(--font-mono); font-size: 0.78rem; margin-top: 12px; color: var(--fg-muted); background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 8px;">
+          <span style="color: var(--green);">forward</span> &rarr; <span style="color: var(--pink);">backward</span> + <span style="color: var(--blue);">AllReduce</span> &rarr; <span style="color: var(--orange);">optim</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ NAIVE DP DEEP DIVE ============ -->
+<section class="section section-dark" id="naive">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Strategy 1</div>
+      <h2><span class="gradient-text">Naive Data Parallelism</span></h2>
+      <p class="section-subtitle">The simplest approach: finish ALL computation, then synchronize ALL gradients. Simple, but wasteful.</p>
+    </div>
+
+    <!-- Step by step -->
+    <div class="fade-in" style="max-width: 900px; margin: 0 auto;">
+      <div class="timeline-container">
+        <div class="timeline-title">Naive DP Timeline — One Training Step</div>
+        <div class="timeline-sub">Each row is a GPU stream. Notice the <strong>gap</strong> where compute is idle during AllReduce.</div>
+
+        <div class="tl-row">
+          <div class="tl-label">CPU</div>
+          <div class="tl-track">
+            <div class="tl-block tl-fwd" style="width: 15%;">forward</div>
+            <div class="tl-block tl-bwd" style="width: 30%;">backward</div>
+            <div class="tl-block tl-sync" style="width: 5%;">sync</div>
+            <div class="tl-block tl-allreduce" style="width: 30%;">allreduce_ALL_GRADS</div>
+            <div class="tl-block tl-sync" style="width: 5%;">sync</div>
+            <div class="tl-block tl-optim" style="width: 10%;">optim</div>
+            <div class="tl-block tl-sync" style="width: 5%;">sync</div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-label">GPU Compute</div>
+          <div class="tl-track">
+            <div class="tl-block tl-fwd" style="width: 15%;">matmul, relu</div>
+            <div class="tl-block tl-bwd" style="width: 30%;">grad kernels</div>
+            <div class="tl-block tl-idle" style="width: 40%;color: var(--red); font-size: 0.7rem; font-weight: 600;">IDLE — waiting for NCCL</div>
+            <div class="tl-block tl-optim" style="width: 10%;">SGD</div>
+            <div class="tl-block tl-idle" style="width: 5%;"></div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-label">NCCL Stream</div>
+          <div class="tl-track">
+            <div class="tl-block tl-idle" style="width: 50%; font-size: 0.68rem; color: var(--fg-muted);">idle — no communication</div>
+            <div class="tl-block tl-allreduce" style="width: 35%;">all_reduce × 80 params</div>
+            <div class="tl-block tl-idle" style="width: 15%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-warn" style="margin-top: 16px;">
+        <strong>The problem:</strong> The GPU compute stream is completely <strong>idle</strong> during the AllReduce phase. For a 40-layer model with 4096 hidden size, this communication takes ~35% of the total step time. That's 35% of your expensive GPU wasted doing nothing!
+      </div>
+    </div>
+
+    <!-- Code explanation -->
+    <div class="fade-in" style="max-width: 800px; margin: 40px auto 0;">
+      <h3 style="font-size: 1.1rem; margin-bottom: 16px;">How Naive DP is Implemented</h3>
+      <p style="color: var(--fg-muted); font-size: 0.88rem; margin-bottom: 16px;">
+        The key insight: <strong>no DDP wrapper, no hooks</strong>. We run <code>loss.backward()</code> completely, then manually loop over every parameter and call <code>dist.all_reduce()</code>. This ensures zero overlap.
+      </p>
+      <div class="code-block">
+        <span class="cm"># Step 1: Pure backward — NO communication happens here</span><br>
+        loss.<span class="fn">backward</span>()<br>
+        torch.cuda.<span class="fn">synchronize</span>() &nbsp;<span class="cm"># Wait for backward to fully finish</span><br><br>
+        <span class="cm"># Step 2: NOW communicate — GPU compute is idle during this</span><br>
+        <span class="kw">for</span> p <span class="kw">in</span> model.<span class="fn">parameters</span>():<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">if</span> p.grad <span class="kw">is not</span> <span class="kw">None</span>:<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;dist.<span class="fn">all_reduce</span>(p.grad, op=dist.ReduceOp.SUM)<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;p.grad /= world_size
+      </div>
+
+      <div class="callout callout-info" style="margin-top: 16px;">
+        <strong>Common mistake:</strong> Using <code>register_hook()</code> on parameters for "naive" DP. Hooks fire <em>during</em> backward as each gradient is computed — that's already overlapped! For truly sequential behavior, you must manually all-reduce <em>after</em> backward completes.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DDP OVERLAP ============ -->
+<section class="section" id="ddp">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Strategy 2</div>
+      <h2><span class="gradient-text">DDP with Overlap</span></h2>
+      <p class="section-subtitle">PyTorch's DistributedDataParallel groups parameters into buckets and fires AllReduce on each bucket as soon as its gradients are ready — <strong>while backward is still running</strong>.</p>
+    </div>
+
+    <!-- Bucket explanation -->
+    <div class="grid-2 fade-in">
+      <div class="card">
+        <h3>What Are Buckets?</h3>
+        <p>DDP doesn't send each gradient individually (too many small messages = slow). Instead, it groups parameters into <strong>buckets</strong> of ~25MB each. When ALL gradients in a bucket are computed, the entire bucket is AllReduced at once.</p>
+        <div class="equation-box" style="margin-top: 12px;">
+          <span class="eq-label">Bucket formation</span>
+          Bucket = {param_k, param_k+1, ...} where &sum; sizes &le; <span class="eq-highlight">bucket_cap_mb</span>
+        </div>
+        <p style="margin-top: 8px;">Smaller buckets = more overlap opportunities (more frequent AllReduce calls), but each call has some fixed overhead.</p>
+      </div>
+      <div class="card">
+        <h3>Why Backward Order Matters</h3>
+        <p>In a neural network, backward runs <strong>last layer to first</strong>. DDP buckets parameters in <strong>reverse order</strong> — so the last layers' parameters are in Bucket 0 (the first to be ready).</p>
+        <div style="margin-top: 12px;">
+          <div id="bucket-vis-container" style="display: flex; flex-direction: column; gap: 6px;">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Overlapped timeline -->
+    <div class="fade-in" style="max-width: 900px; margin: 40px auto 0;">
+      <div class="timeline-container">
+        <div class="timeline-title">DDP Overlap Timeline — One Training Step</div>
+        <div class="timeline-sub">Notice how AllReduce calls <strong>overlap</strong> with backward computation. The GPU is never idle!</div>
+
+        <div class="tl-row">
+          <div class="tl-label">CPU</div>
+          <div class="tl-track">
+            <div class="tl-block tl-fwd" style="width: 15%;">forward</div>
+            <div class="tl-block tl-bwd" style="width: 55%;">backward_WITH_OVERLAP</div>
+            <div class="tl-block tl-sync" style="width: 5%;">sync</div>
+            <div class="tl-block tl-optim" style="width: 10%;">optim</div>
+            <div class="tl-block tl-idle" style="width: 15%;"></div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-label">GPU Compute</div>
+          <div class="tl-track">
+            <div class="tl-block tl-fwd" style="width: 15%;">matmul</div>
+            <div class="tl-block tl-bwd" style="width: 14%;">L40-31</div>
+            <div class="tl-block tl-bwd" style="width: 14%;">L30-21</div>
+            <div class="tl-block tl-bwd" style="width: 14%;">L20-11</div>
+            <div class="tl-block tl-bwd" style="width: 13%;">L10-1</div>
+            <div class="tl-block tl-optim" style="width: 10%;">SGD</div>
+            <div class="tl-block tl-idle" style="width: 20%;"></div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-label">NCCL Stream</div>
+          <div class="tl-track">
+            <div class="tl-block tl-idle" style="width: 15%;"></div>
+            <div class="tl-block tl-idle" style="width: 7%;"></div>
+            <div class="tl-block tl-allreduce" style="width: 12%;">B0</div>
+            <div class="tl-block tl-idle" style="width: 2%;"></div>
+            <div class="tl-block tl-allreduce" style="width: 12%;">B1</div>
+            <div class="tl-block tl-idle" style="width: 2%;"></div>
+            <div class="tl-block tl-allreduce" style="width: 12%;">B2</div>
+            <div class="tl-block tl-idle" style="width: 2%;"></div>
+            <div class="tl-block tl-allreduce" style="width: 12%;">B3</div>
+            <div class="tl-block tl-idle" style="width: 24%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-success">
+        <strong>The magic:</strong> While the GPU computes gradients for layers 20-11, the NCCL stream is <em>simultaneously</em> AllReducing the already-finished Bucket 0 (layers 40-31). Communication is <strong>hidden behind computation</strong> — effectively free!
+      </div>
+    </div>
+
+    <!-- Code explanation -->
+    <div class="fade-in" style="max-width: 800px; margin: 40px auto 0;">
+      <h3 style="font-size: 1.1rem; margin-bottom: 16px;">How DDP Overlap is Implemented</h3>
+      <p style="color: var(--fg-muted); font-size: 0.88rem; margin-bottom: 16px;">
+        DDP uses <strong>autograd hooks</strong> internally. When a parameter's gradient is computed, the hook checks if its bucket is full. If so, it kicks off AllReduce for that bucket on the NCCL stream — all while backward continues on the compute stream.
+      </p>
+      <div class="code-block">
+        <span class="cm"># DDP wrapper handles everything automatically</span><br>
+        ddp = <span class="fn">DDP</span>(model, device_ids=[local_rank],<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;bucket_cap_mb=<span class="num">5</span>, &nbsp;<span class="cm"># Small buckets = more overlap</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;gradient_as_bucket_view=<span class="kw">True</span>)<br><br>
+        <span class="cm"># Just call backward — DDP fires AllReduce automatically</span><br>
+        loss.<span class="fn">backward</span>() &nbsp;<span class="cm"># Compute + communicate SIMULTANEOUSLY</span><br><br>
+        <span class="cm"># By the time backward finishes, most AllReduces are done too!</span><br>
+        opt.<span class="fn">step</span>()
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ INTERACTIVE ANIMATION ============ -->
+<section class="section section-dark" id="animation">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Interactive</div>
+      <h2><span class="gradient-text">Watch It Happen</span></h2>
+      <p class="section-subtitle">See the difference between naive and overlapped gradient synchronization, layer by layer, in real time.</p>
+    </div>
+
+    <div class="anim-container fade-in" style="max-width: 950px; margin: 0 auto;">
+      <div class="anim-controls">
+        <div class="strat-toggle">
+          <button class="strat-btn active-naive" id="anim-naive-btn" onclick="setAnimMode('naive')">Naive DP</button>
+          <button class="strat-btn" id="anim-ddp-btn" onclick="setAnimMode('ddp')">DDP Overlap</button>
+        </div>
+        <button class="anim-btn" id="anim-play-btn" onclick="startAnim()">Play</button>
+        <button class="anim-btn" id="anim-reset-btn" onclick="resetAnim()">Reset</button>
+        <span class="anim-speed" id="anim-status">Ready — click Play</span>
+      </div>
+
+      <!-- Step progress -->
+      <div class="step-progress" id="step-progress">
+        <div class="step-dot" id="sp-fwd">F</div>
+        <div class="step-line" id="sl-1"></div>
+        <div class="step-dot" id="sp-bwd">B</div>
+        <div class="step-line" id="sl-2"></div>
+        <div class="step-dot" id="sp-ar">AR</div>
+        <div class="step-line" id="sl-3"></div>
+        <div class="step-dot" id="sp-opt">O</div>
+      </div>
+
+      <!-- Layer-by-layer visualization -->
+      <div style="margin-top: 24px;">
+        <div style="display: flex; gap: 12px; margin-bottom: 8px;">
+          <span style="font-size: 0.75rem; font-weight: 600; color: var(--fg-muted); width: 80px;">Layer</span>
+          <span style="font-size: 0.75rem; font-weight: 600; color: var(--pink); flex: 1; text-align: center;">Backward (compute gradients)</span>
+          <span style="font-size: 0.75rem; font-weight: 600; color: var(--blue); flex: 1; text-align: center;">AllReduce (communicate)</span>
+        </div>
+        <div id="anim-layers" style="display: flex; flex-direction: column; gap: 3px;">
+          <!-- Filled by JS -->
+        </div>
+      </div>
+
+      <!-- Timing comparison -->
+      <div style="margin-top: 24px; display: flex; gap: 20px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 200px;">
+          <div style="font-size: 0.75rem; color: var(--fg-muted); margin-bottom: 4px;">Total Step Time</div>
+          <div style="font-size: 1.5rem; font-weight: 700; font-family: var(--font-mono);" id="anim-time">—</div>
+        </div>
+        <div style="flex: 1; min-width: 200px;">
+          <div style="font-size: 0.75rem; color: var(--fg-muted); margin-bottom: 4px;">Compute Utilization</div>
+          <div style="font-size: 1.5rem; font-weight: 700; font-family: var(--font-mono);" id="anim-util">—</div>
+        </div>
+        <div style="flex: 1; min-width: 200px;">
+          <div style="font-size: 0.75rem; color: var(--fg-muted); margin-bottom: 4px;">Communication Hidden</div>
+          <div style="font-size: 1.5rem; font-weight: 700; font-family: var(--font-mono);" id="anim-hidden">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PROFILER TRACES ============ -->
+<section class="section" id="profiler">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Real Traces</div>
+      <h2><span class="gradient-text">Reading the PyTorch Profiler</span></h2>
+      <p class="section-subtitle">We profiled both strategies on 2 GPUs with a 40-layer MLP (4096 hidden). Here's how to read the traces.</p>
+    </div>
+
+    <!-- Profiler anatomy -->
+    <div class="fade-in" style="max-width: 900px; margin: 0 auto;">
+      <h3 style="font-size: 1.1rem; margin-bottom: 20px; text-align: center;">Anatomy of a Profiler Trace</h3>
+
+      <div class="grid-3" style="margin-bottom: 32px;">
+        <div class="card" style="text-align: center;">
+          <div style="font-size: 1.5rem; margin-bottom: 8px;">Thread</div>
+          <h3 style="font-size: 0.92rem;">pt_main_thread</h3>
+          <p>The CPU thread executing your Python training loop. Shows <code>record_function</code> spans like "forward", "backward", "step_N".</p>
+        </div>
+        <div class="card" style="text-align: center;">
+          <div style="font-size: 1.5rem; margin-bottom: 8px;">GPU 0</div>
+          <h3 style="font-size: 0.92rem;">stream 7 (compute)</h3>
+          <p>The CUDA compute stream. Shows matmul, relu, and gradient kernels. Look for <strong>gaps</strong> — those are idle time.</p>
+        </div>
+        <div class="card" style="text-align: center;">
+          <div style="font-size: 1.5rem; margin-bottom: 8px;">NCCL</div>
+          <h3 style="font-size: 0.92rem;">stream 16 (comms)</h3>
+          <p>The NCCL communication stream. Shows <code>all_reduce</code> kernels. In DDP, these <strong>overlap</strong> with stream 7.</p>
+        </div>
+      </div>
+
+      <!-- Naive trace explanation -->
+      <div class="timeline-container" style="border-color: rgba(255,112,67,0.3);">
+        <div class="timeline-title" style="color: var(--red);">Naive DP Trace — What You See</div>
+        <div class="timeline-sub">From the PyTorch Profiler TensorBoard trace. Notice the clear <strong>sequential blocks</strong>.</div>
+
+        <div class="tl-row">
+          <div class="tl-label" style="font-size: 0.68rem;">Main Thread</div>
+          <div class="tl-track">
+            <div class="tl-block tl-fwd" style="width: 8%;" title="forward">fwd</div>
+            <div class="tl-block tl-bwd" style="width: 17%;" title="backward_COMPUTE_ONLY">backw...</div>
+            <div class="tl-block tl-sync" style="width: 4%;" title="cudaDeviceSync">sync</div>
+            <div class="tl-block tl-allreduce" style="width: 22%;" title="allreduce_ALL_GRADS">allred...</div>
+            <div class="tl-block tl-sync" style="width: 5%;">sync</div>
+            <div class="tl-block tl-idle" style="width: 4%;"></div>
+            <div class="tl-block tl-fwd" style="width: 8%;">fwd</div>
+            <div class="tl-block tl-bwd" style="width: 17%;">backw...</div>
+            <div class="tl-block tl-sync" style="width: 4%;">sync</div>
+            <div class="tl-block tl-allreduce" style="width: 11%;">allred...</div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-label" style="font-size: 0.68rem;">GPU stream 7</div>
+          <div class="tl-track">
+            <div class="tl-block tl-fwd" style="width: 8%;"></div>
+            <div class="tl-block tl-bwd" style="width: 17%;"></div>
+            <div class="tl-block tl-idle" style="width: 31%; color: var(--red); font-size: 0.62rem;">GPU idle</div>
+            <div class="tl-block tl-optim" style="width: 4%;">opt</div>
+            <div class="tl-block tl-fwd" style="width: 8%;"></div>
+            <div class="tl-block tl-bwd" style="width: 17%;"></div>
+            <div class="tl-block tl-idle" style="width: 15%;"></div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-label" style="font-size: 0.68rem;">GPU stream 16</div>
+          <div class="tl-track">
+            <div class="tl-block tl-idle" style="width: 29%;"></div>
+            <div class="tl-block tl-allreduce" style="width: 22%;">nccl:AllReduce</div>
+            <div class="tl-block tl-idle" style="width: 49%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin: 24px 0;"></div>
+
+      <!-- DDP trace explanation -->
+      <div class="timeline-container" style="border-color: rgba(0,212,106,0.3);">
+        <div class="timeline-title" style="color: var(--primary);">DDP Overlap Trace — What You See</div>
+        <div class="timeline-sub">Notice how stream 7 (compute) and stream 16 (NCCL) are <strong>active at the same time</strong>.</div>
+
+        <div class="tl-row">
+          <div class="tl-label" style="font-size: 0.68rem;">Main Thread</div>
+          <div class="tl-track">
+            <div class="tl-block tl-fwd" style="width: 10%;">forward</div>
+            <div class="tl-block tl-bwd" style="width: 40%;">backward_WITH_OVERLAP</div>
+            <div class="tl-block tl-sync" style="width: 5%;">sync</div>
+            <div class="tl-block tl-idle" style="width: 5%;"></div>
+            <div class="tl-block tl-fwd" style="width: 10%;">forward</div>
+            <div class="tl-block tl-bwd" style="width: 30%;">backward_WITH_OVERLAP</div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-label" style="font-size: 0.68rem;">GPU stream 7</div>
+          <div class="tl-track">
+            <div class="tl-block tl-fwd" style="width: 10%;"></div>
+            <div class="tl-block tl-bwd" style="width: 40%;">compute kernels (continuous)</div>
+            <div class="tl-block tl-optim" style="width: 5%;">opt</div>
+            <div class="tl-block tl-idle" style="width: 5%;"></div>
+            <div class="tl-block tl-fwd" style="width: 10%;"></div>
+            <div class="tl-block tl-bwd" style="width: 30%;"></div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-label" style="font-size: 0.68rem;">GPU stream 16</div>
+          <div class="tl-track">
+            <div class="tl-block tl-idle" style="width: 15%;"></div>
+            <div class="tl-block tl-allreduce" style="width: 8%;">B0</div>
+            <div class="tl-block tl-idle" style="width: 2%;"></div>
+            <div class="tl-block tl-allreduce" style="width: 8%;">B1</div>
+            <div class="tl-block tl-idle" style="width: 2%;"></div>
+            <div class="tl-block tl-allreduce" style="width: 8%;">B2</div>
+            <div class="tl-block tl-idle" style="width: 2%;"></div>
+            <div class="tl-block tl-allreduce" style="width: 8%;">B3</div>
+            <div class="tl-block tl-idle" style="width: 47%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-success">
+        <strong>Key observation from the traces:</strong> In the naive trace, there's a clear gap in GPU stream 7 where the compute SM is idle while NCCL runs on stream 16. In the DDP trace, both streams are active simultaneously — the AllReduce buckets (B0, B1, B2, B3) overlap with backward compute kernels. The overall step is shorter because communication time is hidden.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BUCKET SIZE EXPLORER ============ -->
+<section class="section section-dark" id="buckets">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Interactive</div>
+      <h2><span class="gradient-text">Bucket Size Explorer</span></h2>
+      <p class="section-subtitle">How does <code>bucket_cap_mb</code> affect the overlap? Drag the slider to see.</p>
+    </div>
+
+    <div class="anim-container fade-in" style="max-width: 800px; margin: 0 auto;">
+      <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
+        <span style="font-size: 0.82rem; font-weight: 600; color: var(--secondary);">bucket_cap_mb:</span>
+        <input type="range" id="bucket-slider" min="1" max="100" value="25" style="flex: 1; accent-color: var(--primary);">
+        <span style="font-family: var(--font-mono); font-size: 1rem; font-weight: 600; min-width: 60px;" id="bucket-val">25 MB</span>
+      </div>
+
+      <div style="display: flex; gap: 16px; margin-bottom: 16px;">
+        <div style="flex: 1; font-size: 0.75rem; color: var(--fg-muted);">Model: 40 layers × 4096 hidden = <strong>2.7 GB</strong> total gradients</div>
+      </div>
+
+      <!-- Bucket visual -->
+      <div style="display: flex; gap: 2px; height: 40px; border-radius: 8px; overflow: hidden; margin-bottom: 12px;" id="bucket-bars">
+        <!-- Filled by JS -->
+      </div>
+      <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--fg-muted);">
+        <span id="bucket-count">— buckets</span>
+        <span id="bucket-overlap">— overlap potential</span>
+      </div>
+
+      <!-- Timeline preview -->
+      <div style="margin-top: 20px;">
+        <div style="font-size: 0.78rem; color: var(--fg-muted); margin-bottom: 8px;">Backward + AllReduce overlap pattern:</div>
+        <div style="display: flex; height: 28px; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,0.02);" id="bucket-timeline-compute"></div>
+        <div style="display: flex; height: 28px; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,0.02); margin-top: 4px;" id="bucket-timeline-comms"></div>
+        <div style="display: flex; gap: 16px; margin-top: 8px; font-size: 0.68rem; color: var(--fg-muted);">
+          <span><span style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #F06292; vertical-align: middle;"></span> Backward compute</span>
+          <span><span style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #42A5F5; vertical-align: middle;"></span> AllReduce (NCCL)</span>
+          <span><span style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: rgba(255,255,255,0.05); vertical-align: middle;"></span> Idle / overhead</span>
+        </div>
+      </div>
+
+      <div class="callout callout-info" style="margin-top: 16px;">
+        <strong>Trade-off:</strong> Smaller buckets = more overlap opportunities, but each AllReduce call has fixed latency overhead (~10-50μs). Too small = overhead dominates. <strong>Default in PyTorch is 25MB</strong>, which is a good balance. The notebook uses 5MB to make the overlap more visible in traces.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SIDE-BY-SIDE COMPARISON ============ -->
+<section class="section" id="comparison">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Head to Head</div>
+      <h2><span class="gradient-text">Naive vs DDP Comparison</span></h2>
+      <p class="section-subtitle">A complete breakdown of both strategies across every dimension that matters.</p>
+    </div>
+
+    <div class="fade-in" style="max-width: 900px; margin: 0 auto;">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Dimension</th>
+            <th>Naive DP</th>
+            <th>DDP Overlap</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Communication timing</strong></td>
+            <td class="val-bad">After ALL backward completes</td>
+            <td class="val-good">During backward (per bucket)</td>
+          </tr>
+          <tr>
+            <td><strong>GPU utilization</strong></td>
+            <td class="val-bad">~65% (idle during AllReduce)</td>
+            <td class="val-good">~95% (always computing)</td>
+          </tr>
+          <tr>
+            <td><strong>Communication overhead</strong></td>
+            <td class="val-bad">~35% of step time</td>
+            <td class="val-good">~0% (hidden behind compute)</td>
+          </tr>
+          <tr>
+            <td><strong>Number of AllReduce calls</strong></td>
+            <td class="val-neutral">1 per parameter (~80 calls)</td>
+            <td class="val-good">1 per bucket (~4-8 calls)</td>
+          </tr>
+          <tr>
+            <td><strong>Implementation</strong></td>
+            <td>Manual loop after backward</td>
+            <td><code>DDP()</code> wrapper — automatic</td>
+          </tr>
+          <tr>
+            <td><strong>Code complexity</strong></td>
+            <td class="val-neutral">More code, but explicit</td>
+            <td class="val-good">Simpler — 1 line wrapper</td>
+          </tr>
+          <tr>
+            <td><strong>Gradient correctness</strong></td>
+            <td class="val-good">Mathematically identical</td>
+            <td class="val-good">Mathematically identical</td>
+          </tr>
+          <tr>
+            <td><strong>Tuning knob</strong></td>
+            <td>None</td>
+            <td class="val-neutral">bucket_cap_mb (default 25MB)</td>
+          </tr>
+          <tr>
+            <td><strong>Profiler signature</strong></td>
+            <td>Sequential blocks on streams</td>
+            <td>Interleaved blocks on streams</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Time savings calculator -->
+    <div class="anim-container fade-in" style="max-width: 700px; margin: 40px auto 0;">
+      <h3 style="font-size: 1rem; margin-bottom: 16px; text-align: center;">Time Savings Calculator</h3>
+      <p style="font-size: 0.82rem; color: var(--fg-muted); text-align: center; margin-bottom: 20px;">
+        How much time does overlap save? It depends on the compute-to-communication ratio.
+      </p>
+
+      <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 16px;">
+        <span style="font-size: 0.82rem; font-weight: 500; min-width: 120px;">Compute time:</span>
+        <input type="range" id="calc-compute" min="10" max="200" value="100" style="flex: 1; accent-color: var(--pink);">
+        <span style="font-family: var(--font-mono); font-size: 0.85rem; min-width: 50px;" id="calc-compute-val">100ms</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
+        <span style="font-size: 0.82rem; font-weight: 500; min-width: 120px;">Comm time:</span>
+        <input type="range" id="calc-comm" min="5" max="100" value="35" style="flex: 1; accent-color: var(--blue);">
+        <span style="font-family: var(--font-mono); font-size: 0.85rem; min-width: 50px;" id="calc-comm-val">35ms</span>
+      </div>
+
+      <!-- Visual comparison bars -->
+      <div style="margin-bottom: 8px; font-size: 0.75rem; color: var(--fg-muted);">Naive DP step:</div>
+      <div style="display: flex; height: 32px; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,0.02); margin-bottom: 12px;" id="calc-naive-bar"></div>
+
+      <div style="margin-bottom: 8px; font-size: 0.75rem; color: var(--fg-muted);">DDP Overlap step:</div>
+      <div style="display: flex; height: 32px; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,0.02); margin-bottom: 16px;" id="calc-ddp-bar"></div>
+
+      <div style="display: flex; gap: 20px; justify-content: center; font-size: 0.88rem; font-family: var(--font-mono);">
+        <span>Naive: <strong id="calc-naive-total">135ms</strong></span>
+        <span>DDP: <strong id="calc-ddp-total" style="color: var(--primary);">100ms</strong></span>
+        <span>Saved: <strong id="calc-saved" style="color: var(--green);">26%</strong></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ KEY TAKEAWAYS ============ -->
+<section class="section section-dark" id="takeaways">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Summary</div>
+      <h2><span class="gradient-text">Key Takeaways</span></h2>
+    </div>
+    <div class="grid-3 fade-in">
+      <div class="takeaway-card">
+        <div class="takeaway-num">1</div>
+        <h4>Overlap is the key insight</h4>
+        <p>The total data transferred is the same in both strategies. The difference is <em>when</em> communication happens — sequential vs overlapped with computation.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">2</div>
+        <h4>Buckets enable overlap</h4>
+        <p>DDP groups parameters into ~25MB buckets in reverse layer order. As each bucket's gradients finish computing, AllReduce starts immediately on the NCCL stream.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">3</div>
+        <h4>Two streams, one GPU</h4>
+        <p>Modern GPUs run compute and communication on separate streams simultaneously. The profiler shows this as parallel activity on stream 7 (compute) and stream 16 (NCCL).</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">4</div>
+        <h4>Hooks ≠ naive DP</h4>
+        <p>A common mistake: using <code>register_hook()</code> for "naive" DP. Hooks fire during backward — that's already overlapped! Truly naive DP requires manual AllReduce <em>after</em> backward.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">5</div>
+        <h4>Works best when compute > comm</h4>
+        <p>Overlap is most effective when backward computation takes longer than communication. For tiny models with fast backward, the savings are smaller.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">6</div>
+        <h4>Profile to verify</h4>
+        <p>Use PyTorch Profiler + TensorBoard to visually confirm overlap. Look for interleaved blocks on the compute and NCCL streams — if they're sequential, something is wrong.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">Gradient Synchronization <span class="gradient-text">Visual Guide</span></div>
+      <p>Part of the ShallowSpeed GPU Workshop series</p>
+      <p style="font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px;">Built from the DataParallelization_GradientSynchronization notebook</p>
+    </div>
+  </div>
+</footer>
+
+<!-- ============ JAVASCRIPT ============ -->
+<script>
+// ===========================
+// Scroll reveal
+// ===========================
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1 });
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// ===========================
+// Bucket visualization on DDP section
+// ===========================
+(function() {
+  const container = document.getElementById('bucket-vis-container');
+  const layers = 40;
+  const bucketsCount = 4;
+  const layersPerBucket = layers / bucketsCount;
+  const colors = ['#42A5F5', '#66BB6A', '#FF9800', '#F06292'];
+  const labels = ['Bucket 0 (layers 40-31)', 'Bucket 1 (layers 30-21)', 'Bucket 2 (layers 20-11)', 'Bucket 3 (layers 10-1)'];
+
+  for (let b = 0; b < bucketsCount; b++) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;';
+    const bar = document.createElement('div');
+    bar.style.cssText = `flex:1;height:24px;border-radius:4px;background:${colors[b]};opacity:0.7;display:flex;align-items:center;padding-left:12px;font-size:0.72rem;font-weight:600;color:#fff;`;
+    bar.textContent = labels[b];
+    const arrow = document.createElement('span');
+    arrow.style.cssText = 'font-size:0.72rem;color:var(--fg-muted);font-family:var(--font-mono);white-space:nowrap;';
+    arrow.textContent = b === 0 ? '← ready first (backward starts here)' : '';
+    row.appendChild(bar);
+    row.appendChild(arrow);
+    container.appendChild(row);
+  }
+})();
+
+// ===========================
+// Layer-by-layer animation
+// ===========================
+const NUM_LAYERS = 10; // Simplified 10 layers for visualization
+let animMode = 'naive';
+let animRunning = false;
+let animTimers = [];
+
+function buildAnimLayers() {
+  const container = document.getElementById('anim-layers');
+  container.innerHTML = '';
+  for (let i = NUM_LAYERS; i >= 1; i--) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:12px;';
+
+    const label = document.createElement('span');
+    label.style.cssText = 'font-size:0.72rem;font-family:var(--font-mono);color:var(--fg-muted);width:80px;text-align:right;flex-shrink:0;';
+    label.textContent = `Layer ${i}`;
+
+    const bwdBar = document.createElement('div');
+    bwdBar.style.cssText = 'flex:1;height:22px;border-radius:4px;background:rgba(255,255,255,0.04);overflow:hidden;';
+    const bwdFill = document.createElement('div');
+    bwdFill.id = `bwd-${i}`;
+    bwdFill.style.cssText = 'width:0%;height:100%;background:#F06292;border-radius:4px;transition:width 0.3s;';
+    bwdBar.appendChild(bwdFill);
+
+    const arBar = document.createElement('div');
+    arBar.style.cssText = 'flex:1;height:22px;border-radius:4px;background:rgba(255,255,255,0.04);overflow:hidden;';
+    const arFill = document.createElement('div');
+    arFill.id = `ar-${i}`;
+    arFill.style.cssText = 'width:0%;height:100%;background:#42A5F5;border-radius:4px;transition:width 0.3s;';
+    arBar.appendChild(arFill);
+
+    row.appendChild(label);
+    row.appendChild(bwdBar);
+    row.appendChild(arBar);
+    container.appendChild(row);
+  }
+}
+buildAnimLayers();
+
+function setAnimMode(mode) {
+  animMode = mode;
+  resetAnim();
+  document.getElementById('anim-naive-btn').className = mode === 'naive' ? 'strat-btn active-naive' : 'strat-btn';
+  document.getElementById('anim-ddp-btn').className = mode === 'ddp' ? 'strat-btn active-ddp' : 'strat-btn';
+}
+
+function resetAnim() {
+  animRunning = false;
+  animTimers.forEach(t => clearTimeout(t));
+  animTimers = [];
+  for (let i = 1; i <= NUM_LAYERS; i++) {
+    document.getElementById(`bwd-${i}`).style.width = '0%';
+    document.getElementById(`ar-${i}`).style.width = '0%';
+  }
+  ['sp-fwd','sp-bwd','sp-ar','sp-opt'].forEach(id => {
+    document.getElementById(id).className = 'step-dot';
+  });
+  ['sl-1','sl-2','sl-3'].forEach(id => {
+    document.getElementById(id).className = 'step-line';
+  });
+  document.getElementById('anim-status').textContent = 'Ready — click Play';
+  document.getElementById('anim-time').textContent = '—';
+  document.getElementById('anim-util').textContent = '—';
+  document.getElementById('anim-hidden').textContent = '—';
+}
+
+function startAnim() {
+  if (animRunning) return;
+  resetAnim();
+  animRunning = true;
+
+  const bwdDelay = 150; // ms per layer backward
+  const arDelay = 120;  // ms per layer allreduce
+  let t = 0;
+
+  // Forward
+  document.getElementById('anim-status').textContent = 'Running forward pass...';
+  document.getElementById('sp-fwd').classList.add('active');
+  t += 400;
+
+  animTimers.push(setTimeout(() => {
+    document.getElementById('sp-fwd').classList.remove('active');
+    document.getElementById('sp-fwd').classList.add('done');
+    document.getElementById('sl-1').classList.add('done');
+    document.getElementById('sp-bwd').classList.add('active');
+    document.getElementById('anim-status').textContent = 'Running backward pass...';
+  }, t));
+
+  if (animMode === 'naive') {
+    // NAIVE: all backward first, then all allreduce
+    for (let i = NUM_LAYERS; i >= 1; i--) {
+      const layer = i;
+      animTimers.push(setTimeout(() => {
+        document.getElementById(`bwd-${layer}`).style.width = '100%';
+      }, t + (NUM_LAYERS - layer) * bwdDelay));
+    }
+    t += NUM_LAYERS * bwdDelay;
+
+    // Sync point
+    animTimers.push(setTimeout(() => {
+      document.getElementById('sp-bwd').classList.remove('active');
+      document.getElementById('sp-bwd').classList.add('done');
+      document.getElementById('sl-2').classList.add('done');
+      document.getElementById('sp-ar').classList.add('active');
+      document.getElementById('anim-status').textContent = 'AllReduce: synchronizing ALL gradients sequentially...';
+    }, t));
+    t += 200;
+
+    // AllReduce all layers sequentially
+    for (let i = NUM_LAYERS; i >= 1; i--) {
+      const layer = i;
+      animTimers.push(setTimeout(() => {
+        document.getElementById(`ar-${layer}`).style.width = '100%';
+      }, t + (NUM_LAYERS - layer) * arDelay));
+    }
+    t += NUM_LAYERS * arDelay;
+
+    // Optimizer
+    animTimers.push(setTimeout(() => {
+      document.getElementById('sp-ar').classList.remove('active');
+      document.getElementById('sp-ar').classList.add('done');
+      document.getElementById('sl-3').classList.add('done');
+      document.getElementById('sp-opt').classList.add('active');
+      document.getElementById('anim-status').textContent = 'Optimizer step...';
+    }, t));
+    t += 300;
+
+    animTimers.push(setTimeout(() => {
+      document.getElementById('sp-opt').classList.remove('active');
+      document.getElementById('sp-opt').classList.add('done');
+      document.getElementById('anim-status').textContent = 'Done! Total: sequential backward + AllReduce';
+      const totalNaive = 400 + NUM_LAYERS * bwdDelay + NUM_LAYERS * arDelay + 300;
+      document.getElementById('anim-time').innerHTML = `<span style="color:var(--red)">${totalNaive}ms</span>`;
+      document.getElementById('anim-util').innerHTML = `<span style="color:var(--red)">~65%</span>`;
+      document.getElementById('anim-hidden').innerHTML = `<span style="color:var(--red)">0%</span>`;
+      animRunning = false;
+    }, t));
+
+  } else {
+    // DDP: backward + allreduce overlapped
+    for (let i = NUM_LAYERS; i >= 1; i--) {
+      const layer = i;
+      const bwdStart = (NUM_LAYERS - layer) * bwdDelay;
+
+      // Backward for this layer
+      animTimers.push(setTimeout(() => {
+        document.getElementById(`bwd-${layer}`).style.width = '100%';
+      }, t + bwdStart));
+
+      // AllReduce starts right after this layer's backward (with small delay for bucket formation)
+      animTimers.push(setTimeout(() => {
+        document.getElementById(`ar-${layer}`).style.width = '100%';
+        if (layer === NUM_LAYERS) {
+          document.getElementById('anim-status').textContent = 'Backward + AllReduce OVERLAPPED! Both running simultaneously.';
+        }
+      }, t + bwdStart + bwdDelay + 50));
+    }
+    t += NUM_LAYERS * bwdDelay + arDelay;
+
+    // Mark both backward and AR as done at the same time
+    animTimers.push(setTimeout(() => {
+      document.getElementById('sp-bwd').classList.remove('active');
+      document.getElementById('sp-bwd').classList.add('done');
+      document.getElementById('sl-2').classList.add('done');
+      document.getElementById('sp-ar').classList.add('done');
+      document.getElementById('sl-3').classList.add('done');
+      document.getElementById('sp-opt').classList.add('active');
+      document.getElementById('anim-status').textContent = 'Optimizer step...';
+    }, t));
+    t += 300;
+
+    animTimers.push(setTimeout(() => {
+      document.getElementById('sp-opt').classList.remove('active');
+      document.getElementById('sp-opt').classList.add('done');
+      document.getElementById('anim-status').textContent = 'Done! Communication was hidden behind backward computation!';
+      const totalDDP = 400 + NUM_LAYERS * bwdDelay + arDelay + 300;
+      const totalNaive = 400 + NUM_LAYERS * bwdDelay + NUM_LAYERS * arDelay + 300;
+      document.getElementById('anim-time').innerHTML = `<span style="color:var(--primary)">${totalDDP}ms</span> <span style="font-size:0.7rem;color:var(--fg-muted);">(vs ${totalNaive}ms naive)</span>`;
+      document.getElementById('anim-util').innerHTML = `<span style="color:var(--primary)">~95%</span>`;
+      document.getElementById('anim-hidden').innerHTML = `<span style="color:var(--primary)">~90%</span>`;
+      animRunning = false;
+    }, t));
+  }
+}
+
+// ===========================
+// Bucket size explorer
+// ===========================
+const bucketSlider = document.getElementById('bucket-slider');
+const bucketVal = document.getElementById('bucket-val');
+const bucketBars = document.getElementById('bucket-bars');
+const bucketCount = document.getElementById('bucket-count');
+const bucketOverlap = document.getElementById('bucket-overlap');
+const bucketTLCompute = document.getElementById('bucket-timeline-compute');
+const bucketTLComms = document.getElementById('bucket-timeline-comms');
+
+const totalGradMB = 2700; // 40 layers × 4096 × 4096 × 4 bytes ≈ 2.7 GB
+const colors6 = ['#42A5F5','#66BB6A','#FF9800','#F06292','#a78bfa','#00c8e6','#FFCA28','#FF7043'];
+
+function updateBucketVis() {
+  const capMB = parseInt(bucketSlider.value);
+  bucketVal.textContent = capMB + ' MB';
+  const nBuckets = Math.max(1, Math.ceil(totalGradMB / capMB));
+
+  bucketCount.textContent = `${nBuckets} bucket${nBuckets > 1 ? 's' : ''}`;
+
+  // Overlap rating
+  let rating, ratingColor;
+  if (nBuckets >= 20) { rating = 'Excellent overlap (many small buckets)'; ratingColor = 'var(--green)'; }
+  else if (nBuckets >= 8) { rating = 'Good overlap'; ratingColor = 'var(--primary)'; }
+  else if (nBuckets >= 3) { rating = 'Moderate overlap'; ratingColor = 'var(--yellow)'; }
+  else { rating = 'Poor overlap (too few buckets)'; ratingColor = 'var(--red)'; }
+  bucketOverlap.innerHTML = `<span style="color:${ratingColor}">${rating}</span>`;
+
+  // Bars
+  const displayBuckets = Math.min(nBuckets, 40);
+  bucketBars.innerHTML = '';
+  for (let i = 0; i < displayBuckets; i++) {
+    const bar = document.createElement('div');
+    bar.style.cssText = `flex:1;background:${colors6[i % colors6.length]};opacity:0.7;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:0.55rem;font-weight:600;color:#fff;`;
+    if (displayBuckets <= 15) bar.textContent = `B${i}`;
+    bucketBars.appendChild(bar);
+  }
+  if (nBuckets > 40) {
+    const more = document.createElement('div');
+    more.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:center;font-size:0.6rem;color:var(--fg-muted);';
+    more.textContent = `+${nBuckets - 40}`;
+    bucketBars.appendChild(more);
+  }
+
+  // Timeline
+  const computePct = 70; // backward takes ~70% of total
+  const commPerBucket = Math.min(80, (100 / nBuckets) * 2); // rough
+  const totalCommPct = Math.min(90, nBuckets * 3);
+
+  bucketTLCompute.innerHTML = `<div style="width:${computePct}%;background:#F06292;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:600;color:#fff;">Backward (${nBuckets} gradient groups)</div><div style="flex:1;"></div>`;
+
+  let commsHTML = `<div style="width:${Math.min(20, 100/nBuckets)}%;"></div>`;
+  const arWidth = Math.max(3, Math.min(15, 60 / nBuckets));
+  const gapWidth = Math.max(1, Math.min(5, 20 / nBuckets));
+  const visibleBuckets = Math.min(nBuckets, Math.floor(80 / (arWidth + gapWidth)));
+
+  for (let i = 0; i < visibleBuckets; i++) {
+    commsHTML += `<div style="width:${arWidth}%;background:#42A5F5;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:0.55rem;font-weight:600;color:#fff;">${visibleBuckets <= 10 ? 'B' + i : ''}</div>`;
+    if (i < visibleBuckets - 1) commsHTML += `<div style="width:${gapWidth}%;"></div>`;
+  }
+  bucketTLComms.innerHTML = commsHTML;
+}
+bucketSlider.addEventListener('input', updateBucketVis);
+updateBucketVis();
+
+// ===========================
+// Time savings calculator
+// ===========================
+const calcCompute = document.getElementById('calc-compute');
+const calcComm = document.getElementById('calc-comm');
+
+function updateTimeCalc() {
+  const compute = parseInt(calcCompute.value);
+  const comm = parseInt(calcComm.value);
+  document.getElementById('calc-compute-val').textContent = compute + 'ms';
+  document.getElementById('calc-comm-val').textContent = comm + 'ms';
+
+  const naiveTotal = compute + comm;
+  // DDP: comm is overlapped with compute, so total = max(compute, comm) + small residual
+  const hidden = Math.min(comm, compute * 0.9); // Can hide up to 90% during backward
+  const ddpTotal = compute + (comm - hidden);
+
+  const totalMax = naiveTotal;
+  const naiveComputePct = (compute / totalMax * 100);
+  const naiveCommPct = (comm / totalMax * 100);
+  const ddpComputePct = (compute / totalMax * 100);
+  const ddpResidualPct = ((comm - hidden) / totalMax * 100);
+
+  document.getElementById('calc-naive-bar').innerHTML =
+    `<div style="width:${naiveComputePct}%;background:#F06292;display:flex;align-items:center;justify-content:center;font-size:0.68rem;font-weight:600;color:#fff;border-radius:4px 0 0 4px;">Compute ${compute}ms</div>` +
+    `<div style="width:${naiveCommPct}%;background:#42A5F5;display:flex;align-items:center;justify-content:center;font-size:0.68rem;font-weight:600;color:#fff;border-radius:0 4px 4px 0;">Comm ${comm}ms</div>`;
+
+  document.getElementById('calc-ddp-bar').innerHTML =
+    `<div style="width:${ddpComputePct}%;background:linear-gradient(90deg, #F06292 60%, #7b3f5c 60%, #3a5f8a 80%, #42A5F5);display:flex;align-items:center;justify-content:center;font-size:0.68rem;font-weight:600;color:#fff;border-radius:4px 0 0 4px;">Compute + hidden comm</div>` +
+    `<div style="width:${Math.max(ddpResidualPct, 1)}%;background:#42A5F5;display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:600;color:#fff;border-radius:0 4px 4px 0;">${Math.round(comm - hidden)}ms</div>`;
+
+  document.getElementById('calc-naive-total').textContent = naiveTotal + 'ms';
+  document.getElementById('calc-ddp-total').textContent = Math.round(ddpTotal) + 'ms';
+
+  const savedPct = Math.round((1 - ddpTotal / naiveTotal) * 100);
+  document.getElementById('calc-saved').textContent = savedPct + '%';
+  document.getElementById('calc-saved').style.color = savedPct > 15 ? 'var(--green)' : savedPct > 5 ? 'var(--yellow)' : 'var(--red)';
+}
+calcCompute.addEventListener('input', updateTimeCalc);
+calcComm.addEventListener('input', updateTimeCalc);
+updateTimeCalc();
+</script>
+</body>
+</html>
