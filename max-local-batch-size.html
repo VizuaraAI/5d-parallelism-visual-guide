@@ -605,7 +605,7 @@ input[type="range"] { width: 100%; accent-color: var(--primary); cursor: pointer
       </div>
 
       <div class="callout callout-warn" style="margin-top: 16px;">
-        <strong>This is why mixed precision and ZeRO are essential!</strong> In pure fp32, even the model states of an 8B model don't fit on a single A100. In practice, you use bf16 parameters (2N), bf16 gradients (2N), and fp32 optimizer states (8N) = 12N bytes, or use ZeRO to shard across GPUs. This changes the "fixed" cost and opens room for activations.
+        <strong>This is why ZeRO/FSDP is essential!</strong> Even with mixed precision, you still need fp32 master weights for the optimizer update, so fixed memory remains 16N bytes. Mixed precision helps with <em>activation memory</em> (stored in bf16) and <em>compute speed</em> (tensor cores), but does NOT reduce fixed memory. To actually fit the model, you need <strong>ZeRO/FSDP</strong> to shard the model states across multiple GPUs, reducing the per-GPU fixed cost from 16N to 16N/D (where D = number of GPUs).
       </div>
     </div>
   </div>
@@ -759,10 +759,10 @@ input[type="range"] { width: 100%; accent-color: var(--primary); cursor: pointer
       <div class="card" style="border-top: 3px solid var(--primary);">
         <div style="font-size: 1.3rem; margin-bottom: 8px;">🗜️</div>
         <h3>Mixed Precision (bf16)</h3>
-        <p>Store parameters and gradients in bf16 (2 bytes) instead of fp32 (4 bytes). Cuts fixed memory from 16N to 12N bytes. Activations are already in bf16.</p>
+        <p>Forward/backward pass uses bf16 (faster tensor core ops). Fixed memory stays at 16N (fp32 master weights are still needed), but <strong>activation memory is halved</strong> since intermediates are stored in bf16 (2 bytes) instead of fp32 (4 bytes).</p>
         <div class="equation-box" style="font-size: 0.75rem; margin-top: 12px;">
-          <span class="eq-label">Fixed memory saved</span>
-          16N &rarr; 12N = <span class="eq-highlight">25% less</span>
+          <span class="eq-label">Activation memory saved</span>
+          Activations: fp32 &rarr; bf16 = <span class="eq-highlight">50% less per sample</span>
         </div>
       </div>
       <div class="card" style="border-top: 3px solid var(--secondary);">
@@ -894,9 +894,11 @@ const MODEL_CONFIGS = {
 function fixedMemGiB(N_billion, precision) {
   const N = N_billion * 1e9;
   if (precision === 'bf16') {
-    // bf16 params (2N) + bf16 grads (2N) + fp32 optimizer (8N) = 12N
-    return toGiB(12 * N);
+    // fp32 master weights (4N) + bf16 grads (2N) + fp32 Adam momentum (4N) + fp32 Adam variance (4N) + bf16 working params (2N) = 16N
+    // Mixed precision does NOT reduce fixed memory — the fp32 master copy is always needed
+    return toGiB(16 * N);
   }
+  // fp32: params (4N) + grads (4N) + Adam (8N) = 16N
   return toGiB(16 * N);
 }
 
