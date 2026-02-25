@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finding Maximum Local Batch Size — Visual Deep Dive</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* ========================================
+   CSS Variables — same design system
+   ======================================== */
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #121212;
+  --bg-card-hover: #1a1a1a;
+  --bg-section-alt: #0f0f0f;
+  --fg: #f2f2f2;
+  --fg-muted: #a3a3a3;
+  --border: #262626;
+  --border-light: #333;
+  --primary: #00d46a;
+  --primary-dim: #00a854;
+  --secondary: #00c8e6;
+  --accent: #a78bfa;
+  --red: #FF7043;
+  --orange: #FF9800;
+  --yellow: #FFCA28;
+  --blue: #42A5F5;
+  --green: #66BB6A;
+  --pink: #F06292;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --max-w: 1280px;
+  --glow-opacity: 0.15;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-sans); line-height: 1.7;
+  -webkit-font-smoothing: antialiased; overflow-x: hidden;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: var(--font-mono); }
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+
+/* NAVBAR */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,10,0.85); backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.1rem; }
+.brand-icon { font-size: 1.3rem; }
+.brand-tag {
+  font-size: 0.7rem; background: var(--primary); color: #000;
+  padding: 2px 8px; border-radius: 9999px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+/* HERO */
+.hero {
+  position: relative; min-height: 100vh; display: flex;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 120px 24px 80px; overflow: hidden;
+}
+.hero-bg-orbs { position: absolute; inset: 0; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.12; }
+.orb-green { width: 500px; height: 500px; background: var(--primary); top: 10%; left: 10%; animation: float-slow 20s ease-in-out infinite; }
+.orb-cyan { width: 400px; height: 400px; background: var(--secondary); top: 40%; right: 5%; animation: float-slow 25s ease-in-out infinite reverse; }
+.orb-purple { width: 350px; height: 350px; background: var(--accent); bottom: 10%; left: 30%; animation: float-slow 22s ease-in-out infinite; }
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(30px, -20px); }
+  50% { transform: translate(-20px, 30px); }
+  75% { transform: translate(20px, 20px); }
+}
+.hero-content { position: relative; z-index: 1; max-width: 800px; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3);
+  border-radius: 9999px; padding: 6px 18px; font-size: 0.82rem;
+  font-weight: 500; color: var(--primary); margin-bottom: 24px;
+}
+.pulse-dot { width: 8px; height: 8px; background: var(--primary); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }
+.hero h1 { font-family: var(--font-serif); font-style: italic; font-size: clamp(2.5rem, 7vw, 4.5rem); font-weight: 400; line-height: 1.1; margin-bottom: 20px; }
+.hero-subtitle { font-size: 1.15rem; color: var(--fg-muted); line-height: 1.7; max-width: 620px; margin: 0 auto 40px; }
+.hero-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.hero-stat-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 12px; transition: border-color 0.3s, transform 0.2s;
+}
+.hero-stat-card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-2px); }
+.stat-number {
+  font-size: 1.8rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.stat-label { font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* SECTIONS */
+.section { padding: 100px 0; position: relative; }
+.section-dark { background: var(--bg-section-alt); }
+.section-heading { text-align: center; margin-bottom: 60px; }
+.section-label {
+  display: inline-block; font-size: 0.78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.5px; color: var(--primary); margin-bottom: 12px;
+}
+.section-heading h2 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; line-height: 1.2; margin-bottom: 16px;
+}
+.section-subtitle { color: var(--fg-muted); font-size: 1.05rem; max-width: 650px; margin: 0 auto; }
+
+/* CARDS */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; transition: border-color 0.3s, transform 0.2s;
+}
+.card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-3px); }
+.card h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; }
+.card p, .card li { font-size: 0.88rem; color: var(--fg-muted); line-height: 1.6; }
+.card code {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-size: 0.82rem; color: var(--secondary);
+}
+
+/* GRIDS */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+/* EQUATION BOX */
+.equation-box {
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 24px; margin: 16px 0; text-align: center;
+  font-family: var(--font-mono); font-size: 0.92rem; color: var(--secondary); line-height: 2;
+}
+.equation-box .eq-label {
+  display: block; font-family: var(--font-sans); font-size: 0.72rem;
+  color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 8px; font-weight: 600;
+}
+.equation-box .eq-highlight { color: var(--primary); font-weight: 600; }
+
+/* CALLOUTS */
+.callout { border-radius: 10px; padding: 16px 20px; font-size: 0.85rem; line-height: 1.6; margin: 16px 0; }
+.callout-info { background: rgba(66,165,245,0.08); border: 1px solid rgba(66,165,245,0.2); color: var(--fg-muted); }
+.callout-green { background: rgba(0,212,106,0.08); border: 1px solid rgba(0,212,106,0.2); color: var(--fg-muted); }
+.callout-warn { background: rgba(255,112,67,0.08); border: 1px solid rgba(255,112,67,0.2); color: var(--fg-muted); }
+.callout-purple { background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); color: var(--fg-muted); }
+.callout strong { color: var(--fg); }
+.callout code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; color: var(--secondary); }
+
+/* MEMORY BAR */
+.mem-bar-row { display: flex; border-radius: 8px; overflow: hidden; height: 48px; }
+.mem-seg {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.68rem; font-weight: 600; color: #fff;
+  transition: flex 0.6s ease; white-space: nowrap; overflow: hidden; min-width: 0;
+}
+.mem-seg.params { background: #a78bfa; }
+.mem-seg.grads { background: #7c5cbf; }
+.mem-seg.optim { background: #5b3a9e; }
+.mem-seg.act { background: #42A5F5; }
+.mem-seg.free { background: rgba(255,255,255,0.04); border: 1px dashed rgba(255,255,255,0.1); color: var(--fg-muted); }
+
+/* GPU DIAGRAM */
+.gpu-diagram {
+  background: rgba(0,0,0,0.25); border-radius: 16px; padding: 28px; margin: 20px 0;
+  border: 1px solid var(--border);
+}
+.gpu-chip {
+  border: 2px solid var(--border-light); border-radius: 16px; padding: 20px;
+  background: rgba(255,255,255,0.02); position: relative; max-width: 500px; margin: 0 auto;
+}
+.gpu-chip-label {
+  position: absolute; top: -10px; left: 20px; background: var(--bg-section-alt);
+  padding: 0 8px; font-size: 0.72rem; font-weight: 600; color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 1px;
+}
+
+/* OOM ANIMATION */
+.oom-step {
+  display: flex; align-items: center; gap: 16px; padding: 14px 20px;
+  border-radius: 12px; margin-bottom: 8px; transition: all 0.4s ease;
+  border: 1px solid var(--border); background: var(--bg-card);
+}
+.oom-step.ok { border-color: rgba(0,212,106,0.3); background: rgba(0,212,106,0.03); }
+.oom-step.warn { border-color: rgba(255,152,0,0.3); background: rgba(255,152,0,0.03); }
+.oom-step.oom { border-color: rgba(255,112,67,0.4); background: rgba(255,112,67,0.05); }
+.oom-status {
+  width: 36px; height: 36px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 700; flex-shrink: 0;
+}
+.oom-status.ok { background: rgba(0,212,106,0.15); color: var(--primary); }
+.oom-status.warn { background: rgba(255,152,0,0.15); color: var(--orange); }
+.oom-status.oom { background: rgba(255,112,67,0.15); color: var(--red); }
+.oom-batch { font-size: 1rem; font-weight: 600; min-width: 80px; }
+.oom-detail { font-size: 0.82rem; color: var(--fg-muted); flex: 1; }
+.oom-bar-wrap { flex: 1; max-width: 300px; }
+.oom-bar-bg { height: 10px; background: rgba(255,255,255,0.05); border-radius: 5px; overflow: hidden; }
+.oom-bar-fill { height: 100%; border-radius: 5px; transition: width 0.6s ease; }
+
+/* INTERACTIVE CALCULATOR */
+.calc-panel {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 20px 0;
+}
+.calc-row {
+  display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.calc-label { min-width: 160px; font-size: 0.85rem; font-weight: 500; }
+.calc-input {
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 14px; color: var(--fg); font-family: var(--font-mono); font-size: 0.88rem;
+  width: 140px; outline: none; transition: border-color 0.2s;
+}
+.calc-input:focus { border-color: var(--primary); }
+.calc-unit { font-size: 0.78rem; color: var(--fg-muted); }
+.calc-result {
+  padding: 20px; background: rgba(0,212,106,0.06); border: 1px solid rgba(0,212,106,0.2);
+  border-radius: 12px; margin-top: 16px;
+}
+.calc-result-big {
+  font-size: 2.5rem; font-weight: 700; font-family: var(--font-mono);
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+
+/* SENSITIVITY CHART */
+.chart-container {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 24px 0;
+}
+.chart-container h4 { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.chart-subtitle { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+.chart-area { position: relative; height: 300px; }
+.chart-area svg { width: 100%; height: 100%; }
+
+/* MODEL TABS */
+.model-tabs { display: flex; gap: 8px; margin-bottom: 16px; justify-content: center; flex-wrap: wrap; }
+.model-tab {
+  padding: 6px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 500;
+  border: 1px solid var(--border); background: transparent; color: var(--fg-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.model-tab:hover { border-color: rgba(0,200,230,0.3); color: var(--fg); }
+.model-tab.active { background: rgba(0,200,230,0.1); border-color: var(--secondary); color: var(--secondary); font-weight: 600; }
+
+/* COMPARISON TABLE */
+.comp-table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); margin: 20px 0; }
+.comp-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.comp-table thead { background: #1a1a2e; }
+.comp-table th {
+  padding: 14px 16px; text-align: left; font-size: 0.75rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px; color: var(--fg-muted); border-bottom: 1px solid var(--border);
+}
+.comp-table td {
+  padding: 12px 16px; border-bottom: 1px solid rgba(38,38,38,0.5); color: var(--fg-muted); font-size: 0.82rem;
+}
+.comp-table td code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; color: var(--secondary); }
+.val-good { color: var(--primary) !important; font-weight: 600; }
+.val-bad { color: var(--red) !important; font-weight: 600; }
+.val-ok { color: var(--orange) !important; font-weight: 600; }
+
+/* BUCKET VISUAL */
+.bucket-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin: 20px 0; }
+.bucket {
+  border-radius: 14px; padding: 20px; text-align: center; min-width: 140px; flex: 1; max-width: 220px;
+  transition: transform 0.3s, box-shadow 0.3s; cursor: default;
+}
+.bucket:hover { transform: translateY(-4px); }
+.bucket-icon { font-size: 2rem; margin-bottom: 8px; }
+.bucket-name { font-size: 0.88rem; font-weight: 600; margin-bottom: 4px; }
+.bucket-formula { font-family: var(--font-mono); font-size: 0.75rem; margin-bottom: 6px; }
+.bucket-scales { font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 9999px; display: inline-block; }
+
+/* TAKEAWAY CARDS */
+.takeaway-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 24px; position: relative; overflow: hidden;
+}
+.takeaway-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+}
+.takeaway-num {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(0,212,106,0.12); color: var(--primary); font-weight: 700;
+  font-size: 0.8rem; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;
+}
+.takeaway-card h4 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
+.takeaway-card p { font-size: 0.85rem; color: var(--fg-muted); line-height: 1.6; }
+
+/* FOOTER */
+.footer { border-top: 1px solid var(--border); padding: 40px 0; text-align: center; }
+.footer-inner { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.footer-brand { font-size: 1.1rem; font-weight: 600; }
+.footer p { font-size: 0.85rem; color: var(--fg-muted); }
+.footer-muted { font-size: 0.78rem !important; color: rgba(163,163,163,0.5) !important; }
+
+/* ANIMATIONS */
+.fade-in { opacity: 0; transform: translateY(20px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+  .hero-cards { grid-template-columns: repeat(2, 1fr); }
+  .nav-links { display: none; }
+  .hero h1 { font-size: 2.2rem; }
+  .section { padding: 60px 0; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .bucket-row { flex-direction: column; align-items: center; }
+  .calc-row { flex-direction: column; align-items: flex-start; }
+  .calc-input { width: 100%; }
+}
+
+::selection { background: rgba(0,212,106,0.3); color: #fff; }
+
+/* Num highlights */
+.num-green { color: var(--primary); font-weight: 700; font-family: var(--font-mono); }
+.num-blue { color: var(--blue); font-weight: 700; font-family: var(--font-mono); }
+.num-orange { color: var(--orange); font-weight: 700; font-family: var(--font-mono); }
+.num-red { color: var(--red); font-weight: 700; font-family: var(--font-mono); }
+
+/* Slider styling */
+input[type="range"] { width: 100%; accent-color: var(--primary); cursor: pointer; }
+</style>
+</head>
+<body>
+
+<!-- ============ NAVBAR ============ -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <span class="brand-icon">📦</span>
+      <span>Max Local Batch Size</span>
+      <span class="brand-tag">Visual Guide</span>
+    </div>
+    <div class="nav-links">
+      <a href="#memory-buckets">Memory Buckets</a>
+      <a href="#why-activations">Why Activations?</a>
+      <a href="#oom-search">OOM Search</a>
+      <a href="#calculator">Calculator</a>
+      <a href="#strategies">Strategies</a>
+      <a href="#takeaways">Takeaways</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<section class="hero" id="overview">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-green"></div>
+    <div class="orb orb-cyan"></div>
+    <div class="orb orb-purple"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="pulse-dot"></span>
+      GPU Workshop — Training Memory Deep Dive
+    </div>
+    <h1>Finding the Maximum <span class="gradient-text">Local Batch Size</span></h1>
+    <p class="hero-subtitle">How many sequences can one GPU process at once before it runs out of memory? The answer lives in understanding which memory buckets grow with batch size — and which don't.</p>
+    <div class="hero-cards">
+      <div class="hero-stat-card">
+        <div class="stat-number">4</div>
+        <div class="stat-label">Memory Buckets</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">1</div>
+        <div class="stat-label">Scales with Batch Size</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">16N</div>
+        <div class="stat-label">Fixed bytes (params+grads+optim)</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">b&times;S&times;H</div>
+        <div class="stat-label">Variable activation memory</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MEMORY BUCKETS ============ -->
+<section class="section" id="memory-buckets">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Fundamentals</div>
+      <h2><span class="gradient-text">The Four Memory Buckets</span></h2>
+      <p class="section-subtitle">During training, GPU memory is split into four distinct categories. Understanding what goes into each bucket is the key to finding your max batch size.</p>
+    </div>
+
+    <!-- Four buckets visual -->
+    <div class="bucket-row fade-in">
+      <div class="bucket" style="background: rgba(167,139,250,0.08); border: 1.5px solid rgba(167,139,250,0.3);">
+        <div class="bucket-icon">🧱</div>
+        <div class="bucket-name" style="color: var(--accent);">Parameters</div>
+        <div class="bucket-formula" style="color: var(--accent);">4N bytes</div>
+        <div class="bucket-scales" style="background: rgba(167,139,250,0.15); color: var(--accent);">Fixed</div>
+      </div>
+      <div class="bucket" style="background: rgba(124,92,191,0.08); border: 1.5px solid rgba(124,92,191,0.3);">
+        <div class="bucket-icon">📐</div>
+        <div class="bucket-name" style="color: #b794f6;">Gradients</div>
+        <div class="bucket-formula" style="color: #b794f6;">4N bytes</div>
+        <div class="bucket-scales" style="background: rgba(124,92,191,0.15); color: #b794f6;">Fixed</div>
+      </div>
+      <div class="bucket" style="background: rgba(91,58,158,0.08); border: 1.5px solid rgba(91,58,158,0.3);">
+        <div class="bucket-icon">⚙️</div>
+        <div class="bucket-name" style="color: #9370DB;">Optimizer</div>
+        <div class="bucket-formula" style="color: #9370DB;">8N bytes</div>
+        <div class="bucket-scales" style="background: rgba(91,58,158,0.15); color: #9370DB;">Fixed</div>
+      </div>
+      <div class="bucket" style="background: rgba(66,165,245,0.08); border: 1.5px solid rgba(66,165,245,0.3);">
+        <div class="bucket-icon">⚡</div>
+        <div class="bucket-name" style="color: var(--blue);">Activations</div>
+        <div class="bucket-formula" style="color: var(--blue);">~L&times;34&times;S&times;<u>b</u>&times;H&times;2</div>
+        <div class="bucket-scales" style="background: rgba(66,165,245,0.15); color: var(--blue);">Scales with b!</div>
+      </div>
+    </div>
+
+    <div class="equation-box fade-in">
+      <span class="eq-label">Total GPU Memory</span>
+      M<sub>total</sub> = <span style="color: var(--accent);">16N</span> + <span class="eq-highlight">f(b, S, H, L)</span>
+      <br>
+      <span style="font-size: 0.75rem; color: var(--fg-muted); font-family: var(--font-sans);">
+        fixed (doesn't change with batch size) &nbsp;+&nbsp; activations (grows linearly with b)
+      </span>
+    </div>
+
+    <!-- The key insight -->
+    <div class="callout callout-green fade-in" style="margin-top: 24px;">
+      <strong>The central insight:</strong> Parameters, gradients, and optimizer states depend only on the number of model parameters N. They are the same whether you process 1 sequence or 100. Only <strong>activations</strong> grow when you increase batch size b. So finding the max batch size is really asking: <em>"How much memory is left after the fixed costs, and how many batches of activations can I fit?"</em>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WHY ACTIVATIONS SCALE ============ -->
+<section class="section section-dark" id="why-activations">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Deep Dive</div>
+      <h2><span class="gradient-text">Why Only Activations Scale with Batch Size?</span></h2>
+      <p class="section-subtitle">Let's look at each bucket and understand exactly what's inside and why it does or doesn't depend on how many sequences you feed the model.</p>
+    </div>
+
+    <div class="grid-2 fade-in">
+      <!-- Fixed buckets -->
+      <div class="card" style="border-top: 3px solid var(--accent);">
+        <h3>Fixed Buckets: Parameters, Gradients, Optimizer</h3>
+        <p style="margin-bottom: 16px;">These all depend on the model's <strong>weight matrices</strong>, which have a fixed shape determined by H (hidden size), L (layers), V (vocab).</p>
+
+        <div style="background: rgba(0,0,0,0.2); border-radius: 10px; padding: 16px; margin-bottom: 12px;">
+          <div style="font-size: 0.78rem; font-weight: 600; color: var(--accent); margin-bottom: 8px;">Example: One Linear Layer W of shape [4096, 4096]</div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; padding: 6px 10px; background: rgba(167,139,250,0.08); border-radius: 6px;">
+              <span>Parameters (W itself)</span>
+              <span style="color: var(--accent); font-family: var(--font-mono);">4096&times;4096&times;4 = 64 MB</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; padding: 6px 10px; background: rgba(124,92,191,0.08); border-radius: 6px;">
+              <span>Gradients (dW, same shape)</span>
+              <span style="color: #b794f6; font-family: var(--font-mono);">4096&times;4096&times;4 = 64 MB</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; padding: 6px 10px; background: rgba(91,58,158,0.08); border-radius: 6px;">
+              <span>Optimizer (Adam m + v)</span>
+              <span style="color: #9370DB; font-family: var(--font-mono);">64 MB + 64 MB = 128 MB</span>
+            </div>
+          </div>
+          <div style="margin-top: 8px; font-size: 0.75rem; color: var(--fg-muted); text-align: center;">
+            None of these change if b=1 or b=100. Shape is always [4096, 4096].
+          </div>
+        </div>
+
+        <div class="callout callout-purple" style="margin: 0; padding: 10px 14px;">
+          <strong>Why?</strong> The weight matrix W has shape <code>[H, H]</code> — determined by the architecture, not the data. Whether you multiply <code>[1, H] @ W</code> or <code>[100, H] @ W</code>, W itself doesn't change.
+        </div>
+      </div>
+
+      <!-- Variable bucket -->
+      <div class="card" style="border-top: 3px solid var(--blue);">
+        <h3>Variable Bucket: Activations</h3>
+        <p style="margin-bottom: 16px;">Activations are the <strong>intermediate outputs</strong> at every layer during the forward pass, saved for use in the backward pass.</p>
+
+        <div style="background: rgba(0,0,0,0.2); border-radius: 10px; padding: 16px; margin-bottom: 12px;">
+          <div style="font-size: 0.78rem; font-weight: 600; color: var(--blue); margin-bottom: 8px;">Example: Y = X @ W where X has shape [b, S, H]</div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; padding: 6px 10px; background: rgba(66,165,245,0.08); border-radius: 6px;">
+              <span>b = 1: Input stored</span>
+              <span style="color: var(--blue); font-family: var(--font-mono);">1&times;S&times;H&times;2 bytes</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; padding: 6px 10px; background: rgba(66,165,245,0.12); border-radius: 6px;">
+              <span>b = 4: Input stored</span>
+              <span style="color: var(--blue); font-family: var(--font-mono);">4&times;S&times;H&times;2 bytes</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; padding: 6px 10px; background: rgba(66,165,245,0.18); border-radius: 6px;">
+              <span>b = 8: Input stored</span>
+              <span style="color: var(--blue); font-family: var(--font-mono);">8&times;S&times;H&times;2 bytes</span>
+            </div>
+          </div>
+          <div style="margin-top: 8px; font-size: 0.75rem; color: var(--fg-muted); text-align: center;">
+            Every activation tensor has b in its shape &rarr; memory grows linearly with b.
+          </div>
+        </div>
+
+        <div class="callout callout-info" style="margin: 0; padding: 10px 14px;">
+          <strong>Why?</strong> For Y = XW, the backward pass needs X to compute <code>dW = X<sup>T</sup> dY</code>. We must store X, which has shape <code>[b, S, H]</code>. More sequences = bigger X = more memory.
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactive memory bar -->
+    <div class="card fade-in" style="margin-top: 32px;">
+      <h3 style="margin-bottom: 4px;">Interactive: Watch Memory Grow with Batch Size</h3>
+      <p style="margin-bottom: 16px;">Drag the slider to increase batch size. Watch how the fixed buckets stay the same while activations eat more and more GPU memory.</p>
+
+      <div style="margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 0.85rem; font-weight: 600;">Local Batch Size: <span id="bslider-val" class="num-green">1</span></span>
+          <span style="font-size: 0.82rem; font-family: var(--font-mono);">Total: <span id="bslider-total" class="num-blue">—</span> / 80.0 GiB</span>
+        </div>
+        <input type="range" min="1" max="16" value="1" id="bslider" style="margin-bottom: 8px;">
+      </div>
+      <div class="mem-bar-row" id="bslider-bar"></div>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; justify-content: center;">
+        <div style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);"><div style="width:12px;height:12px;border-radius:3px;background:#a78bfa;"></div> Params</div>
+        <div style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);"><div style="width:12px;height:12px;border-radius:3px;background:#7c5cbf;"></div> Gradients</div>
+        <div style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);"><div style="width:12px;height:12px;border-radius:3px;background:#5b3a9e;"></div> Optimizer</div>
+        <div style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);"><div style="width:12px;height:12px;border-radius:3px;background:#42A5F5;"></div> Activations</div>
+        <div style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);"><div style="width:12px;height:12px;border-radius:3px;background:rgba(255,255,255,0.08);border:1px dashed rgba(255,255,255,0.2);"></div> Free</div>
+      </div>
+      <div id="bslider-oom" style="margin-top: 12px; text-align: center; font-size: 0.88rem; font-weight: 600; min-height: 24px;"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ THE FORMULA ============ -->
+<section class="section" id="formula">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">The Math</div>
+      <h2><span class="gradient-text">Deriving Maximum Batch Size</span></h2>
+      <p class="section-subtitle">We can compute the theoretical max batch size analytically — no trial-and-error needed.</p>
+    </div>
+
+    <div class="card fade-in" style="max-width: 800px; margin: 0 auto;">
+      <h3 style="margin-bottom: 16px; text-align: center;">Step-by-Step Derivation</h3>
+
+      <div class="equation-box">
+        <span class="eq-label">Step 1: Total memory constraint</span>
+        M<sub>GPU</sub> &ge; M<sub>fixed</sub> + M<sub>activations</sub>(b)
+      </div>
+
+      <div class="equation-box">
+        <span class="eq-label">Step 2: Fixed memory (depends only on N)</span>
+        M<sub>fixed</sub> = <span style="color: var(--accent);">4N</span> + <span style="color: #b794f6;">4N</span> + <span style="color: #9370DB;">8N</span> = <span class="eq-highlight">16N</span> bytes
+      </div>
+
+      <div class="equation-box">
+        <span class="eq-label">Step 3: Activation memory per layer (bf16)</span>
+        M<sub>act</sub> = L &times; (34 &times; S &times; <span class="eq-highlight">b</span> &times; H + 5 &times; n<sub>heads</sub> &times; S&sup2; &times; <span class="eq-highlight">b</span>) &times; 2 bytes
+      </div>
+
+      <div class="equation-box" style="border-color: rgba(0,212,106,0.3); background: rgba(0,212,106,0.04);">
+        <span class="eq-label">Step 4: Solve for b</span>
+        <span class="eq-highlight">b<sub>max</sub></span> = &lfloor; (M<sub>GPU</sub> - 16N) / (L &times; (34&times;S&times;H + 5&times;n&times;S&sup2;) &times; 2) &rfloor;
+      </div>
+
+      <div class="callout callout-info" style="margin-top: 16px;">
+        <strong>In plain English:</strong> Take your GPU's total memory, subtract the fixed cost (16N bytes for params + grads + optimizer), and divide by how much memory <em>one sequence</em> needs in activations across all layers. The result is how many sequences fit.
+      </div>
+    </div>
+
+    <!-- Worked example -->
+    <div class="card fade-in" style="max-width: 800px; margin: 24px auto 0;">
+      <h3 style="text-align: center; margin-bottom: 16px;">Worked Example: Llama 3.1 8B on A100 80GB</h3>
+      <div class="comp-table-wrap" style="margin: 0;">
+        <table class="comp-table">
+          <thead><tr><th>Component</th><th>Value</th><th>Memory</th></tr></thead>
+          <tbody>
+            <tr><td><strong>GPU Memory</strong></td><td>A100</td><td class="num-green" style="font-family: var(--font-mono);">80.0 GiB</td></tr>
+            <tr><td>Parameters (fp32)</td><td>8B &times; 4 bytes</td><td style="font-family: var(--font-mono);">29.8 GiB</td></tr>
+            <tr><td>Gradients (fp32)</td><td>8B &times; 4 bytes</td><td style="font-family: var(--font-mono);">29.8 GiB</td></tr>
+            <tr><td>Optimizer (Adam m+v)</td><td>8B &times; 8 bytes</td><td style="font-family: var(--font-mono);">59.6 GiB</td></tr>
+            <tr><td><strong>Total Fixed</strong></td><td>16 &times; 8B</td><td class="val-bad" style="font-family: var(--font-mono);">119.2 GiB</td></tr>
+            <tr><td colspan="3" style="text-align: center; color: var(--red); font-weight: 600;">Already exceeds 80 GiB! Can't even fit b=0 in fp32.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout callout-warn" style="margin-top: 16px;">
+        <strong>This is why mixed precision and ZeRO are essential!</strong> In pure fp32, even the model states of an 8B model don't fit on a single A100. In practice, you use bf16 parameters (2N), bf16 gradients (2N), and fp32 optimizer states (8N) = 12N bytes, or use ZeRO to shard across GPUs. This changes the "fixed" cost and opens room for activations.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ OOM SEARCH ============ -->
+<section class="section section-dark" id="oom-search">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">In Practice</div>
+      <h2><span class="gradient-text">The OOM Binary Search</span></h2>
+      <p class="section-subtitle">In practice, you find the max batch size empirically: keep increasing b until the GPU crashes with an Out-Of-Memory error.</p>
+    </div>
+
+    <!-- OOM interactive -->
+    <div class="card fade-in" style="max-width: 700px; margin: 0 auto;">
+      <h3 style="margin-bottom: 4px;">Interactive OOM Stress Test</h3>
+      <p style="margin-bottom: 12px;">Configure your GPU and model, then watch the binary search find the maximum batch size.</p>
+
+      <div class="calc-row">
+        <div class="calc-label">GPU Memory:</div>
+        <select id="oom-gpu" class="calc-input" style="width: auto; cursor: pointer;">
+          <option value="24">24 GB (RTX 3090/4090)</option>
+          <option value="40">40 GB (A100-40GB)</option>
+          <option value="48">48 GB (A6000 / L40)</option>
+          <option value="80" selected>80 GB (A100-80GB / H100)</option>
+        </select>
+      </div>
+      <div class="calc-row">
+        <div class="calc-label">Model Size:</div>
+        <select id="oom-model" class="calc-input" style="width: auto; cursor: pointer;">
+          <option value="1">1B params</option>
+          <option value="3">3B params</option>
+          <option value="7" selected>7B params</option>
+          <option value="13">13B params</option>
+          <option value="70">70B params</option>
+        </select>
+      </div>
+      <div class="calc-row">
+        <div class="calc-label">Sequence Length:</div>
+        <select id="oom-seq" class="calc-input" style="width: auto; cursor: pointer;">
+          <option value="512">512</option>
+          <option value="1024">1024</option>
+          <option value="2048" selected>2048</option>
+          <option value="4096">4096</option>
+          <option value="8192">8192</option>
+        </select>
+      </div>
+      <div class="calc-row">
+        <div class="calc-label">Training Mode:</div>
+        <select id="oom-mode" class="calc-input" style="width: auto; cursor: pointer;">
+          <option value="bf16" selected>Mixed Precision (bf16)</option>
+          <option value="fp32">Full fp32</option>
+        </select>
+      </div>
+
+      <button id="oom-run-btn" style="
+        margin-top: 8px; padding: 10px 28px; border-radius: 9999px;
+        background: var(--primary); color: #000; font-weight: 600; font-size: 0.88rem;
+        border: none; cursor: pointer; transition: all 0.2s; display: block; margin-left: auto; margin-right: auto;
+      ">Run Stress Test</button>
+
+      <div id="oom-results" style="margin-top: 20px;"></div>
+
+      <div id="oom-verdict" style="margin-top: 16px; text-align: center; min-height: 24px;"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CALCULATOR ============ -->
+<section class="section" id="calculator">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Interactive</div>
+      <h2><span class="gradient-text">Batch Size Calculator</span></h2>
+      <p class="section-subtitle">Enter your GPU specs and model config. Get the theoretical maximum local batch size computed in real time.</p>
+    </div>
+
+    <div class="calc-panel fade-in" style="max-width: 800px; margin: 0 auto;">
+      <div class="grid-2" style="gap: 32px;">
+        <div>
+          <h4 style="font-size: 0.92rem; font-weight: 600; margin-bottom: 16px; color: var(--secondary);">GPU & Training Config</h4>
+          <div class="calc-row">
+            <div class="calc-label">GPU Memory</div>
+            <input type="number" id="calc-gpu" class="calc-input" value="80">
+            <span class="calc-unit">GiB</span>
+          </div>
+          <div class="calc-row">
+            <div class="calc-label">Training Precision</div>
+            <select id="calc-precision" class="calc-input" style="width: auto; cursor: pointer;">
+              <option value="bf16" selected>Mixed Precision (bf16)</option>
+              <option value="fp32">Full fp32</option>
+            </select>
+          </div>
+          <div class="calc-row">
+            <div class="calc-label">Activation Checkpointing</div>
+            <select id="calc-ckpt" class="calc-input" style="width: auto; cursor: pointer;">
+              <option value="none" selected>None</option>
+              <option value="attn">Recompute Attention</option>
+              <option value="full">Recompute All</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <h4 style="font-size: 0.92rem; font-weight: 600; margin-bottom: 16px; color: var(--accent);">Model Config</h4>
+          <div class="calc-row">
+            <div class="calc-label">Parameters (N)</div>
+            <input type="number" id="calc-N" class="calc-input" value="7" step="0.1">
+            <span class="calc-unit">Billion</span>
+          </div>
+          <div class="calc-row">
+            <div class="calc-label">Hidden Size (H)</div>
+            <input type="number" id="calc-H" class="calc-input" value="4096">
+          </div>
+          <div class="calc-row">
+            <div class="calc-label">Layers (L)</div>
+            <input type="number" id="calc-L" class="calc-input" value="32">
+          </div>
+          <div class="calc-row">
+            <div class="calc-label">Attention Heads</div>
+            <input type="number" id="calc-heads" class="calc-input" value="32">
+          </div>
+          <div class="calc-row">
+            <div class="calc-label">Sequence Length (S)</div>
+            <input type="number" id="calc-S" class="calc-input" value="2048">
+          </div>
+        </div>
+      </div>
+
+      <div class="calc-result" id="calc-result">
+        <div style="text-align: center;">
+          <div style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1px; color: var(--fg-muted); margin-bottom: 4px;">Maximum Local Batch Size</div>
+          <div class="calc-result-big" id="calc-bmax">—</div>
+          <div style="font-size: 0.85rem; color: var(--fg-muted); margin-top: 8px;" id="calc-breakdown"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WHAT CONTROLS BATCH SIZE ============ -->
+<section class="section section-dark" id="strategies">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Strategies</div>
+      <h2><span class="gradient-text">How to Fit a Larger Batch Size</span></h2>
+      <p class="section-subtitle">If your max batch size is too small, here are your options — each reduces either the fixed cost or the per-sample activation cost.</p>
+    </div>
+
+    <div class="grid-3 fade-in">
+      <div class="card" style="border-top: 3px solid var(--primary);">
+        <div style="font-size: 1.3rem; margin-bottom: 8px;">🗜️</div>
+        <h3>Mixed Precision (bf16)</h3>
+        <p>Store parameters and gradients in bf16 (2 bytes) instead of fp32 (4 bytes). Cuts fixed memory from 16N to 12N bytes. Activations are already in bf16.</p>
+        <div class="equation-box" style="font-size: 0.75rem; margin-top: 12px;">
+          <span class="eq-label">Fixed memory saved</span>
+          16N &rarr; 12N = <span class="eq-highlight">25% less</span>
+        </div>
+      </div>
+      <div class="card" style="border-top: 3px solid var(--secondary);">
+        <div style="font-size: 1.3rem; margin-bottom: 8px;">🔄</div>
+        <h3>Activation Checkpointing</h3>
+        <p>Don't store intermediate activations — recompute them during backward. This directly reduces the per-sample activation cost, letting you fit more sequences.</p>
+        <div class="equation-box" style="font-size: 0.75rem; margin-top: 12px;">
+          <span class="eq-label">Activation memory reduction</span>
+          Up to <span class="eq-highlight">~90% less</span> activations
+        </div>
+      </div>
+      <div class="card" style="border-top: 3px solid var(--accent);">
+        <div style="font-size: 1.3rem; margin-bottom: 8px;">🔀</div>
+        <h3>ZeRO / FSDP</h3>
+        <p>Shard parameters, gradients, and optimizer states across multiple GPUs. Each GPU only stores 1/N<sub>gpu</sub> of the fixed cost.</p>
+        <div class="equation-box" style="font-size: 0.75rem; margin-top: 12px;">
+          <span class="eq-label">Fixed memory per GPU</span>
+          16N &rarr; <span class="eq-highlight">16N / N<sub>gpus</sub></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card fade-in" style="margin-top: 32px;">
+      <h3 style="margin-bottom: 8px;">But I need a global batch size larger than b<sub>max</sub>!</h3>
+      <p style="margin-bottom: 12px;">No problem. This is exactly what <strong>gradient accumulation</strong> is for. You process b<sub>max</sub> sequences at a time, accumulate the gradients over multiple steps, and only update weights after reaching your desired global batch size.</p>
+      <div class="equation-box">
+        <span class="eq-label">Global Batch Size</span>
+        B<sub>global</sub> = b<sub>local</sub> &times; N<sub>gpus</sub> &times; <span class="eq-highlight">grad_accum_steps</span>
+      </div>
+      <div class="callout callout-green" style="margin-top: 12px;">
+        <strong>Example:</strong> If b<sub>max</sub> = 4, you have 8 GPUs, and you want B<sub>global</sub> = 256: set <code>grad_accum_steps = 256 / (4 &times; 8) = 8</code>.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SENSITIVITY CHART ============ -->
+<section class="section" id="sensitivity">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Visualization</div>
+      <h2><span class="gradient-text">What Affects b<sub>max</sub> Most?</span></h2>
+      <p class="section-subtitle">See how the maximum batch size changes as you vary sequence length, model size, and GPU memory.</p>
+    </div>
+
+    <div class="chart-container fade-in">
+      <h4>Maximum Batch Size vs. Sequence Length</h4>
+      <div class="chart-subtitle">For different model sizes on an A100-80GB with mixed precision + attention checkpointing.</div>
+      <div class="chart-area" id="sensitivity-chart"></div>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; padding-top: 12px;">
+        <div style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);"><div style="width:12px;height:12px;border-radius:3px;background:var(--primary);"></div> 1B</div>
+        <div style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);"><div style="width:12px;height:12px;border-radius:3px;background:var(--blue);"></div> 7B</div>
+        <div style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);"><div style="width:12px;height:12px;border-radius:3px;background:var(--orange);"></div> 13B</div>
+        <div style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);"><div style="width:12px;height:12px;border-radius:3px;background:var(--red);"></div> 70B</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ KEY TAKEAWAYS ============ -->
+<section class="section section-dark" id="takeaways">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Summary</div>
+      <h2><span class="gradient-text">Key Takeaways</span></h2>
+    </div>
+    <div class="grid-3 fade-in">
+      <div class="takeaway-card">
+        <div class="takeaway-num">1</div>
+        <h4>Only activations scale with b</h4>
+        <p>Parameters, gradients, and optimizer states are fixed by the model architecture. Activations are the only memory bucket that grows when you increase batch size.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">2</div>
+        <h4>b<sub>max</sub> = (M<sub>GPU</sub> - M<sub>fixed</sub>) / M<sub>act_per_sample</sub></h4>
+        <p>The max batch size is simply: leftover memory after fixed costs, divided by the per-sample activation cost. You can compute this analytically or find it empirically via OOM search.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">3</div>
+        <h4>Sequence length is the biggest lever</h4>
+        <p>Activation memory has an S&sup2; term from attention. Doubling sequence length more than halves your max batch size. This is why long-context training is so memory-hungry.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">4</div>
+        <h4>Three ways to increase b<sub>max</sub></h4>
+        <p>Mixed precision (reduce fixed cost), activation checkpointing (reduce per-sample cost), and ZeRO/FSDP (shard fixed cost across GPUs).</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">5</div>
+        <h4>Gradient accumulation bridges the gap</h4>
+        <p>If b<sub>max</sub> is smaller than your desired global batch size, gradient accumulation lets you simulate larger batches without needing more GPU memory.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">6</div>
+        <h4>Always leave a ~10% memory buffer</h4>
+        <p>CUDA memory fragmentation + temporary buffers mean the practical b<sub>max</sub> is slightly less than the theoretical maximum. Always leave headroom.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">📦 Max Local Batch Size <span class="gradient-text">Visual Guide</span></div>
+      <p>Part of the ShallowSpeed GPU Workshop series</p>
+      <p class="footer-muted">Built with first-principles math from transformer architectures</p>
+    </div>
+  </div>
+</footer>
+
+<!-- ============ JAVASCRIPT ============ -->
+<script>
+// ===========================
+// Constants & Helpers
+// ===========================
+function toGiB(bytes) { return bytes / (1024**3); }
+
+// Model configs: approximate H, L, heads for common sizes
+const MODEL_CONFIGS = {
+  1:  { H: 2048, L: 24, heads: 16 },
+  3:  { H: 3200, L: 26, heads: 32 },
+  7:  { H: 4096, L: 32, heads: 32 },
+  13: { H: 5120, L: 40, heads: 40 },
+  70: { H: 8192, L: 80, heads: 64 },
+};
+
+function fixedMemGiB(N_billion, precision) {
+  const N = N_billion * 1e9;
+  if (precision === 'bf16') {
+    // bf16 params (2N) + bf16 grads (2N) + fp32 optimizer (8N) = 12N
+    return toGiB(12 * N);
+  }
+  return toGiB(16 * N);
+}
+
+function actPerSampleGiB(H, L, heads, S, ckpt) {
+  // Per sample (b=1) activation memory in bytes (bf16 = 2 bytes)
+  let attn_sbh_coeff = 11;
+  let ffn_sbh_coeff = 19;
+  let ln_sbh_coeff = 4;
+  let s2_coeff = 5;
+
+  if (ckpt === 'attn') {
+    attn_sbh_coeff = 0;
+    s2_coeff = 0;
+  } else if (ckpt === 'full') {
+    attn_sbh_coeff = 0;
+    ffn_sbh_coeff = 0;
+    s2_coeff = 0;
+    ln_sbh_coeff = 1; // just checkpoints
+  }
+
+  const SH = S * H;
+  const linear_elems = L * (attn_sbh_coeff + ffn_sbh_coeff + ln_sbh_coeff) * SH;
+  const quad_elems = L * s2_coeff * heads * S * S;
+  return toGiB((linear_elems + quad_elems) * 2);
+}
+
+function maxBatch(gpuGiB, N_billion, H, L, heads, S, precision, ckpt) {
+  const fixed = fixedMemGiB(N_billion, precision);
+  const available = gpuGiB * 0.9 - fixed; // 10% buffer for CUDA overhead
+  if (available <= 0) return 0;
+  const perSample = actPerSampleGiB(H, L, heads, S, ckpt);
+  if (perSample <= 0) return 999;
+  return Math.floor(available / perSample);
+}
+
+// ===========================
+// Interactive memory bar (batch slider)
+// ===========================
+const bslider = document.getElementById('bslider');
+const bsliderVal = document.getElementById('bslider-val');
+const bsliderTotal = document.getElementById('bslider-total');
+const bsliderBar = document.getElementById('bslider-bar');
+const bsliderOom = document.getElementById('bslider-oom');
+
+function updateBslider() {
+  const b = parseInt(bslider.value);
+  bsliderVal.textContent = b;
+
+  // 7B model, bf16, S=2048, A100-80GB
+  const gpuMem = 80;
+  const fixed = fixedMemGiB(7, 'bf16');
+  const act = actPerSampleGiB(4096, 32, 32, 2048, 'none') * b;
+  const total = fixed + act;
+  const pGiB = toGiB(7e9 * 2); // bf16 params
+  const gGiB = toGiB(7e9 * 2);
+  const oGiB = toGiB(7e9 * 8);
+  const free = Math.max(0, gpuMem - total);
+
+  bsliderTotal.textContent = total.toFixed(1);
+  bsliderTotal.style.color = total > gpuMem ? 'var(--red)' : '';
+
+  const parts = [
+    { val: pGiB, cls: 'params', label: 'Params' },
+    { val: gGiB, cls: 'grads', label: 'Grads' },
+    { val: oGiB, cls: 'optim', label: 'Optim' },
+    { val: act, cls: 'act', label: `Act (b=${b})` },
+    { val: free, cls: 'free', label: 'Free' },
+  ];
+  const dispTotal = Math.max(total, gpuMem);
+  bsliderBar.innerHTML = parts.map(p => {
+    const pct = Math.max(0, (p.val / dispTotal) * 100);
+    return `<div class="mem-seg ${p.cls}" style="flex: ${pct};" title="${p.label}: ${p.val.toFixed(1)} GiB">${pct > 7 ? p.label : ''}</div>`;
+  }).join('');
+
+  if (total > gpuMem) {
+    bsliderOom.innerHTML = `<span style="color: var(--red);">💥 OOM! Exceeds GPU memory by ${(total - gpuMem).toFixed(1)} GiB</span>`;
+  } else if (total > gpuMem * 0.9) {
+    bsliderOom.innerHTML = `<span style="color: var(--orange);">⚠️ Dangerously close! Only ${(gpuMem - total).toFixed(1)} GiB free</span>`;
+  } else {
+    bsliderOom.innerHTML = `<span style="color: var(--primary);">✓ Fits! ${free.toFixed(1)} GiB free</span>`;
+  }
+}
+bslider.addEventListener('input', updateBslider);
+updateBslider();
+
+// ===========================
+// OOM Stress Test
+// ===========================
+document.getElementById('oom-run-btn').addEventListener('click', function() {
+  const gpuMem = parseInt(document.getElementById('oom-gpu').value);
+  const N = parseInt(document.getElementById('oom-model').value);
+  const S = parseInt(document.getElementById('oom-seq').value);
+  const mode = document.getElementById('oom-mode').value;
+  const cfg = MODEL_CONFIGS[N] || MODEL_CONFIGS[7];
+
+  const resultsDiv = document.getElementById('oom-results');
+  const verdictDiv = document.getElementById('oom-verdict');
+  resultsDiv.innerHTML = '';
+  verdictDiv.innerHTML = '';
+
+  const bValues = [1, 2, 4, 8, 16, 32, 64];
+  let maxOk = 0;
+  const results = [];
+
+  for (const b of bValues) {
+    const fixed = fixedMemGiB(N, mode);
+    const act = actPerSampleGiB(cfg.H, cfg.L, cfg.heads, S, 'none') * b;
+    const total = fixed + act;
+    const pct = (total / gpuMem) * 100;
+    const fits = total <= gpuMem * 0.95;
+    const tight = total <= gpuMem && total > gpuMem * 0.95;
+
+    if (fits) maxOk = b;
+    results.push({ b, total, pct, fits, tight, gpuMem });
+    if (!fits && !tight) break; // stop after first OOM
+  }
+
+  // Animate results
+  let idx = 0;
+  function showNext() {
+    if (idx >= results.length) {
+      verdictDiv.innerHTML = maxOk > 0
+        ? `<span style="color: var(--primary); font-size: 1.1rem;">✅ Maximum safe local batch size: <strong style="font-family: var(--font-mono); font-size: 1.3rem;">${maxOk}</strong></span>`
+        : `<span style="color: var(--red); font-size: 1.1rem;">❌ Even b=1 doesn't fit! Need more GPU memory or use ZeRO/FSDP.</span>`;
+      return;
+    }
+    const r = results[idx];
+    const status = r.fits ? 'ok' : (r.tight ? 'warn' : 'oom');
+    const icon = r.fits ? '✓' : (r.tight ? '⚠' : '✗');
+    const barColor = r.fits ? 'var(--primary)' : (r.tight ? 'var(--orange)' : 'var(--red)');
+
+    const el = document.createElement('div');
+    el.className = `oom-step ${status}`;
+    el.style.opacity = '0'; el.style.transform = 'translateY(10px)';
+    el.innerHTML = `
+      <div class="oom-status ${status}">${icon}</div>
+      <div class="oom-batch">b = ${r.b}</div>
+      <div class="oom-bar-wrap">
+        <div class="oom-bar-bg"><div class="oom-bar-fill" style="width: 0%; background: ${barColor};"></div></div>
+      </div>
+      <div class="oom-detail">${r.total.toFixed(1)} / ${r.gpuMem} GiB (${r.pct.toFixed(0)}%)</div>
+    `;
+    resultsDiv.appendChild(el);
+
+    requestAnimationFrame(() => {
+      el.style.transition = 'all 0.4s ease';
+      el.style.opacity = '1'; el.style.transform = 'translateY(0)';
+      el.querySelector('.oom-bar-fill').style.width = Math.min(r.pct, 100) + '%';
+    });
+
+    idx++;
+    setTimeout(showNext, 350);
+  }
+  showNext();
+});
+
+// ===========================
+// Batch Size Calculator
+// ===========================
+function updateCalc() {
+  const gpuGiB = parseFloat(document.getElementById('calc-gpu').value) || 80;
+  const N = parseFloat(document.getElementById('calc-N').value) || 7;
+  const H = parseInt(document.getElementById('calc-H').value) || 4096;
+  const L = parseInt(document.getElementById('calc-L').value) || 32;
+  const heads = parseInt(document.getElementById('calc-heads').value) || 32;
+  const S = parseInt(document.getElementById('calc-S').value) || 2048;
+  const precision = document.getElementById('calc-precision').value;
+  const ckpt = document.getElementById('calc-ckpt').value;
+
+  const fixed = fixedMemGiB(N, precision);
+  const perSample = actPerSampleGiB(H, L, heads, S, ckpt);
+  const bmax = maxBatch(gpuGiB, N, H, L, heads, S, precision, ckpt);
+
+  document.getElementById('calc-bmax').textContent = bmax <= 0 ? '0 (OOM)' : bmax;
+  document.getElementById('calc-bmax').style.color = bmax <= 0 ? '' : '';
+
+  document.getElementById('calc-breakdown').innerHTML =
+    `Fixed: <strong>${fixed.toFixed(1)} GiB</strong> | ` +
+    `Act/sample: <strong>${perSample.toFixed(2)} GiB</strong> | ` +
+    `Available (with 10% buffer): <strong>${Math.max(0, gpuGiB * 0.9 - fixed).toFixed(1)} GiB</strong>`;
+}
+
+['calc-gpu','calc-N','calc-H','calc-L','calc-heads','calc-S','calc-precision','calc-ckpt'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updateCalc);
+  document.getElementById(id).addEventListener('change', updateCalc);
+});
+updateCalc();
+
+// ===========================
+// Sensitivity Chart
+// ===========================
+function drawSensitivityChart() {
+  const container = document.getElementById('sensitivity-chart');
+  const seqs = [512, 1024, 2048, 4096, 8192, 16384];
+  const models = [
+    { N: 1, cfg: MODEL_CONFIGS[1], color: '#00d46a', label: '1B' },
+    { N: 7, cfg: MODEL_CONFIGS[7], color: '#42A5F5', label: '7B' },
+    { N: 13, cfg: MODEL_CONFIGS[13], color: '#FF9800', label: '13B' },
+    { N: 70, cfg: MODEL_CONFIGS[70], color: '#FF7043', label: '70B' },
+  ];
+
+  const data = {};
+  let yMax = 0;
+  models.forEach(m => {
+    data[m.label] = seqs.map(s => {
+      const b = maxBatch(80, m.N, m.cfg.H, m.cfg.L, m.cfg.heads, s, 'bf16', 'attn');
+      yMax = Math.max(yMax, b);
+      return b;
+    });
+  });
+  yMax = Math.max(yMax, 1) * 1.15;
+
+  const W = 700, H = 280;
+  const padL = 50, padR = 60, padT = 15, padB = 35;
+  const cW = W - padL - padR, cH = H - padT - padB;
+
+  function xPos(i) { return padL + (i / (seqs.length - 1)) * cW; }
+  function yPos(v) { return padT + cH - (Math.min(v, yMax) / yMax) * cH; }
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+
+  // Grid
+  for (let i = 0; i <= 5; i++) {
+    const y = padT + (i / 5) * cH;
+    const val = Math.round(yMax * (5 - i) / 5);
+    svg += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#262626"/>`;
+    svg += `<text x="${padL-8}" y="${y+4}" text-anchor="end" fill="#a3a3a3" font-size="10" font-family="var(--font-mono)">${val}</text>`;
+  }
+
+  // X labels
+  seqs.forEach((s, i) => {
+    svg += `<text x="${xPos(i)}" y="${H-8}" text-anchor="middle" fill="#a3a3a3" font-size="10" font-family="var(--font-mono)">${s >= 1024 ? s/1024+'K' : s}</text>`;
+  });
+
+  // Lines
+  models.forEach(m => {
+    const pts = data[m.label].map((v, i) => `${xPos(i)},${yPos(v)}`).join(' ');
+    svg += `<polyline points="${pts}" fill="none" stroke="${m.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+    data[m.label].forEach((v, i) => {
+      svg += `<circle cx="${xPos(i)}" cy="${yPos(v)}" r="4" fill="${m.color}" stroke="#0a0a0a" stroke-width="1.5"/>`;
+    });
+    const lastV = data[m.label][data[m.label].length - 1];
+    svg += `<text x="${xPos(seqs.length-1)+8}" y="${yPos(lastV)+4}" fill="${m.color}" font-size="9" font-weight="600">${m.label}: ${lastV}</text>`;
+  });
+
+  svg += '</svg>';
+  container.innerHTML = svg;
+}
+drawSensitivityChart();
+
+// ===========================
+// Scroll Animations
+// ===========================
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) entry.target.classList.add('visible');
+  });
+}, { threshold: 0.1, rootMargin: '-50px' });
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// Nav highlight
+const navLinks = document.querySelectorAll('.nav-links a');
+const sections = document.querySelectorAll('section[id]');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(s => { if (window.scrollY >= s.offsetTop - 100) current = s.id; });
+  navLinks.forEach(l => { l.style.color = l.getAttribute('href') === '#' + current ? 'var(--primary)' : ''; });
+});
+</script>
+</body>
+</html>
