@@ -1,0 +1,2017 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gradient Accumulation — Visual Guide | VizuaraAI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@1&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ========== RESET & BASE ========== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+body {
+  background: #0a0a0a; color: #f2f2f2;
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-size: 16px; line-height: 1.6;
+  overflow-x: hidden;
+}
+
+/* ========== DESIGN TOKENS ========== */
+:root {
+  --bg: #0a0a0a; --bg-card: #121212; --bg-muted: #0e0e0e;
+  --border: #262626; --border-light: #333;
+  --text: #f2f2f2; --text-muted: #999; --text-dim: #666;
+  --green: #00d46a; --cyan: #00c8e6;
+  --red: #ff4d6a; --orange: #ff9f43; --purple: #a855f7;
+  --radius: 16px; --radius-sm: 10px;
+  --glow-green: 0 0 30px rgba(0,212,106,0.15);
+  --glow-cyan: 0 0 30px rgba(0,200,230,0.15);
+  --max-w: 1280px;
+}
+
+/* ========== TYPOGRAPHY ========== */
+.font-serif { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; }
+.font-mono { font-family: 'JetBrains Mono', monospace; }
+.gradient-text {
+  background: linear-gradient(135deg, var(--green), var(--cyan));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+h1, h2, h3, h4 { font-weight: 600; line-height: 1.2; }
+h1 { font-size: clamp(2.5rem, 6vw, 4.5rem); }
+h2 { font-size: clamp(1.8rem, 4vw, 3rem); margin-bottom: 1rem; }
+h3 { font-size: 1.3rem; margin-bottom: 0.5rem; }
+
+/* ========== LAYOUT ========== */
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+section { padding: 96px 0; position: relative; }
+section.muted { background: var(--bg-muted); }
+.section-header { text-align: center; margin-bottom: 56px; }
+.section-header p { color: var(--text-muted); font-size: 1.1rem; max-width: 700px; margin: 1rem auto 0; }
+
+/* ========== CARDS ========== */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 24px;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.card:hover { border-color: var(--border-light); }
+.card-glow:hover { box-shadow: var(--glow-green); }
+.glass {
+  background: rgba(18,18,18,0.7); backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+/* ========== BUTTONS ========== */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 28px; border-radius: 50px;
+  font-family: 'Inter', sans-serif; font-weight: 600; font-size: 0.95rem;
+  cursor: pointer; border: none; transition: all 0.3s;
+}
+.btn-primary {
+  background: linear-gradient(135deg, var(--green), #00b85c);
+  color: #000; box-shadow: 0 4px 20px rgba(0,212,106,0.3);
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 30px rgba(0,212,106,0.4); }
+.btn-icon {
+  width: 40px; height: 40px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border);
+  color: var(--text); cursor: pointer; transition: all 0.3s; font-size: 1rem;
+}
+.btn-icon:hover { border-color: var(--green); color: var(--green); }
+
+/* ========== CONTROLS ========== */
+.controls {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  padding: 16px 20px; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  margin-top: 16px;
+}
+.control-group { display: flex; align-items: center; gap: 8px; }
+.control-group label { font-size: 0.82rem; color: var(--text-muted); white-space: nowrap; }
+input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  width: 120px; height: 4px; background: var(--border);
+  border-radius: 2px; outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px;
+  background: var(--green); border-radius: 50%; cursor: pointer;
+}
+.slider-val { font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: var(--green); min-width: 48px; }
+select {
+  background: var(--bg); border: 1px solid var(--border);
+  color: var(--text); padding: 6px 12px; border-radius: 8px;
+  font-family: 'Inter', sans-serif; font-size: 0.85rem; cursor: pointer;
+}
+
+/* ========== CANVAS ========== */
+.canvas-wrap {
+  position: relative; border-radius: var(--radius);
+  overflow: hidden; border: 1px solid var(--border);
+  background: #0d0d0d;
+}
+.canvas-wrap canvas { display: block; width: 100%; height: 100%; }
+
+/* ========== EQUATION CARDS ========== */
+.eq-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px 24px;
+  display: flex; align-items: center; gap: 20px;
+  transition: all 0.3s;
+}
+.eq-card:hover { border-color: var(--border-light); box-shadow: var(--glow-green); }
+.eq-num {
+  flex-shrink: 0; width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; font-weight: 700; font-size: 0.9rem;
+}
+.eq-body { flex: 1; }
+.eq-formula {
+  font-family: 'JetBrains Mono', monospace; font-size: 1.05rem;
+  margin-bottom: 4px; line-height: 1.8;
+}
+.eq-label { font-size: 0.85rem; color: var(--text-muted); }
+.c-cyan { color: var(--cyan); }
+.c-green { color: var(--green); }
+.c-red { color: var(--red); }
+.c-orange { color: var(--orange); }
+.c-purple { color: var(--purple); }
+
+/* ========== GRID LAYOUTS ========== */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.grid-side { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 24px; align-items: start; }
+
+/* ========== FADE-IN ========== */
+.fade-in {
+  opacity: 0; transform: translateY(30px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+.stagger-1 { transition-delay: 0.1s; }
+.stagger-2 { transition-delay: 0.2s; }
+.stagger-3 { transition-delay: 0.3s; }
+.stagger-4 { transition-delay: 0.4s; }
+
+/* ========== HERO ========== */
+#hero {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+}
+#hero-canvas { position: absolute; inset: 0; z-index: 0; }
+#hero .content { position: relative; z-index: 1; text-align: center; max-width: 800px; padding: 0 24px; }
+#hero h1 { margin-bottom: 20px; }
+#hero .subtitle {
+  color: var(--text-muted); font-size: 1.15rem;
+  max-width: 600px; margin: 0 auto 32px;
+}
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3);
+  border-radius: 9999px; padding: 6px 18px;
+  font-size: 0.82rem; font-weight: 500; color: var(--green); margin-bottom: 24px;
+}
+.pulse-dot {
+  width: 8px; height: 8px; background: var(--green); border-radius: 50%;
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.4); }
+}
+
+/* ========== CODE PANEL ========== */
+.code-explain-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start;
+}
+.code-panel { position: sticky; top: 24px; }
+.code-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 16px; background: #1a1a2e;
+  border-radius: 12px 12px 0 0; border: 1px solid var(--border); border-bottom: none;
+}
+.dot { width: 10px; height: 10px; border-radius: 50%; }
+.dot.red { background: #ff5f57; }
+.dot.yellow { background: #febc2e; }
+.dot.green { background: #28c840; }
+.code-filename {
+  margin-left: 10px; font-size: 0.75rem;
+  color: var(--text-muted); font-family: 'JetBrains Mono', monospace;
+}
+pre {
+  background: #0d0d1a; border: 1px solid var(--border);
+  border-radius: 0 0 12px 12px; padding: 20px; overflow-x: auto;
+  font-size: 0.82rem; line-height: 1.7; tab-size: 4; margin: 0;
+}
+pre code { color: #e0e0e0; font-family: 'JetBrains Mono', monospace; }
+.code-line { display: block; padding: 0 4px; border-radius: 3px; transition: background 0.3s; }
+.code-line.active { background: rgba(0,212,106,0.15); }
+.kw { color: #c792ea; }
+.fn { color: #82aaff; }
+.str { color: #c3e88d; }
+.num { color: #f78c6c; }
+.cmt { color: #546e7a; font-style: italic; }
+.mod { color: #ffcb6b; }
+
+/* ========== TRADE-OFF CARDS ========== */
+.tradeoff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.tradeoff-card {
+  background: var(--bg-card); border-radius: var(--radius); padding: 28px;
+  border: 1px solid var(--border);
+}
+.tradeoff-card.advantage { border-color: rgba(0,212,106,0.3); }
+.tradeoff-card.limitation { border-color: rgba(255,77,106,0.3); }
+.tradeoff-card h3 { margin-bottom: 16px; }
+.tradeoff-item {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.tradeoff-item:last-child { border-bottom: none; }
+.tradeoff-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 2px; }
+.tradeoff-text h4 { font-size: 0.95rem; margin-bottom: 4px; }
+.tradeoff-text p { font-size: 0.85rem; color: var(--text-muted); line-height: 1.6; }
+
+/* ========== STATS PANEL ========== */
+.stats-panel {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px; margin-top: 16px;
+}
+.stat-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 14px 16px; text-align: center;
+}
+.stat-card .stat-value {
+  font-family: 'JetBrains Mono', monospace; font-size: 1.4rem;
+  font-weight: 700; color: var(--green);
+}
+.stat-card .stat-label {
+  font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;
+}
+
+/* ========== STEP DISPLAY ========== */
+.step-display {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem; color: var(--text-muted);
+}
+
+/* ========== ANNOTATION ========== */
+.annotation { display: flex; gap: 16px; margin-top: 16px; }
+.annotation .ann-card {
+  flex: 1; padding: 14px 18px; border-radius: var(--radius-sm);
+  background: var(--bg-card); border: 1px solid var(--border);
+  font-size: 0.88rem; color: var(--text-muted); line-height: 1.5;
+}
+.ann-card strong { color: var(--text); }
+
+/* ========== FOOTER ========== */
+footer {
+  padding: 48px 0; border-top: 1px solid var(--border);
+  text-align: center; color: var(--text-dim); font-size: 0.9rem;
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 768px) {
+  .grid-2, .grid-side, .code-explain-row, .tradeoff-grid { grid-template-columns: 1fr; }
+  section { padding: 64px 0; }
+  .annotation { flex-direction: column; }
+  .controls { flex-direction: column; align-items: flex-start; }
+  .eq-card { flex-direction: column; text-align: center; }
+  .code-panel { position: static; }
+  .stats-panel { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .stats-panel { grid-template-columns: 1fr 1fr; }
+}
+
+/* ========== SCROLLBAR ========== */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #444; }
+
+::selection { background: rgba(0,212,106,0.3); color: #fff; }
+</style>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<section id="hero">
+  <canvas id="hero-canvas"></canvas>
+  <div class="content">
+    <div class="hero-badge">
+      <span class="pulse-dot"></span>
+      GPU Workshop &mdash; Memory Optimization
+    </div>
+    <h1 class="font-serif"><span class="gradient-text">Gradient Accumulation</span></h1>
+    <p class="subtitle">Train with large effective batch sizes even when your GPU memory can't hold them. A visual, interactive guide to one of the most practical tricks in deep learning.</p>
+    <a href="#section-problem" class="btn btn-primary">Begin the Journey &darr;</a>
+  </div>
+</section>
+
+<!-- ============ SECTION 2: THE PROBLEM ============ -->
+<section id="section-problem" class="muted">
+  <div class="container">
+    <div class="section-header fade-in">
+      <h2 class="font-serif gradient-text">The Problem: GPU Memory Is Finite</h2>
+      <p>As batch size grows, activation memory grows with it. At some point your GPU simply runs out of memory &mdash; the dreaded OOM error.</p>
+    </div>
+    <div class="fade-in">
+      <div class="canvas-wrap" style="height:400px;">
+        <canvas id="canvas-problem"></canvas>
+      </div>
+      <div class="controls">
+        <div class="control-group">
+          <label>Batch Size:</label>
+          <input type="range" id="prob-batch" min="1" max="128" step="1" value="16">
+          <span class="slider-val" id="prob-batch-val">16</span>
+        </div>
+        <div class="control-group">
+          <label>GPU Memory:</label>
+          <span class="slider-val" style="color:var(--cyan);">16 GB</span>
+        </div>
+      </div>
+      <div class="annotation">
+        <div class="ann-card"><strong style="color:var(--cyan);">Model parameters</strong> &amp; <strong style="color:var(--purple);">optimizer states</strong> use a fixed amount of memory regardless of batch size.</div>
+        <div class="ann-card"><strong style="color:var(--orange);">Activations</strong> grow linearly with batch size. Past a threshold, total memory exceeds the GPU limit &mdash; <strong style="color:var(--red);">OOM!</strong></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 3: CORE IDEA ============ -->
+<section id="section-core">
+  <div class="container">
+    <div class="section-header fade-in">
+      <h2 class="font-serif gradient-text">Core Idea: Split, Accumulate, Update</h2>
+      <p>Instead of processing the full batch at once, split it into micro-batches. Process each one, accumulate gradients, then update once.</p>
+    </div>
+    <div class="fade-in">
+      <div class="canvas-wrap" style="height:450px;">
+        <canvas id="canvas-core"></canvas>
+      </div>
+      <div class="controls">
+        <button class="btn-icon" id="core-play" title="Play/Pause">&#9654;</button>
+        <button class="btn-icon" id="core-reset" title="Reset">&#8635;</button>
+        <span class="step-display" id="core-phase">Phase: Ready</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 4: FULL TRAINING LOOP ============ -->
+<section id="section-loop" class="muted">
+  <div class="container">
+    <div class="section-header fade-in">
+      <h2 class="font-serif gradient-text">Full Training Loop</h2>
+      <p>Watch the complete gradient accumulation training loop in action. Each micro-batch contributes gradients that build up before a single optimizer step.</p>
+    </div>
+    <div class="fade-in">
+      <div class="canvas-wrap" style="height:500px;">
+        <canvas id="canvas-loop"></canvas>
+      </div>
+      <div class="controls">
+        <button class="btn-icon" id="loop-play" title="Play/Pause">&#9654;</button>
+        <button class="btn-icon" id="loop-step-btn" title="Step">&#9655;|</button>
+        <button class="btn-icon" id="loop-reset" title="Reset">&#8635;</button>
+        <span class="step-display" id="loop-step">Micro-batch: 0 / 4</span>
+        <div class="control-group">
+          <label>Accum Steps:</label>
+          <select id="loop-accum">
+            <option value="2">2</option>
+            <option value="4" selected>4</option>
+            <option value="8">8</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label>Speed:</label>
+          <select id="loop-speed">
+            <option value="1" selected>1x</option>
+            <option value="2">2x</option>
+            <option value="4">4x</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 5: MATHEMATICS ============ -->
+<section id="section-math">
+  <div class="container">
+    <div class="section-header fade-in">
+      <h2 class="font-serif gradient-text">The Mathematics</h2>
+      <p>Gradient accumulation is mathematically equivalent to training with a large batch &mdash; the key is dividing by N.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px;max-width:800px;margin:0 auto;" class="fade-in">
+      <div class="eq-card">
+        <div class="eq-num" style="background:rgba(0,200,230,0.15);color:var(--cyan);">1</div>
+        <div class="eq-body">
+          <div class="eq-formula"><span class="c-cyan">g</span> = (1/B) &sum; &nabla;L(x<sub>i</sub>, &theta;)</div>
+          <div class="eq-label">Standard training &mdash; compute gradient over full batch of size B</div>
+        </div>
+      </div>
+      <div class="eq-card">
+        <div class="eq-num" style="background:rgba(0,212,106,0.15);color:var(--green);">2</div>
+        <div class="eq-body">
+          <div class="eq-formula"><span class="c-green">g<sub>accum</sub></span> = <span class="c-green">&sum;<sub>k=1..N</sub></span> &nabla;L(micro_batch<sub>k</sub>, &theta;)</div>
+          <div class="eq-label">Accumulate gradients from N micro-batches (each of size B/N)</div>
+        </div>
+      </div>
+      <div class="eq-card">
+        <div class="eq-num" style="background:rgba(168,85,247,0.15);color:var(--purple);">3</div>
+        <div class="eq-body">
+          <div class="eq-formula"><span class="c-purple">g<sub>final</sub></span> = <span class="c-green">g<sub>accum</sub></span> / <span class="c-orange">N</span></div>
+          <div class="eq-label">Divide by N to get the average &mdash; this is the key step!</div>
+        </div>
+      </div>
+      <div class="eq-card" style="border-color:var(--border-light);">
+        <div class="eq-num" style="background:linear-gradient(135deg,rgba(0,212,106,0.2),rgba(0,200,230,0.2));color:var(--text);">4</div>
+        <div class="eq-body">
+          <div class="eq-formula">&theta; = &theta; - &alpha; &middot; <span class="c-purple">g<sub>final</sub></span></div>
+          <div class="eq-label">Single optimizer step with the accumulated, averaged gradient</div>
+        </div>
+      </div>
+      <div class="eq-card">
+        <div class="eq-num" style="background:rgba(0,200,230,0.15);color:var(--cyan);">=</div>
+        <div class="eq-body">
+          <div class="eq-formula" style="font-size:0.95rem;">effective_batch_size = <span class="c-orange">micro_batch_size</span> &times; <span class="c-green">accumulation_steps</span></div>
+          <div class="eq-label">The result is mathematically equivalent to training with the full effective batch</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 6: CODE WALKTHROUGH ============ -->
+<section id="section-code" class="muted">
+  <div class="container">
+    <div class="section-header fade-in">
+      <h2 class="font-serif gradient-text">PyTorch Code Walkthrough</h2>
+      <p>Step through the code line-by-line while watching the corresponding animation. Each highlighted line maps to a visual action.</p>
+    </div>
+    <div class="fade-in code-explain-row">
+      <div class="code-panel">
+        <div class="code-header">
+          <span class="dot red"></span>
+          <span class="dot yellow"></span>
+          <span class="dot green"></span>
+          <span class="code-filename">train_with_accumulation.py</span>
+        </div>
+        <pre><code><span class="code-line" data-line="0"><span class="cmt"># Gradient Accumulation Training Loop</span></span>
+<span class="code-line" data-line="1"><span class="mod">accumulation_steps</span> = <span class="num">4</span></span>
+<span class="code-line" data-line="2"><span class="mod">optimizer</span>.<span class="fn">zero_grad</span>()</span>
+<span class="code-line" data-line="3"></span>
+<span class="code-line" data-line="4"><span class="kw">for</span> i, (data, target) <span class="kw">in</span> <span class="fn">enumerate</span>(dataloader):</span>
+<span class="code-line" data-line="5">    <span class="cmt"># Forward pass</span></span>
+<span class="code-line" data-line="6">    output = <span class="mod">model</span>(data)</span>
+<span class="code-line" data-line="7">    loss = <span class="fn">criterion</span>(output, target) / <span class="mod">accumulation_steps</span></span>
+<span class="code-line" data-line="8"></span>
+<span class="code-line" data-line="9">    <span class="cmt"># Backward pass (gradients accumulate)</span></span>
+<span class="code-line" data-line="10">    loss.<span class="fn">backward</span>()</span>
+<span class="code-line" data-line="11"></span>
+<span class="code-line" data-line="12">    <span class="kw">if</span> (i + <span class="num">1</span>) % <span class="mod">accumulation_steps</span> == <span class="num">0</span>:</span>
+<span class="code-line" data-line="13">        <span class="cmt"># Update weights</span></span>
+<span class="code-line" data-line="14">        <span class="mod">optimizer</span>.<span class="fn">step</span>()</span>
+<span class="code-line" data-line="15">        <span class="mod">optimizer</span>.<span class="fn">zero_grad</span>()</span></code></pre>
+      </div>
+      <div>
+        <div class="canvas-wrap" style="height:420px;">
+          <canvas id="canvas-code"></canvas>
+        </div>
+        <div class="controls">
+          <button class="btn-icon" id="code-play" title="Play/Pause">&#9654;</button>
+          <button class="btn-icon" id="code-step-btn" title="Step">&#9655;|</button>
+          <button class="btn-icon" id="code-reset" title="Reset">&#8635;</button>
+          <span class="step-display" id="code-step">Ready</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 7: MEMORY COMPARISON ============ -->
+<section id="section-memory">
+  <div class="container">
+    <div class="section-header fade-in">
+      <h2 class="font-serif gradient-text">Memory Comparison</h2>
+      <p>Same effective batch size, dramatically different memory usage. Gradient accumulation lets you trade time for memory.</p>
+    </div>
+    <div class="fade-in">
+      <div class="canvas-wrap" style="height:420px;">
+        <canvas id="canvas-memory"></canvas>
+      </div>
+      <div class="controls">
+        <div class="control-group">
+          <label>Effective Batch Size:</label>
+          <input type="range" id="mem-batch" min="16" max="256" step="16" value="64">
+          <span class="slider-val" id="mem-batch-val">64</span>
+        </div>
+        <div class="control-group">
+          <label>Accum Steps:</label>
+          <select id="mem-accum">
+            <option value="1">1 (no accum)</option>
+            <option value="2">2</option>
+            <option value="4" selected>4</option>
+            <option value="8">8</option>
+            <option value="16">16</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 8: TRADE-OFFS ============ -->
+<section id="section-tradeoffs" class="muted">
+  <div class="container">
+    <div class="section-header fade-in">
+      <h2 class="font-serif gradient-text">Trade-offs</h2>
+      <p>Gradient accumulation is powerful but not free. Understand the advantages and limitations.</p>
+    </div>
+    <div class="tradeoff-grid fade-in">
+      <div class="tradeoff-card advantage">
+        <h3 style="color:var(--green);">Advantages</h3>
+        <div class="tradeoff-item">
+          <span class="tradeoff-icon">&#9989;</span>
+          <div class="tradeoff-text">
+            <h4>Larger Effective Batches</h4>
+            <p>Simulate batch sizes that would never fit in GPU memory. Essential for tasks like contrastive learning and large-model fine-tuning.</p>
+          </div>
+        </div>
+        <div class="tradeoff-item">
+          <span class="tradeoff-icon">&#128202;</span>
+          <div class="tradeoff-text">
+            <h4>Better Convergence</h4>
+            <p>Larger batches produce more stable gradient estimates, reducing noise and often leading to smoother training curves.</p>
+          </div>
+        </div>
+        <div class="tradeoff-item">
+          <span class="tradeoff-icon">&#128187;</span>
+          <div class="tradeoff-text">
+            <h4>Works Everywhere</h4>
+            <p>No special hardware or communication needed. Works on a single GPU, with DDP, or even on CPUs. Pure software trick.</p>
+          </div>
+        </div>
+        <div class="tradeoff-item">
+          <span class="tradeoff-icon">&#128295;</span>
+          <div class="tradeoff-text">
+            <h4>Easy to Implement</h4>
+            <p>Just 3 extra lines in your training loop. Divide loss, skip zero_grad, step every N iterations. That's it.</p>
+          </div>
+        </div>
+      </div>
+      <div class="tradeoff-card limitation">
+        <h3 style="color:var(--red);">Limitations</h3>
+        <div class="tradeoff-item">
+          <span class="tradeoff-icon">&#9203;</span>
+          <div class="tradeoff-text">
+            <h4>Slower Wall-Clock Time</h4>
+            <p>N micro-batches processed sequentially instead of one big batch. Training takes ~N&times; longer per optimizer step.</p>
+          </div>
+        </div>
+        <div class="tradeoff-item">
+          <span class="tradeoff-icon">&#128200;</span>
+          <div class="tradeoff-text">
+            <h4>BatchNorm Mismatch</h4>
+            <p>BatchNorm statistics are computed per micro-batch, not the full effective batch. Use GroupNorm or LayerNorm instead.</p>
+          </div>
+        </div>
+        <div class="tradeoff-item">
+          <span class="tradeoff-icon">&#127919;</span>
+          <div class="tradeoff-text">
+            <h4>Stale Gradients</h4>
+            <p>Gradients from micro-batch 1 are computed on parameters that haven't been updated with micro-batch 2's information.</p>
+          </div>
+        </div>
+        <div class="tradeoff-item">
+          <span class="tradeoff-icon">&#128208;</span>
+          <div class="tradeoff-text">
+            <h4>Memory Not Free</h4>
+            <p>Gradients themselves accumulate in memory (same size as parameters). You save on activations, not gradient storage.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 9: PLAYGROUND ============ -->
+<section id="section-playground">
+  <div class="container">
+    <div class="section-header fade-in">
+      <h2 class="font-serif gradient-text">Interactive Playground</h2>
+      <p>Configure the training loop and watch it run in real time. Observe how accumulation steps affect the effective batch, memory, and loss.</p>
+    </div>
+    <div class="fade-in">
+      <div class="canvas-wrap" style="height:480px;">
+        <canvas id="canvas-playground"></canvas>
+      </div>
+      <div class="controls">
+        <button class="btn-icon" id="pg-play" title="Play/Pause">&#9654;</button>
+        <button class="btn-icon" id="pg-reset" title="Reset">&#8635;</button>
+        <div class="control-group">
+          <label>Micro-batch:</label>
+          <input type="range" id="pg-micro" min="4" max="64" step="4" value="16">
+          <span class="slider-val" id="pg-micro-val">16</span>
+        </div>
+        <div class="control-group">
+          <label>Accum Steps:</label>
+          <input type="range" id="pg-accum" min="1" max="16" step="1" value="4">
+          <span class="slider-val" id="pg-accum-val">4</span>
+        </div>
+        <div class="control-group">
+          <label>Speed:</label>
+          <select id="pg-speed">
+            <option value="1" selected>1x</option>
+            <option value="2">2x</option>
+            <option value="4">4x</option>
+          </select>
+        </div>
+      </div>
+      <div class="stats-panel">
+        <div class="stat-card">
+          <div class="stat-value" id="pg-eff-batch">64</div>
+          <div class="stat-label">Effective Batch Size</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="pg-mem-usage">4.2 GB</div>
+          <div class="stat-label">Peak Memory</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="pg-opt-steps">0</div>
+          <div class="stat-label">Optimizer Steps</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="pg-loss-val">2.30</div>
+          <div class="stat-label">Current Loss</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="container">
+    <p class="gradient-text font-serif" style="font-size:1.3rem;margin-bottom:8px;">VizuaraAI</p>
+    <p>Interactive visual explainers for deep learning concepts.</p>
+  </div>
+</footer>
+
+<!-- ============ JAVASCRIPT ============ -->
+<script>
+(function() {
+'use strict';
+
+// ========================= UTILITIES =========================
+const $ = id => document.getElementById(id);
+const dpr = window.devicePixelRatio || 1;
+
+function initCanvas(id, container) {
+  const canvas = $(id);
+  const parent = container || canvas.parentElement;
+  const w = parent.clientWidth;
+  const h = parent.clientHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { canvas, ctx, w, h };
+}
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function observeSection(sectionId, callback) {
+  const el = $(sectionId);
+  if (!el) return;
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => callback(e.isIntersecting));
+  }, { threshold: 0.1 });
+  obs.observe(el);
+}
+
+// Fade-in observer
+const fadeObserver = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) e.target.classList.add('visible');
+  });
+}, { threshold: 0.1 });
+document.querySelectorAll('.fade-in').forEach(el => fadeObserver.observe(el));
+
+// Shared drawing helpers
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function drawRoundRect(ctx, x, y, w, h, r, fill, stroke) {
+  roundRect(ctx, x, y, w, h, r);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke(); }
+}
+
+// ========================= HERO =========================
+(function initHero() {
+  const { canvas, ctx, w, h } = initCanvas('hero-canvas', $('hero'));
+  const particles = [];
+  const count = 70;
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: Math.random() * w, y: Math.random() * h,
+      vx: (Math.random() - 0.5) * 0.5, vy: (Math.random() - 0.5) * 0.5,
+      r: Math.random() * 2 + 0.5,
+      alpha: Math.random() * 0.4 + 0.1
+    });
+  }
+  let active = true;
+  function draw() {
+    if (!active) { requestAnimationFrame(draw); return; }
+    ctx.clearRect(0, 0, w, h);
+    // Faint grid
+    ctx.strokeStyle = 'rgba(0,212,106,0.03)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < w; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+    for (let y = 0; y < h; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+    // Particles
+    for (const p of particles) {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0 || p.x > w) p.vx *= -1;
+      if (p.y < 0 || p.y > h) p.vy *= -1;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(0,200,230,${p.alpha})`;
+      ctx.fill();
+    }
+    // Connections
+    for (let i = 0; i < count; i++) {
+      for (let j = i + 1; j < count; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < 120) {
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.strokeStyle = `rgba(0,212,106,${0.08 * (1 - d / 120)})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+  observeSection('hero', vis => { active = vis; });
+})();
+
+// ========================= SECTION 2: GPU MEMORY PROBLEM =========================
+(function initProblem() {
+  let inited = false;
+  const GPU_MEM = 16;
+  const MODEL_MEM = 2.5;
+  const OPT_MEM = 5.0;
+  const GRAD_MEM = 2.5;
+  const FIXED = MODEL_MEM + OPT_MEM + GRAD_MEM;
+
+  function actMem(batch) { return batch * 0.08; }
+
+  const slider = $('prob-batch');
+  const valEl = $('prob-batch-val');
+
+  function setup() {
+    const { ctx, w, h } = initCanvas('canvas-problem');
+    return { ctx, w, h };
+  }
+
+  function draw() {
+    const { ctx, w, h } = setup();
+    const batch = parseInt(slider.value);
+    valEl.textContent = batch;
+    const act = actMem(batch);
+    const total = FIXED + act;
+    const oom = total > GPU_MEM;
+
+    const barX = 80, barW = w - 160, barY = 60, barH = h - 140;
+    const maxDisplay = Math.max(GPU_MEM * 1.3, total * 1.1);
+
+    // Background
+    ctx.fillStyle = '#0d0d0d';
+    ctx.fillRect(0, 0, w, h);
+
+    // Title
+    ctx.fillStyle = '#f2f2f2';
+    ctx.font = '600 16px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText('GPU Memory Usage', w / 2, 35);
+
+    // GPU limit line
+    const limitY = barY + barH * (1 - GPU_MEM / maxDisplay);
+    ctx.setLineDash([8, 4]);
+    ctx.strokeStyle = oom ? 'rgba(255,77,106,0.8)' : 'rgba(0,200,230,0.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(barX - 20, limitY);
+    ctx.lineTo(barX + barW + 20, limitY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = '600 12px JetBrains Mono';
+    ctx.fillStyle = oom ? '#ff4d6a' : '#00c8e6';
+    ctx.textAlign = 'right';
+    ctx.fillText(GPU_MEM + ' GB limit', barX - 25, limitY + 4);
+
+    // Memory bar background
+    drawRoundRect(ctx, barX, barY, barW, barH, 8, 'rgba(255,255,255,0.03)', 'rgba(255,255,255,0.08)');
+
+    // Draw segments
+    const segments = [
+      { label: 'Model Params', mem: MODEL_MEM, color: '#00c8e6' },
+      { label: 'Optimizer States', mem: OPT_MEM, color: '#a855f7' },
+      { label: 'Gradients', mem: GRAD_MEM, color: '#00d46a' },
+      { label: 'Activations', mem: act, color: '#ff9f43' }
+    ];
+
+    let cumY = barY + barH;
+    for (const seg of segments) {
+      const segH = (seg.mem / maxDisplay) * barH;
+      cumY -= segH;
+      const clippedY = Math.max(barY, cumY);
+      const clippedH = Math.min(segH, barY + barH - clippedY);
+      if (clippedH > 0) {
+        ctx.save();
+        roundRect(ctx, barX, barY, barW, barH, 8);
+        ctx.clip();
+        ctx.fillStyle = seg.color;
+        ctx.globalAlpha = 0.3;
+        ctx.fillRect(barX, clippedY, barW, clippedH);
+        ctx.globalAlpha = 1;
+        // Label
+        if (clippedH > 18) {
+          ctx.fillStyle = seg.color;
+          ctx.font = '600 12px Inter';
+          ctx.textAlign = 'center';
+          ctx.fillText(seg.label + ' (' + seg.mem.toFixed(1) + ' GB)', barX + barW / 2, clippedY + clippedH / 2 + 4);
+        }
+        ctx.restore();
+      }
+    }
+
+    // Total label
+    ctx.fillStyle = oom ? '#ff4d6a' : '#f2f2f2';
+    ctx.font = '700 14px JetBrains Mono';
+    ctx.textAlign = 'center';
+    const totalY = barY + barH * (1 - total / maxDisplay);
+    ctx.fillText('Total: ' + total.toFixed(1) + ' GB', barX + barW / 2, Math.min(totalY - 10, limitY - 25));
+
+    // OOM indicator
+    if (oom) {
+      ctx.save();
+      ctx.shadowColor = '#ff4d6a';
+      ctx.shadowBlur = 30;
+      ctx.fillStyle = '#ff4d6a';
+      ctx.font = '800 32px Inter';
+      ctx.textAlign = 'center';
+      ctx.fillText('OOM!', barX + barW / 2, barY + barH / 2);
+      ctx.font = '500 14px Inter';
+      ctx.fillText('CUDA out of memory', barX + barW / 2, barY + barH / 2 + 30);
+      ctx.restore();
+    }
+
+    // Right side: legend
+    const legX = barX + barW + 40;
+    ctx.font = '500 11px Inter';
+    ctx.textAlign = 'left';
+    segments.forEach((seg, i) => {
+      const ly = barY + 20 + i * 28;
+      ctx.fillStyle = seg.color;
+      ctx.fillRect(legX, ly - 5, 12, 12);
+      ctx.fillStyle = '#999';
+      ctx.fillText(seg.label, legX + 18, ly + 5);
+    });
+  }
+
+  slider.addEventListener('input', draw);
+  observeSection('section-problem', vis => {
+    if (vis && !inited) { inited = true; draw(); }
+  });
+  // Initial draw after short delay
+  setTimeout(draw, 100);
+})();
+
+// ========================= SECTION 3: CORE IDEA =========================
+(function initCore() {
+  let inited = false, playing = false, phase = 0, timer = 0;
+  let c;
+  const PHASES = ['Big batch appears', 'Split into micro-batches', 'Process & accumulate gradients', 'Divide by N + optimizer step', 'Done!'];
+  const phaseEl = $('core-phase');
+  const playBtn = $('core-play');
+  const resetBtn = $('core-reset');
+  const N = 4;
+  let microX = [], microTargetX = [];
+  let gradFill = 0, dividing = false, optimStep = false;
+  let animT = 0;
+
+  function setup() {
+    c = initCanvas('canvas-core');
+    return c;
+  }
+
+  function reset() {
+    phase = 0; timer = 0; playing = false; gradFill = 0; dividing = false; optimStep = false; animT = 0;
+    microX = []; microTargetX = [];
+    phaseEl.textContent = 'Phase: Ready';
+    playBtn.innerHTML = '&#9654;';
+    if (c) drawFrame();
+  }
+
+  function drawFrame() {
+    if (!c) return;
+    const { ctx, w, h } = c;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#0d0d0d';
+    ctx.fillRect(0, 0, w, h);
+
+    const cx = w / 2, cy = h / 2;
+    const batchW = 300, batchH = 50, microW = batchW / N - 8;
+
+    // Phase label
+    ctx.fillStyle = '#00d46a';
+    ctx.font = '600 14px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText(PHASES[phase] || 'Ready', cx, 30);
+
+    if (phase === 0) {
+      // Big batch
+      const alpha = clamp(animT / 90, 0, 1);
+      ctx.globalAlpha = alpha;
+      drawRoundRect(ctx, cx - batchW / 2, 60, batchW, batchH, 8, 'rgba(0,200,230,0.2)', '#00c8e6');
+      ctx.fillStyle = '#00c8e6';
+      ctx.font = '600 14px Inter';
+      ctx.fillText('Full Batch (B = ' + (N * 8) + ')', cx, 60 + batchH / 2 + 5);
+      ctx.globalAlpha = 1;
+    } else if (phase === 1) {
+      // Splitting animation
+      const t = clamp(animT / 120, 0, 1);
+      const gap = 12;
+      const totalW = N * microW + (N - 1) * gap;
+      const startX = cx - totalW / 2;
+      const colors = ['#00c8e6', '#00d46a', '#a855f7', '#ff9f43'];
+      for (let i = 0; i < N; i++) {
+        const targetX = startX + i * (microW + gap);
+        const fromX = cx - microW / 2;
+        const x = lerp(fromX, targetX, t);
+        const y = lerp(60, 80 + i * 8, t);
+        drawRoundRect(ctx, x, y, microW, 40, 6, colors[i] + '33', colors[i]);
+        ctx.fillStyle = colors[i];
+        ctx.font = '600 11px JetBrains Mono';
+        ctx.textAlign = 'center';
+        ctx.fillText('MB ' + (i + 1), x + microW / 2, y + 24);
+      }
+    } else if (phase === 2) {
+      // Process each micro-batch
+      const colors = ['#00c8e6', '#00d46a', '#a855f7', '#ff9f43'];
+      const mbIdx = Math.min(Math.floor(animT / 150), N - 1);
+      const mbT = (animT % 150) / 150;
+      const gap = 12;
+      const totalW = N * microW + (N - 1) * gap;
+      const startX = cx - totalW / 2;
+
+      // Draw micro-batches at top
+      for (let i = 0; i < N; i++) {
+        const x = startX + i * (microW + gap);
+        const alpha = i <= mbIdx ? (i < mbIdx ? 0.3 : 1) : 0.6;
+        ctx.globalAlpha = alpha;
+        drawRoundRect(ctx, x, 60, microW, 36, 6, colors[i] + '33', colors[i]);
+        ctx.fillStyle = colors[i];
+        ctx.font = '600 10px JetBrains Mono';
+        ctx.textAlign = 'center';
+        ctx.fillText('MB ' + (i + 1), x + microW / 2, 82);
+        ctx.globalAlpha = 1;
+      }
+
+      // Model box
+      drawRoundRect(ctx, cx - 100, 140, 200, 60, 10, 'rgba(0,200,230,0.08)', 'rgba(0,200,230,0.3)');
+      ctx.fillStyle = '#00c8e6';
+      ctx.font = '600 14px Inter';
+      ctx.textAlign = 'center';
+      ctx.fillText('Model', cx, 175);
+
+      // Arrow from current micro-batch to model
+      if (mbT < 0.5) {
+        const arrowY = lerp(100, 138, mbT * 2);
+        ctx.strokeStyle = colors[mbIdx];
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(startX + mbIdx * (microW + gap) + microW / 2, 96);
+        ctx.lineTo(cx, arrowY);
+        ctx.stroke();
+        // Arrowhead
+        ctx.fillStyle = colors[mbIdx];
+        ctx.beginPath();
+        ctx.moveTo(cx - 5, arrowY - 5);
+        ctx.lineTo(cx + 5, arrowY - 5);
+        ctx.lineTo(cx, arrowY + 2);
+        ctx.fill();
+      }
+
+      // Gradient buffer
+      drawRoundRect(ctx, cx - 120, 240, 240, 50, 10, 'rgba(0,212,106,0.05)', 'rgba(0,212,106,0.3)');
+      ctx.fillStyle = '#999';
+      ctx.font = '500 12px Inter';
+      ctx.textAlign = 'center';
+      ctx.fillText('Gradient Buffer', cx, 270);
+
+      // Fill progress
+      const fill = (mbIdx + (mbT > 0.5 ? 1 : 0)) / N;
+      if (fill > 0) {
+        ctx.save();
+        roundRect(ctx, cx - 118, 242, 236, 46, 8);
+        ctx.clip();
+        ctx.fillStyle = 'rgba(0,212,106,0.2)';
+        ctx.fillRect(cx - 118, 242, 236 * fill, 46);
+        ctx.restore();
+      }
+
+      // Arrow from model to buffer
+      if (mbT > 0.5) {
+        ctx.strokeStyle = '#00d46a';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(cx, 200);
+        ctx.lineTo(cx, 238);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Label
+      ctx.fillStyle = '#999';
+      ctx.font = '500 12px Inter';
+      ctx.fillText('Processing micro-batch ' + (mbIdx + 1) + ' / ' + N, cx, h - 40);
+
+    } else if (phase === 3) {
+      // Division + optimizer step
+      const t = clamp(animT / 180, 0, 1);
+
+      // Gradient buffer full
+      drawRoundRect(ctx, cx - 120, 100, 240, 50, 10, 'rgba(0,212,106,0.2)', '#00d46a');
+      ctx.fillStyle = '#00d46a';
+      ctx.font = '600 14px JetBrains Mono';
+      ctx.textAlign = 'center';
+      ctx.fillText('g_accum', cx, 130);
+
+      // Division arrow
+      if (t > 0.2) {
+        ctx.strokeStyle = '#a855f7';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, 152);
+        ctx.lineTo(cx, 185);
+        ctx.stroke();
+        ctx.fillStyle = '#a855f7';
+        ctx.font = '700 16px JetBrains Mono';
+        ctx.fillText('÷ ' + N, cx + 30, 173);
+      }
+
+      // Averaged gradient
+      if (t > 0.4) {
+        drawRoundRect(ctx, cx - 120, 190, 240, 50, 10, 'rgba(168,85,247,0.15)', '#a855f7');
+        ctx.fillStyle = '#a855f7';
+        ctx.font = '600 14px JetBrains Mono';
+        ctx.fillText('g_final = g_accum / ' + N, cx, 220);
+      }
+
+      // Optimizer step
+      if (t > 0.6) {
+        ctx.strokeStyle = '#ff9f43';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, 242);
+        ctx.lineTo(cx, 275);
+        ctx.stroke();
+
+        drawRoundRect(ctx, cx - 100, 280, 200, 50, 10, 'rgba(255,159,67,0.15)', '#ff9f43');
+        ctx.fillStyle = '#ff9f43';
+        ctx.font = '600 14px Inter';
+        ctx.fillText('optimizer.step()', cx, 310);
+      }
+
+      // Weights updated
+      if (t > 0.85) {
+        ctx.save();
+        ctx.shadowColor = '#00d46a';
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = '#00d46a';
+        ctx.font = '700 18px Inter';
+        ctx.fillText('Weights Updated!', cx, 370);
+        ctx.restore();
+      }
+
+    } else if (phase === 4) {
+      ctx.save();
+      ctx.shadowColor = '#00d46a';
+      ctx.shadowBlur = 30;
+      ctx.fillStyle = '#00d46a';
+      ctx.font = '700 24px Inter';
+      ctx.textAlign = 'center';
+      ctx.fillText('One full accumulation cycle complete!', cx, cy);
+      ctx.restore();
+      ctx.fillStyle = '#999';
+      ctx.font = '500 14px Inter';
+      ctx.fillText('Equivalent to training with batch size ' + (N * 8), cx, cy + 35);
+    }
+  }
+
+  function animate() {
+    if (!playing) return;
+    animT++;
+    const phaseDurations = [100, 130, N * 150 + 30, 200, 120];
+    if (animT >= phaseDurations[phase]) {
+      if (phase < 4) { phase++; animT = 0; }
+      else { playing = false; playBtn.innerHTML = '&#9654;'; }
+    }
+    phaseEl.textContent = 'Phase: ' + PHASES[phase];
+    drawFrame();
+    if (playing) requestAnimationFrame(animate);
+  }
+
+  playBtn.addEventListener('click', () => {
+    if (phase >= 4) reset();
+    playing = !playing;
+    playBtn.innerHTML = playing ? '&#9646;&#9646;' : '&#9654;';
+    if (playing) animate();
+  });
+
+  resetBtn.addEventListener('click', reset);
+
+  observeSection('section-core', vis => {
+    if (vis && !inited) { inited = true; setup(); drawFrame(); }
+  });
+})();
+
+// ========================= SECTION 4: FULL TRAINING LOOP =========================
+(function initLoop() {
+  let inited = false, playing = false;
+  let c;
+  let accumSteps = 4, speed = 1;
+  let microIdx = 0, subPhase = 0, animT = 0, optimizerDone = false;
+  // subPhase: 0=forward, 1=loss, 2=backward, 3=accumulate, 4=check/optim
+  const playBtn = $('loop-play');
+  const stepBtn = $('loop-step-btn');
+  const resetBtn = $('loop-reset');
+  const stepEl = $('loop-step');
+  const accumSel = $('loop-accum');
+  const speedSel = $('loop-speed');
+  const colors = ['#00c8e6', '#00d46a', '#a855f7', '#ff9f43', '#ff4d6a', '#e879f9', '#38bdf8', '#facc15'];
+
+  function setup() { c = initCanvas('canvas-loop'); }
+
+  function reset() {
+    microIdx = 0; subPhase = 0; animT = 0; playing = false; optimizerDone = false;
+    accumSteps = parseInt(accumSel.value);
+    speed = parseInt(speedSel.value);
+    playBtn.innerHTML = '&#9654;';
+    updateLabel();
+    if (c) drawFrame();
+  }
+
+  function updateLabel() {
+    if (optimizerDone) stepEl.textContent = 'Optimizer step complete!';
+    else stepEl.textContent = 'Micro-batch: ' + microIdx + ' / ' + accumSteps + '  Phase: ' + ['Forward', 'Loss', 'Backward', 'Accumulate', 'Check'][subPhase];
+  }
+
+  function drawFrame() {
+    if (!c) return;
+    const { ctx, w, h } = c;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#0d0d0d';
+    ctx.fillRect(0, 0, w, h);
+
+    const cx = w / 2;
+    const queueY = 30, modelY = 120, bufferY = 300, optimY = 400;
+
+    // Micro-batch queue
+    ctx.fillStyle = '#999';
+    ctx.font = '600 12px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText('Micro-batch Queue', cx, queueY);
+
+    const mbW = Math.min(50, (w - 100) / accumSteps - 8);
+    const totalQW = accumSteps * mbW + (accumSteps - 1) * 6;
+    const qStartX = cx - totalQW / 2;
+
+    for (let i = 0; i < accumSteps; i++) {
+      const x = qStartX + i * (mbW + 6);
+      const done = i < microIdx;
+      const current = i === microIdx && !optimizerDone;
+      const col = colors[i % colors.length];
+      ctx.globalAlpha = done ? 0.3 : current ? 1 : 0.6;
+      drawRoundRect(ctx, x, queueY + 10, mbW, 32, 4, col + '33', col);
+      ctx.fillStyle = col;
+      ctx.font = '600 9px JetBrains Mono';
+      ctx.fillText('' + (i + 1), x + mbW / 2, queueY + 30);
+      ctx.globalAlpha = 1;
+    }
+
+    // Model box
+    const modelW = 220, modelH = 80;
+    drawRoundRect(ctx, cx - modelW / 2, modelY, modelW, modelH, 12, 'rgba(0,200,230,0.06)', 'rgba(0,200,230,0.3)');
+    ctx.fillStyle = '#00c8e6';
+    ctx.font = '600 16px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText('Model', cx, modelY + 30);
+
+    // Layer stack inside model
+    const layerNames = ['Linear', 'ReLU', 'Linear'];
+    layerNames.forEach((name, i) => {
+      const ly = modelY + 40 + i * 14;
+      ctx.fillStyle = 'rgba(0,200,230,0.15)';
+      ctx.fillRect(cx - 80, ly, 160, 11);
+      ctx.fillStyle = '#00c8e6';
+      ctx.font = '500 8px JetBrains Mono';
+      ctx.fillText(name, cx, ly + 9);
+    });
+
+    // Animated flow arrow (forward or backward)
+    if (!optimizerDone && microIdx < accumSteps) {
+      const t = clamp(animT / 75, 0, 1);
+      if (subPhase === 0) {
+        // Forward arrow down from queue to model
+        const arrowY = lerp(queueY + 44, modelY - 2, t);
+        ctx.strokeStyle = colors[microIdx % colors.length];
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, queueY + 44);
+        ctx.lineTo(cx, arrowY);
+        ctx.stroke();
+        ctx.fillStyle = colors[microIdx % colors.length];
+        ctx.font = '500 11px Inter';
+        ctx.fillText('Forward →', cx + 60, (queueY + 44 + modelY) / 2);
+      } else if (subPhase === 1) {
+        // Loss computation
+        const lx = cx + modelW / 2 + 30;
+        drawRoundRect(ctx, lx, modelY + 15, 80, 30, 6, 'rgba(255,77,106,0.15)', '#ff4d6a');
+        ctx.fillStyle = '#ff4d6a';
+        ctx.font = '600 11px Inter';
+        ctx.fillText('Loss / N', lx + 40, modelY + 34);
+      } else if (subPhase === 2) {
+        // Backward arrow from model to buffer
+        const arrowY = lerp(modelY + modelH + 2, bufferY - 2, t);
+        ctx.strokeStyle = '#ff9f43';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(cx, modelY + modelH + 2);
+        ctx.lineTo(cx, arrowY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#ff9f43';
+        ctx.font = '500 11px Inter';
+        ctx.fillText('← Backward', cx + 60, (modelY + modelH + bufferY) / 2);
+      }
+    }
+
+    // Gradient buffer
+    const bufW = 280, bufH = 50;
+    drawRoundRect(ctx, cx - bufW / 2, bufferY, bufW, bufH, 10, 'rgba(0,212,106,0.05)', 'rgba(0,212,106,0.3)');
+    ctx.fillStyle = '#999';
+    ctx.font = '600 12px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText('Gradient Accumulation Buffer', cx, bufferY + bufH / 2 + 4);
+
+    // Fill level
+    const fillFrac = clamp(microIdx / accumSteps + (subPhase >= 3 && !optimizerDone ? 0 : 0), 0, 1);
+    if (fillFrac > 0) {
+      ctx.save();
+      roundRect(ctx, cx - bufW / 2 + 2, bufferY + 2, bufW - 4, bufH - 4, 8);
+      ctx.clip();
+      ctx.fillStyle = 'rgba(0,212,106,0.15)';
+      ctx.fillRect(cx - bufW / 2 + 2, bufferY + 2, (bufW - 4) * fillFrac, bufH - 4);
+      ctx.restore();
+    }
+
+    // Fill text
+    ctx.fillStyle = '#00d46a';
+    ctx.font = '600 11px JetBrains Mono';
+    ctx.fillText(Math.round(fillFrac * 100) + '%', cx + bufW / 2 + 25, bufferY + bufH / 2 + 4);
+
+    // Optimizer step area
+    if (optimizerDone || (microIdx >= accumSteps && subPhase >= 4)) {
+      const t2 = clamp(animT / 90, 0, 1);
+      ctx.globalAlpha = t2;
+
+      // Division
+      ctx.fillStyle = '#a855f7';
+      ctx.font = '700 14px JetBrains Mono';
+      ctx.fillText('÷ ' + accumSteps, cx, bufferY + bufH + 25);
+
+      // Optimizer step box
+      drawRoundRect(ctx, cx - 100, optimY, 200, 45, 10, 'rgba(255,159,67,0.15)', '#ff9f43');
+      ctx.fillStyle = '#ff9f43';
+      ctx.font = '600 14px Inter';
+      ctx.fillText('optimizer.step()', cx, optimY + 27);
+
+      // zero_grad
+      drawRoundRect(ctx, cx - 100, optimY + 55, 200, 35, 10, 'rgba(0,212,106,0.1)', '#00d46a');
+      ctx.fillStyle = '#00d46a';
+      ctx.font = '600 12px Inter';
+      ctx.fillText('optimizer.zero_grad()', cx, optimY + 76);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function advance() {
+    animT++;
+    if (optimizerDone) return;
+
+    const phaseDur = [90, 60, 90, 45, 100];
+    if (animT >= phaseDur[subPhase] / speed) {
+      animT = 0;
+      subPhase++;
+      if (subPhase === 3) {
+        // After accumulate, move to next micro-batch or check
+        microIdx++;
+      }
+      if (subPhase > 3) {
+        if (microIdx >= accumSteps) {
+          subPhase = 4;
+          optimizerDone = true;
+        } else {
+          subPhase = 0;
+        }
+      }
+      updateLabel();
+    }
+    drawFrame();
+  }
+
+  function animate() {
+    if (!playing) return;
+    advance();
+    if (playing) requestAnimationFrame(animate);
+  }
+
+  playBtn.addEventListener('click', () => {
+    accumSteps = parseInt(accumSel.value);
+    speed = parseInt(speedSel.value);
+    if (optimizerDone) reset();
+    playing = !playing;
+    playBtn.innerHTML = playing ? '&#9646;&#9646;' : '&#9654;';
+    if (playing) animate();
+  });
+
+  stepBtn.addEventListener('click', () => {
+    accumSteps = parseInt(accumSel.value);
+    speed = parseInt(speedSel.value);
+    playing = false;
+    playBtn.innerHTML = '&#9654;';
+    // Advance one sub-phase instantly
+    animT = 999;
+    advance();
+    drawFrame();
+  });
+
+  resetBtn.addEventListener('click', reset);
+  accumSel.addEventListener('change', reset);
+
+  observeSection('section-loop', vis => {
+    if (vis && !inited) { inited = true; setup(); drawFrame(); }
+  });
+})();
+
+// ========================= SECTION 6: CODE WALKTHROUGH =========================
+(function initCode() {
+  let inited = false, playing = false;
+  let c;
+  let codeStep = -1, animT = 0;
+  const playBtn = $('code-play');
+  const stepBtn = $('code-step-btn');
+  const resetBtn = $('code-reset');
+  const stepEl = $('code-step');
+  const allLines = document.querySelectorAll('.code-line');
+  const N = 4;
+  let microIdx = 0;
+
+  // Code step sequence: each entry = [lineNumbers[], description, microIdx]
+  const sequence = [
+    [[1], 'Set accumulation_steps = 4', 0],
+    [[2], 'Zero gradients', 0],
+    [[4], 'Loop: micro-batch 1', 0],
+    [[5, 6], 'Forward pass', 0],
+    [[7], 'Compute loss / N', 0],
+    [[9, 10], 'Backward pass (accumulate)', 0],
+    [[12], 'Check: (1) % 4 != 0, skip', 0],
+    [[4], 'Loop: micro-batch 2', 1],
+    [[5, 6], 'Forward pass', 1],
+    [[7], 'Compute loss / N', 1],
+    [[9, 10], 'Backward pass (accumulate)', 1],
+    [[12], 'Check: (2) % 4 != 0, skip', 1],
+    [[4], 'Loop: micro-batch 3', 2],
+    [[5, 6], 'Forward pass', 2],
+    [[7], 'Compute loss / N', 2],
+    [[9, 10], 'Backward pass (accumulate)', 2],
+    [[12], 'Check: (3) % 4 != 0, skip', 2],
+    [[4], 'Loop: micro-batch 4', 3],
+    [[5, 6], 'Forward pass', 3],
+    [[7], 'Compute loss / N', 3],
+    [[9, 10], 'Backward pass (accumulate)', 3],
+    [[12], 'Check: (4) % 4 == 0!', 3],
+    [[13, 14], 'optimizer.step()', 3],
+    [[15], 'optimizer.zero_grad()', 3],
+  ];
+
+  function setup() { c = initCanvas('canvas-code'); }
+
+  function highlightLines(lines) {
+    allLines.forEach(l => l.classList.remove('active'));
+    lines.forEach(ln => {
+      allLines.forEach(l => {
+        if (parseInt(l.dataset.line) === ln) l.classList.add('active');
+      });
+    });
+  }
+
+  function reset() {
+    codeStep = -1; animT = 0; playing = false; microIdx = 0;
+    playBtn.innerHTML = '&#9654;';
+    stepEl.textContent = 'Ready';
+    allLines.forEach(l => l.classList.remove('active'));
+    if (c) drawFrame();
+  }
+
+  function drawFrame() {
+    if (!c) return;
+    const { ctx, w, h } = c;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#0d0d0d';
+    ctx.fillRect(0, 0, w, h);
+
+    const cx = w / 2, cy = h / 2;
+    const colors = ['#00c8e6', '#00d46a', '#a855f7', '#ff9f43'];
+
+    if (codeStep < 0) {
+      ctx.fillStyle = '#666';
+      ctx.font = '500 14px Inter';
+      ctx.textAlign = 'center';
+      ctx.fillText('Press Play or Step to begin', cx, cy);
+      return;
+    }
+
+    const entry = sequence[codeStep];
+    if (!entry) return;
+    const desc = entry[1];
+    const mi = entry[2];
+    const col = colors[mi % colors.length];
+
+    // Title
+    ctx.fillStyle = col;
+    ctx.font = '600 14px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText(desc, cx, 30);
+
+    // Gradient buffer visualization
+    const bufX = 30, bufY = h - 100, bufW = w - 60, bufH = 40;
+    drawRoundRect(ctx, bufX, bufY, bufW, bufH, 8, 'rgba(0,212,106,0.05)', 'rgba(0,212,106,0.3)');
+    ctx.fillStyle = '#999';
+    ctx.font = '500 11px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText('Gradient Buffer', cx, bufY - 8);
+
+    // Determine fill from completed micro-batches
+    let completed = 0;
+    for (let i = 0; i <= codeStep; i++) {
+      if (sequence[i][1].includes('Backward')) completed++;
+    }
+    // Check if zero_grad happened
+    const zeroed = codeStep >= sequence.length - 1;
+    const fill = zeroed ? 0 : completed / N;
+    if (fill > 0) {
+      ctx.save();
+      roundRect(ctx, bufX + 2, bufY + 2, bufW - 4, bufH - 4, 6);
+      ctx.clip();
+      ctx.fillStyle = 'rgba(0,212,106,0.2)';
+      ctx.fillRect(bufX + 2, bufY + 2, (bufW - 4) * fill, bufH - 4);
+      ctx.restore();
+    }
+    ctx.fillStyle = '#00d46a';
+    ctx.font = '600 11px JetBrains Mono';
+    ctx.fillText(Math.round(fill * 100) + '%', cx, bufY + bufH / 2 + 4);
+
+    // Micro-batch indicator
+    const mbW = 40, gap = 8;
+    const totalQW = N * mbW + (N - 1) * gap;
+    const startX = cx - totalQW / 2;
+    for (let i = 0; i < N; i++) {
+      const x = startX + i * (mbW + gap);
+      const isCurrent = i === mi;
+      ctx.globalAlpha = i < completed && !zeroed ? 0.3 : isCurrent ? 1 : 0.5;
+      drawRoundRect(ctx, x, 55, mbW, 28, 4, colors[i] + '33', colors[i]);
+      ctx.fillStyle = colors[i];
+      ctx.font = '600 9px JetBrains Mono';
+      ctx.textAlign = 'center';
+      ctx.fillText('MB' + (i + 1), x + mbW / 2, 73);
+      ctx.globalAlpha = 1;
+    }
+
+    // Model
+    const modelW = 160, modelH = 60;
+    drawRoundRect(ctx, cx - modelW / 2, 110, modelW, modelH, 10, 'rgba(0,200,230,0.06)', 'rgba(0,200,230,0.3)');
+    ctx.fillStyle = '#00c8e6';
+    ctx.font = '600 14px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText('Model', cx, 145);
+
+    // Action visualization
+    const actionY = 200;
+    if (desc.includes('Forward')) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx, 90); ctx.lineTo(cx, 108); ctx.stroke();
+      ctx.fillStyle = col;
+      ctx.font = '500 12px Inter';
+      ctx.fillText('Forward Pass', cx, actionY);
+      // Arrow through model
+      ctx.strokeStyle = col;
+      ctx.beginPath(); ctx.moveTo(cx, 172); ctx.lineTo(cx, actionY + 12); ctx.stroke();
+    } else if (desc.includes('loss')) {
+      drawRoundRect(ctx, cx - 70, actionY - 5, 140, 30, 6, 'rgba(255,77,106,0.15)', '#ff4d6a');
+      ctx.fillStyle = '#ff4d6a';
+      ctx.font = '600 12px JetBrains Mono';
+      ctx.fillText('loss = L / ' + N, cx, actionY + 14);
+    } else if (desc.includes('Backward')) {
+      ctx.strokeStyle = '#ff9f43';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(cx, 172); ctx.lineTo(cx, bufY - 20); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#ff9f43';
+      ctx.font = '500 12px Inter';
+      ctx.fillText('Backward + Accumulate', cx, actionY + 20);
+    } else if (desc.includes('step()')) {
+      ctx.save();
+      ctx.shadowColor = '#ff9f43';
+      ctx.shadowBlur = 15;
+      drawRoundRect(ctx, cx - 80, actionY, 160, 35, 8, 'rgba(255,159,67,0.2)', '#ff9f43');
+      ctx.fillStyle = '#ff9f43';
+      ctx.font = '700 14px Inter';
+      ctx.fillText('optimizer.step()', cx, actionY + 22);
+      ctx.restore();
+    } else if (desc.includes('zero_grad')) {
+      ctx.save();
+      ctx.shadowColor = '#00d46a';
+      ctx.shadowBlur = 15;
+      drawRoundRect(ctx, cx - 90, actionY, 180, 35, 8, 'rgba(0,212,106,0.15)', '#00d46a');
+      ctx.fillStyle = '#00d46a';
+      ctx.font = '700 14px Inter';
+      ctx.fillText('Gradients Cleared!', cx, actionY + 22);
+      ctx.restore();
+    } else if (desc.includes('skip')) {
+      ctx.fillStyle = '#666';
+      ctx.font = '500 12px Inter';
+      ctx.fillText('Not yet N steps — continue accumulating', cx, actionY + 10);
+    } else if (desc.includes('== 0')) {
+      ctx.save();
+      ctx.shadowColor = '#00d46a';
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#00d46a';
+      ctx.font = '700 14px Inter';
+      ctx.fillText('N micro-batches done! Time to update.', cx, actionY + 10);
+      ctx.restore();
+    }
+  }
+
+  function advanceStep() {
+    codeStep++;
+    if (codeStep >= sequence.length) {
+      playing = false;
+      playBtn.innerHTML = '&#9654;';
+      stepEl.textContent = 'Done!';
+      return;
+    }
+    const entry = sequence[codeStep];
+    highlightLines(entry[0]);
+    stepEl.textContent = 'Step ' + (codeStep + 1) + '/' + sequence.length + ': ' + entry[1];
+    drawFrame();
+  }
+
+  function animate() {
+    if (!playing) return;
+    animT++;
+    if (animT >= 120) {
+      animT = 0;
+      advanceStep();
+    }
+    if (playing) requestAnimationFrame(animate);
+  }
+
+  playBtn.addEventListener('click', () => {
+    if (codeStep >= sequence.length - 1) reset();
+    playing = !playing;
+    playBtn.innerHTML = playing ? '&#9646;&#9646;' : '&#9654;';
+    if (playing) { animT = 0; animate(); }
+  });
+
+  stepBtn.addEventListener('click', () => {
+    playing = false;
+    playBtn.innerHTML = '&#9654;';
+    advanceStep();
+  });
+
+  resetBtn.addEventListener('click', reset);
+
+  observeSection('section-code', vis => {
+    if (vis && !inited) { inited = true; setup(); drawFrame(); }
+  });
+})();
+
+// ========================= SECTION 7: MEMORY COMPARISON =========================
+(function initMemory() {
+  let inited = false;
+  const batchSlider = $('mem-batch');
+  const batchVal = $('mem-batch-val');
+  const accumSel = $('mem-accum');
+
+  function draw() {
+    const { ctx, w, h } = initCanvas('canvas-memory');
+    const effBatch = parseInt(batchSlider.value);
+    const accumSteps = parseInt(accumSel.value);
+    const microBatch = effBatch / accumSteps;
+    batchVal.textContent = effBatch;
+
+    ctx.fillStyle = '#0d0d0d';
+    ctx.fillRect(0, 0, w, h);
+
+    const GPU_MEM = 16;
+    const MODEL = 2.5, OPT = 5.0, GRAD = 2.5;
+    const naiveAct = effBatch * 0.08;
+    const accumAct = microBatch * 0.08;
+    const naiveTotal = MODEL + OPT + GRAD + naiveAct;
+    const accumTotal = MODEL + OPT + GRAD + accumAct;
+    const maxMem = Math.max(GPU_MEM * 1.3, naiveTotal * 1.1);
+
+    const barW = (w - 160) / 2 - 30;
+    const barH = h - 140;
+    const barY = 70;
+
+    // Titles
+    ctx.font = '600 14px Inter';
+    ctx.textAlign = 'center';
+
+    // Naive bar
+    const naiveX = 60;
+    ctx.fillStyle = naiveTotal > GPU_MEM ? '#ff4d6a' : '#f2f2f2';
+    ctx.fillText('Naive (batch=' + effBatch + ')', naiveX + barW / 2, 40);
+
+    // Accum bar
+    const accumX = w / 2 + 20;
+    ctx.fillStyle = '#00d46a';
+    ctx.fillText('Grad Accum (' + accumSteps + '×' + Math.round(microBatch) + ')', accumX + barW / 2, 40);
+
+    // GPU limit
+    const limitY = barY + barH * (1 - GPU_MEM / maxMem);
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(40, limitY);
+    ctx.lineTo(w - 40, limitY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#999';
+    ctx.font = '600 11px JetBrains Mono';
+    ctx.textAlign = 'left';
+    ctx.fillText(GPU_MEM + ' GB', 5, limitY + 4);
+
+    function drawBar(x, segments, total) {
+      const oom = total > GPU_MEM;
+      drawRoundRect(ctx, x, barY, barW, barH, 8, 'rgba(255,255,255,0.02)', 'rgba(255,255,255,0.06)');
+
+      let cumY = barY + barH;
+      for (const seg of segments) {
+        const segH = (seg.mem / maxMem) * barH;
+        cumY -= segH;
+        ctx.save();
+        roundRect(ctx, x, barY, barW, barH, 8);
+        ctx.clip();
+        ctx.fillStyle = seg.color;
+        ctx.globalAlpha = 0.3;
+        ctx.fillRect(x, Math.max(barY, cumY), barW, segH);
+        ctx.globalAlpha = 1;
+        if (segH > 16) {
+          ctx.fillStyle = seg.color;
+          ctx.font = '500 10px Inter';
+          ctx.textAlign = 'center';
+          ctx.fillText(seg.label + ' ' + seg.mem.toFixed(1) + 'G', x + barW / 2, Math.max(barY + 10, cumY) + segH / 2 + 3);
+        }
+        ctx.restore();
+      }
+
+      // Total
+      ctx.fillStyle = oom ? '#ff4d6a' : '#f2f2f2';
+      ctx.font = '700 13px JetBrains Mono';
+      ctx.textAlign = 'center';
+      ctx.fillText(total.toFixed(1) + ' GB', x + barW / 2, barY + barH + 25);
+
+      if (oom) {
+        ctx.save();
+        ctx.shadowColor = '#ff4d6a';
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = '#ff4d6a';
+        ctx.font = '800 20px Inter';
+        ctx.fillText('OOM!', x + barW / 2, barY + barH / 2);
+        ctx.restore();
+      }
+    }
+
+    const naiveSegs = [
+      { label: 'Model', mem: MODEL, color: '#00c8e6' },
+      { label: 'Optim', mem: OPT, color: '#a855f7' },
+      { label: 'Grads', mem: GRAD, color: '#00d46a' },
+      { label: 'Activations', mem: naiveAct, color: '#ff9f43' },
+    ];
+    const accumSegs = [
+      { label: 'Model', mem: MODEL, color: '#00c8e6' },
+      { label: 'Optim', mem: OPT, color: '#a855f7' },
+      { label: 'Grads', mem: GRAD, color: '#00d46a' },
+      { label: 'Activations', mem: accumAct, color: '#ff9f43' },
+    ];
+
+    drawBar(naiveX, naiveSegs, naiveTotal);
+    drawBar(accumX, accumSegs, accumTotal);
+
+    // Formula
+    ctx.fillStyle = '#999';
+    ctx.font = '500 12px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText('Effective batch = ' + effBatch + '  |  Memory saved: ' + Math.max(0, naiveAct - accumAct).toFixed(1) + ' GB on activations', w / 2, h - 20);
+  }
+
+  batchSlider.addEventListener('input', draw);
+  accumSel.addEventListener('change', draw);
+
+  observeSection('section-memory', vis => {
+    if (vis && !inited) { inited = true; draw(); }
+  });
+  setTimeout(draw, 150);
+})();
+
+// ========================= SECTION 9: PLAYGROUND =========================
+(function initPlayground() {
+  let inited = false, playing = false;
+  let c;
+  const playBtn = $('pg-play');
+  const resetBtn = $('pg-reset');
+  const microSlider = $('pg-micro');
+  const microVal = $('pg-micro-val');
+  const accumSlider = $('pg-accum');
+  const accumVal = $('pg-accum-val');
+  const speedSel = $('pg-speed');
+  const effBatchEl = $('pg-eff-batch');
+  const memUsageEl = $('pg-mem-usage');
+  const optStepsEl = $('pg-opt-steps');
+  const lossValEl = $('pg-loss-val');
+
+  let microBatch = 16, accumSteps = 4, speed = 1;
+  let optimizerSteps = 0, currentLoss = 2.3;
+  let lossHistory = [2.3];
+  let microIdx = 0, animT = 0, subPhase = 0;
+  let epochMicros = 0;
+
+  function setup() { c = initCanvas('canvas-playground'); }
+
+  function updateStats() {
+    microBatch = parseInt(microSlider.value);
+    accumSteps = parseInt(accumSlider.value);
+    speed = parseInt(speedSel.value);
+    const effBatch = microBatch * accumSteps;
+    const mem = 2.5 + 5.0 + 2.5 + microBatch * 0.08;
+    effBatchEl.textContent = effBatch;
+    memUsageEl.textContent = mem.toFixed(1) + ' GB';
+    optStepsEl.textContent = optimizerSteps;
+    lossValEl.textContent = currentLoss.toFixed(3);
+    microVal.textContent = microBatch;
+    accumVal.textContent = accumSteps;
+  }
+
+  function reset() {
+    optimizerSteps = 0; currentLoss = 2.3; lossHistory = [2.3];
+    microIdx = 0; animT = 0; subPhase = 0; epochMicros = 0;
+    playing = false;
+    playBtn.innerHTML = '&#9654;';
+    updateStats();
+    if (c) drawFrame();
+  }
+
+  function drawFrame() {
+    if (!c) return;
+    const { ctx, w, h } = c;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#0d0d0d';
+    ctx.fillRect(0, 0, w, h);
+
+    const cx = w / 2;
+    const lossChartH = 150;
+    const topAreaH = h - lossChartH - 30;
+    const colors = ['#00c8e6', '#00d46a', '#a855f7', '#ff9f43', '#ff4d6a', '#e879f9', '#38bdf8', '#facc15',
+                    '#fb923c', '#4ade80', '#818cf8', '#f472b6', '#22d3ee', '#a3e635', '#c084fc', '#fbbf24'];
+
+    // Top: training loop animation
+    const queueY = 20;
+    const modelY = 90, modelW = 180, modelH = 60;
+    const bufferY = 200, bufferW = 240, bufferH = 35;
+
+    // Micro-batch queue
+    ctx.fillStyle = '#999';
+    ctx.font = '600 11px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText('Micro-batches', cx, queueY);
+
+    const mbW = Math.min(30, (w - 100) / accumSteps - 4);
+    const totalQW = accumSteps * mbW + (accumSteps - 1) * 4;
+    const qStartX = cx - totalQW / 2;
+
+    for (let i = 0; i < accumSteps; i++) {
+      const x = qStartX + i * (mbW + 4);
+      const done = i < microIdx;
+      const current = i === microIdx;
+      const col = colors[i % colors.length];
+      ctx.globalAlpha = done ? 0.3 : current ? 1 : 0.5;
+      drawRoundRect(ctx, x, queueY + 8, mbW, 22, 3, col + '33', col);
+      ctx.fillStyle = col;
+      ctx.font = '600 8px JetBrains Mono';
+      ctx.fillText('' + (i + 1), x + mbW / 2, queueY + 22);
+      ctx.globalAlpha = 1;
+    }
+
+    // Model
+    drawRoundRect(ctx, cx - modelW / 2, modelY, modelW, modelH, 10, 'rgba(0,200,230,0.06)', 'rgba(0,200,230,0.3)');
+    ctx.fillStyle = '#00c8e6';
+    ctx.font = '600 14px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText('Model (B=' + microBatch + ')', cx, modelY + 35);
+
+    // Gradient buffer
+    drawRoundRect(ctx, cx - bufferW / 2, bufferY, bufferW, bufferH, 8, 'rgba(0,212,106,0.05)', 'rgba(0,212,106,0.3)');
+    const fill = microIdx / accumSteps;
+    if (fill > 0) {
+      ctx.save();
+      roundRect(ctx, cx - bufferW / 2 + 2, bufferY + 2, bufferW - 4, bufferH - 4, 6);
+      ctx.clip();
+      ctx.fillStyle = 'rgba(0,212,106,0.2)';
+      ctx.fillRect(cx - bufferW / 2 + 2, bufferY + 2, (bufferW - 4) * fill, bufferH - 4);
+      ctx.restore();
+    }
+    ctx.fillStyle = '#00d46a';
+    ctx.font = '600 10px JetBrains Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText('Grad Buffer ' + Math.round(fill * 100) + '%', cx, bufferY + bufferH / 2 + 3);
+
+    // Status text
+    ctx.fillStyle = '#999';
+    ctx.font = '500 12px Inter';
+    ctx.textAlign = 'center';
+    const statusY = bufferY + bufferH + 30;
+    if (subPhase === 0) ctx.fillText('Forward pass — micro-batch ' + (microIdx + 1), cx, statusY);
+    else if (subPhase === 1) ctx.fillText('Backward pass — accumulating gradients', cx, statusY);
+    else if (subPhase === 2) {
+      ctx.fillStyle = '#ff9f43';
+      ctx.font = '700 13px Inter';
+      ctx.fillText('optimizer.step() — weights updated!', cx, statusY);
+    }
+
+    // ===== Loss curve =====
+    const chartX = 40, chartY = h - lossChartH - 10, chartW = w - 80, chartH = lossChartH - 20;
+
+    // Background
+    drawRoundRect(ctx, chartX - 10, chartY - 15, chartW + 20, chartH + 35, 8, 'rgba(255,255,255,0.02)', 'rgba(255,255,255,0.06)');
+
+    // Axes
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(chartX, chartY);
+    ctx.lineTo(chartX, chartY + chartH);
+    ctx.lineTo(chartX + chartW, chartY + chartH);
+    ctx.stroke();
+
+    // Labels
+    ctx.fillStyle = '#666';
+    ctx.font = '500 10px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText('Optimizer Steps', chartX + chartW / 2, chartY + chartH + 18);
+    ctx.save();
+    ctx.translate(chartX - 15, chartY + chartH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('Loss', 0, 0);
+    ctx.restore();
+
+    // Draw curve
+    if (lossHistory.length > 1) {
+      const maxSteps = Math.max(lossHistory.length, 20);
+      const maxLoss = 2.5, minLoss = 0;
+      ctx.beginPath();
+      ctx.strokeStyle = '#00d46a';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#00d46a';
+      ctx.shadowBlur = 8;
+      for (let i = 0; i < lossHistory.length; i++) {
+        const px = chartX + (i / maxSteps) * chartW;
+        const py = chartY + chartH - ((lossHistory[i] - minLoss) / (maxLoss - minLoss)) * chartH;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Current point
+      const lastI = lossHistory.length - 1;
+      const lastPx = chartX + (lastI / maxSteps) * chartW;
+      const lastPy = chartY + chartH - ((lossHistory[lastI] - minLoss) / (maxLoss - minLoss)) * chartH;
+      ctx.beginPath();
+      ctx.arc(lastPx, lastPy, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#00d46a';
+      ctx.fill();
+    }
+  }
+
+  function advance() {
+    animT++;
+    const dur = Math.max(30, 75 / speed);
+    if (animT < dur) return;
+    animT = 0;
+
+    if (subPhase === 0) {
+      // Forward done
+      subPhase = 1;
+    } else if (subPhase === 1) {
+      // Backward done
+      microIdx++;
+      if (microIdx >= accumSteps) {
+        subPhase = 2;
+      } else {
+        subPhase = 0;
+      }
+    } else if (subPhase === 2) {
+      // Optimizer step
+      optimizerSteps++;
+      // Simulate loss decrease
+      const lr = 0.1 / (1 + accumSteps * 0.1);
+      currentLoss = Math.max(0.01, currentLoss - lr * (0.3 + Math.random() * 0.2) + Math.random() * 0.05);
+      lossHistory.push(currentLoss);
+      microIdx = 0;
+      subPhase = 0;
+      updateStats();
+    }
+    drawFrame();
+  }
+
+  function animate() {
+    if (!playing) return;
+    advance();
+    if (playing) requestAnimationFrame(animate);
+  }
+
+  playBtn.addEventListener('click', () => {
+    microBatch = parseInt(microSlider.value);
+    accumSteps = parseInt(accumSlider.value);
+    speed = parseInt(speedSel.value);
+    playing = !playing;
+    playBtn.innerHTML = playing ? '&#9646;&#9646;' : '&#9654;';
+    if (playing) animate();
+  });
+
+  resetBtn.addEventListener('click', reset);
+  microSlider.addEventListener('input', () => { updateStats(); });
+  accumSlider.addEventListener('input', () => { updateStats(); if (!playing && c) drawFrame(); });
+  speedSel.addEventListener('change', () => { speed = parseInt(speedSel.value); });
+
+  observeSection('section-playground', vis => {
+    if (vis && !inited) { inited = true; setup(); updateStats(); drawFrame(); }
+  });
+  setTimeout(() => { setup(); updateStats(); drawFrame(); }, 200);
+})();
+
+// ========================= WINDOW RESIZE =========================
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { location.reload(); }, 300);
+});
+
+})();
+</script>
+</body>
+</html>
