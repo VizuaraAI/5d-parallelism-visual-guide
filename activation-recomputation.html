@@ -1,0 +1,1995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Activation Recomputation — Visual Deep Dive</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* ========================================
+   CSS Variables — same design system
+   ======================================== */
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #121212;
+  --bg-card-hover: #1a1a1a;
+  --bg-section-alt: #0f0f0f;
+  --fg: #f2f2f2;
+  --fg-muted: #a3a3a3;
+  --border: #262626;
+  --border-light: #333;
+  --primary: #00d46a;
+  --primary-dim: #00a854;
+  --secondary: #00c8e6;
+  --accent: #a78bfa;
+  --red: #FF7043;
+  --orange: #FF9800;
+  --yellow: #FFCA28;
+  --blue: #42A5F5;
+  --green: #66BB6A;
+  --pink: #F06292;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --max-w: 1280px;
+  --glow-opacity: 0.15;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: var(--font-mono); }
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ========================================
+   NAVBAR
+   ======================================== */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,10,0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.1rem; }
+.brand-icon { font-size: 1.3rem; }
+.brand-tag {
+  font-size: 0.7rem; background: var(--primary); color: #000;
+  padding: 2px 8px; border-radius: 9999px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+/* ========================================
+   HERO
+   ======================================== */
+.hero {
+  position: relative; min-height: 100vh; display: flex;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 120px 24px 80px; overflow: hidden;
+}
+.hero-bg-orbs { position: absolute; inset: 0; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.12; }
+.orb-green { width: 500px; height: 500px; background: var(--primary); top: 10%; left: 10%; animation: float-slow 20s ease-in-out infinite; }
+.orb-cyan { width: 400px; height: 400px; background: var(--secondary); top: 40%; right: 5%; animation: float-slow 25s ease-in-out infinite reverse; }
+.orb-purple { width: 350px; height: 350px; background: var(--accent); bottom: 10%; left: 30%; animation: float-slow 22s ease-in-out infinite; }
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(30px, -20px); }
+  50% { transform: translate(-20px, 30px); }
+  75% { transform: translate(20px, 20px); }
+}
+.hero-content { position: relative; z-index: 1; max-width: 800px; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3);
+  border-radius: 9999px; padding: 6px 18px; font-size: 0.82rem;
+  font-weight: 500; color: var(--primary); margin-bottom: 24px;
+}
+.pulse-dot { width: 8px; height: 8px; background: var(--primary); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }
+.hero h1 { font-family: var(--font-serif); font-style: italic; font-size: clamp(2.5rem, 7vw, 5rem); font-weight: 400; line-height: 1.1; margin-bottom: 20px; }
+.hero-subtitle { font-size: 1.15rem; color: var(--fg-muted); line-height: 1.7; max-width: 600px; margin: 0 auto 40px; }
+.hero-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.hero-stat-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 12px; transition: border-color 0.3s, transform 0.2s;
+}
+.hero-stat-card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-2px); }
+.stat-number {
+  font-size: 1.8rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.stat-label { font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* ========================================
+   SECTIONS
+   ======================================== */
+.section { padding: 100px 0; position: relative; }
+.section-dark { background: var(--bg-section-alt); }
+.section-heading { text-align: center; margin-bottom: 60px; }
+.section-label {
+  display: inline-block; font-size: 0.78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.5px; color: var(--primary); margin-bottom: 12px;
+}
+.section-heading h2 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; line-height: 1.2; margin-bottom: 16px;
+}
+.section-subtitle { color: var(--fg-muted); font-size: 1.05rem; max-width: 650px; margin: 0 auto; }
+
+/* ========================================
+   CARDS
+   ======================================== */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; transition: border-color 0.3s, transform 0.2s;
+}
+.card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-3px); }
+.card h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; }
+.card p, .card li { font-size: 0.88rem; color: var(--fg-muted); line-height: 1.6; }
+.card code {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-size: 0.82rem; color: var(--secondary);
+}
+
+/* ========================================
+   GRIDS
+   ======================================== */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 900px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+
+/* ========================================
+   TRANSFORMER DIAGRAM
+   ======================================== */
+.transformer-visual {
+  max-width: 700px; margin: 0 auto; padding: 32px 0;
+}
+.tf-layer {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; margin-bottom: 6px;
+}
+.tf-block {
+  width: 100%; max-width: 480px; padding: 14px 20px; border-radius: 10px;
+  text-align: center; font-size: 0.88rem; font-weight: 600; border: 1px solid;
+  transition: transform 0.2s, box-shadow 0.2s; cursor: default; position: relative;
+}
+.tf-block:hover { transform: scale(1.02); }
+.tf-block small { display: block; font-size: 0.72rem; font-weight: 400; margin-top: 2px; opacity: 0.8; }
+.tf-arrow { color: var(--fg-muted); font-size: 1rem; }
+.tf-input {
+  background: rgba(167,139,250,0.08); border-color: rgba(167,139,250,0.3); color: var(--accent);
+}
+.tf-ln {
+  background: rgba(255,152,0,0.08); border-color: rgba(255,152,0,0.3); color: var(--orange);
+}
+.tf-attn {
+  background: rgba(66,165,245,0.08); border-color: rgba(66,165,245,0.3); color: var(--blue);
+}
+.tf-ffn {
+  background: rgba(0,212,106,0.08); border-color: rgba(0,212,106,0.3); color: var(--primary);
+}
+.tf-output {
+  background: rgba(240,98,146,0.08); border-color: rgba(240,98,146,0.3); color: var(--pink);
+}
+.tf-residual {
+  position: absolute; right: -50px; top: 50%; transform: translateY(-50%);
+  font-size: 0.65rem; color: var(--fg-muted); font-weight: 500;
+}
+.tf-brace {
+  position: absolute; left: -40px; top: -10px; bottom: -10px;
+  display: flex; align-items: center;
+}
+.repeat-badge {
+  background: rgba(0,200,230,0.1); border: 1px solid rgba(0,200,230,0.3);
+  color: var(--secondary); font-size: 0.72rem; font-weight: 600;
+  padding: 4px 12px; border-radius: 9999px; margin: 8px 0;
+}
+
+/* ========================================
+   MEMORY BAR VISUALIZATION
+   ======================================== */
+.mem-bar-container {
+  margin: 24px 0; padding: 20px 24px;
+  background: rgba(0,0,0,0.25); border-radius: 14px; border: 1px solid var(--border);
+}
+.mem-bar-label { font-size: 0.82rem; font-weight: 600; margin-bottom: 12px; }
+.mem-bar-label code { color: var(--secondary); font-size: 0.78rem; }
+.mem-bar-row {
+  display: flex; border-radius: 8px; overflow: hidden; height: 44px; position: relative;
+}
+.mem-seg {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.68rem; font-weight: 600; color: #fff; transition: flex 0.5s ease;
+  white-space: nowrap; overflow: hidden; min-width: 0;
+}
+.mem-seg.params { background: #a78bfa; }
+.mem-seg.grads { background: #7c5cbf; }
+.mem-seg.optim { background: #5b3a9e; }
+.mem-seg.attn-act { background: #42A5F5; }
+.mem-seg.ffn-act { background: #66BB6A; }
+.mem-seg.ln-act { background: #FF9800; }
+.mem-seg.ckpt-act { background: #00c8e6; }
+.mem-legend {
+  display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; justify-content: center;
+}
+.mem-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted); }
+.mem-swatch { width: 12px; height: 12px; border-radius: 3px; }
+
+/* ========================================
+   INTERACTIVE STACKED CHART
+   ======================================== */
+.chart-container {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 24px 0;
+}
+.chart-container h4 { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.chart-container .chart-subtitle { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+.chart-area {
+  display: flex; align-items: flex-end; gap: 16px; height: 320px; padding: 0 0 30px;
+  position: relative;
+}
+.chart-y-axis {
+  position: absolute; left: 0; top: 0; bottom: 30px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  font-size: 0.62rem; color: var(--fg-muted); font-family: var(--font-mono); width: 50px;
+}
+.chart-bar-group {
+  flex: 1; display: flex; flex-direction: column; justify-content: flex-end;
+  height: 100%; position: relative; cursor: pointer;
+}
+.chart-bar-group:hover .chart-bar-stack { filter: brightness(1.15); }
+.chart-bar-stack {
+  display: flex; flex-direction: column; justify-content: flex-end; border-radius: 4px 4px 0 0;
+  overflow: hidden; transition: filter 0.2s;
+}
+.chart-bar-seg {
+  width: 100%; transition: height 0.5s ease; display: flex; align-items: center;
+  justify-content: center; font-size: 0.55rem; font-weight: 600; color: rgba(255,255,255,0.8);
+}
+.chart-bar-seg.params { background: #a78bfa; }
+.chart-bar-seg.grads { background: #7c5cbf; }
+.chart-bar-seg.optim { background: #5b3a9e; }
+.chart-bar-seg.attn { background: #42A5F5; }
+.chart-bar-seg.ffn { background: #66BB6A; }
+.chart-bar-seg.ln { background: #FF9800; }
+.chart-bar-seg.ckpt { background: #00c8e6; }
+.chart-x-label {
+  position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+  font-size: 0.7rem; color: var(--fg-muted); font-family: var(--font-mono); white-space: nowrap;
+}
+.chart-total-label {
+  position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+  font-size: 0.62rem; color: var(--fg); font-family: var(--font-mono); font-weight: 600;
+  white-space: nowrap;
+}
+.chart-legend {
+  display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; padding: 12px 0 0;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted); }
+.lg-swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+/* Strategy selector */
+.strategy-selector {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; justify-content: center;
+}
+.strategy-btn {
+  padding: 8px 18px; border-radius: 9999px; font-size: 0.82rem; font-weight: 500;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--fg-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.strategy-btn:hover { border-color: rgba(0,212,106,0.3); color: var(--fg); }
+.strategy-btn.active {
+  background: rgba(0,212,106,0.1); border-color: var(--primary); color: var(--primary); font-weight: 600;
+}
+
+/* Model tabs */
+.model-tabs {
+  display: flex; gap: 8px; margin-bottom: 16px; justify-content: center;
+}
+.model-tab {
+  padding: 6px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 500;
+  border: 1px solid var(--border); background: transparent; color: var(--fg-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.model-tab:hover { border-color: rgba(0,200,230,0.3); color: var(--fg); }
+.model-tab.active {
+  background: rgba(0,200,230,0.1); border-color: var(--secondary); color: var(--secondary); font-weight: 600;
+}
+
+/* ========================================
+   COMPUTE OVERHEAD CHART
+   ======================================== */
+.overhead-chart-area {
+  position: relative; height: 280px; padding: 20px 50px 30px 60px;
+  background: rgba(0,0,0,0.2); border-radius: 10px; margin-bottom: 16px;
+}
+.overhead-chart-area svg { width: 100%; height: 100%; }
+
+/* ========================================
+   CALLOUTS
+   ======================================== */
+.callout {
+  border-radius: 10px; padding: 16px 20px; font-size: 0.85rem; line-height: 1.6; margin: 16px 0;
+}
+.callout-info { background: rgba(66,165,245,0.08); border: 1px solid rgba(66,165,245,0.2); color: var(--fg-muted); }
+.callout-green { background: rgba(0,212,106,0.08); border: 1px solid rgba(0,212,106,0.2); color: var(--fg-muted); }
+.callout-warn { background: rgba(255,112,67,0.08); border: 1px solid rgba(255,112,67,0.2); color: var(--fg-muted); }
+.callout-purple { background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); color: var(--fg-muted); }
+.callout strong { color: var(--fg); }
+.callout code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; color: var(--secondary); }
+
+/* ========================================
+   EQUATION BOX
+   ======================================== */
+.equation-box {
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 24px; margin: 16px 0; text-align: center;
+  font-family: var(--font-mono); font-size: 0.92rem; color: var(--secondary);
+  line-height: 2;
+}
+.equation-box .eq-label {
+  display: block; font-family: var(--font-sans); font-size: 0.72rem;
+  color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 8px; font-weight: 600;
+}
+.equation-box .eq-highlight { color: var(--primary); font-weight: 600; }
+
+/* ========================================
+   PIPELINE VISUAL (FORWARD/BACKWARD)
+   ======================================== */
+.pipeline-visual {
+  display: flex; flex-direction: column; gap: 8px;
+  background: rgba(0,0,0,0.2); border-radius: 12px; padding: 20px; margin: 16px 0;
+}
+.pipe-row { display: flex; align-items: center; gap: 4px; }
+.pipe-label { width: 80px; font-size: 0.72rem; font-weight: 600; color: var(--fg-muted); text-align: right; padding-right: 8px; }
+.pipe-block {
+  padding: 8px 12px; border-radius: 6px; font-size: 0.72rem; font-weight: 600;
+  text-align: center; min-width: 60px; color: #fff;
+}
+.pipe-fwd { background: #1565C0; }
+.pipe-bwd { background: #42A5F5; }
+.pipe-recompute { background: #FF9800; border: 2px dashed #FFCA28; }
+.pipe-discard { background: rgba(255,112,67,0.15); color: var(--red); border: 1px dashed rgba(255,112,67,0.4); }
+
+/* ========================================
+   COMPARISON TABLE
+   ======================================== */
+.comp-table-wrap {
+  overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); margin: 20px 0;
+}
+.comp-table {
+  width: 100%; border-collapse: collapse; font-size: 0.85rem;
+}
+.comp-table thead { background: #1a1a2e; }
+.comp-table th {
+  padding: 14px 16px; text-align: left; font-size: 0.75rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px; color: var(--fg-muted);
+  border-bottom: 1px solid var(--border);
+}
+.comp-table td {
+  padding: 12px 16px; border-bottom: 1px solid rgba(38,38,38,0.5);
+  color: var(--fg-muted); font-size: 0.82rem;
+}
+.comp-table td code {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-size: 0.78rem; color: var(--secondary);
+}
+.val-good { color: var(--primary) !important; font-weight: 600; }
+.val-great { color: var(--secondary) !important; font-weight: 600; }
+.val-bad { color: var(--red) !important; font-weight: 600; }
+.val-ok { color: var(--orange) !important; font-weight: 600; }
+
+/* ========================================
+   FLASH ATTENTION VISUAL
+   ======================================== */
+.flash-visual {
+  display: flex; flex-direction: column; gap: 12px;
+  background: rgba(0,0,0,0.2); border-radius: 12px; padding: 24px; margin: 16px 0;
+}
+.flash-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.flash-block {
+  padding: 10px 16px; border-radius: 8px; font-size: 0.78rem; font-weight: 600;
+  text-align: center; border: 1px solid; min-width: 80px;
+}
+.flash-q { background: rgba(66,165,245,0.1); border-color: rgba(66,165,245,0.3); color: var(--blue); }
+.flash-k { background: rgba(0,212,106,0.1); border-color: rgba(0,212,106,0.3); color: var(--primary); }
+.flash-v { background: rgba(167,139,250,0.1); border-color: rgba(167,139,250,0.3); color: var(--accent); }
+.flash-sram { background: rgba(255,152,0,0.1); border-color: rgba(255,152,0,0.3); color: var(--orange); }
+.flash-hbm { background: rgba(255,112,67,0.1); border-color: rgba(255,112,67,0.3); color: var(--red); }
+.flash-arrow { font-size: 1.2rem; color: var(--fg-muted); }
+.flash-label { font-size: 0.72rem; color: var(--fg-muted); font-weight: 500; min-width: 60px; }
+.tile-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; max-width: 200px;
+}
+.tile {
+  width: 100%; aspect-ratio: 1; border-radius: 4px; display: flex;
+  align-items: center; justify-content: center; font-size: 0.6rem; font-weight: 600;
+}
+
+/* ========================================
+   FOOTER
+   ======================================== */
+.footer {
+  border-top: 1px solid var(--border); padding: 40px 0; text-align: center;
+}
+.footer-inner { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.footer-brand { font-size: 1.1rem; font-weight: 600; }
+.footer p { font-size: 0.85rem; color: var(--fg-muted); }
+.footer-muted { font-size: 0.78rem !important; color: rgba(163,163,163,0.5) !important; }
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+.fade-in {
+  opacity: 0; transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+
+/* Stagger */
+.stagger-1 { transition-delay: 0.1s; }
+.stagger-2 { transition-delay: 0.2s; }
+.stagger-3 { transition-delay: 0.3s; }
+.stagger-4 { transition-delay: 0.4s; }
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+@media (max-width: 768px) {
+  .hero-cards { grid-template-columns: repeat(2, 1fr); }
+  .nav-links { display: none; }
+  .hero h1 { font-size: 2.2rem; }
+  .section { padding: 60px 0; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .chart-area { height: 240px; }
+  .tf-residual { display: none; }
+  .tf-brace { display: none; }
+}
+
+::selection { background: rgba(0,212,106,0.3); color: #fff; }
+
+/* Tooltips */
+.tooltip-container { position: relative; }
+.tooltip {
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  background: #1a1a1a; border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 12px; font-size: 0.72rem; color: var(--fg-muted);
+  white-space: nowrap; pointer-events: none; opacity: 0;
+  transition: opacity 0.2s; z-index: 50;
+}
+.tooltip-container:hover .tooltip { opacity: 1; }
+
+/* Number highlights */
+.num-green { color: var(--primary); font-weight: 700; font-family: var(--font-mono); }
+.num-blue { color: var(--blue); font-weight: 700; font-family: var(--font-mono); }
+.num-orange { color: var(--orange); font-weight: 700; font-family: var(--font-mono); }
+.num-red { color: var(--red); font-weight: 700; font-family: var(--font-mono); }
+
+/* Tradeoff visual */
+.tradeoff-scale {
+  display: flex; align-items: center; gap: 12px; justify-content: center; margin: 20px 0;
+}
+.tradeoff-side {
+  text-align: center; padding: 16px 24px; border-radius: 12px; flex: 1; max-width: 200px;
+}
+.tradeoff-side.memory { background: rgba(66,165,245,0.08); border: 1px solid rgba(66,165,245,0.2); }
+.tradeoff-side.compute { background: rgba(255,152,0,0.08); border: 1px solid rgba(255,152,0,0.2); }
+.tradeoff-icon { font-size: 2rem; margin-bottom: 6px; }
+.tradeoff-label { font-size: 0.82rem; font-weight: 600; }
+.tradeoff-arrow { font-size: 2rem; color: var(--fg-muted); }
+
+/* Insights grid */
+.insights-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;
+}
+.insight-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 24px; transition: border-color 0.3s, transform 0.2s;
+}
+.insight-card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-2px); }
+.insight-icon { font-size: 1.5rem; margin-bottom: 10px; }
+.insight-card h4 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
+.insight-card p { font-size: 0.85rem; color: var(--fg-muted); line-height: 1.6; }
+
+/* Takeaway cards */
+.takeaway-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 24px; position: relative; overflow: hidden;
+}
+.takeaway-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+}
+.takeaway-num {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(0,212,106,0.12); color: var(--primary); font-weight: 700;
+  font-size: 0.8rem; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;
+}
+.takeaway-card h4 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
+.takeaway-card p { font-size: 0.85rem; color: var(--fg-muted); line-height: 1.6; }
+
+/* Memory diff visual */
+.mem-diff-row {
+  display: flex; gap: 8px; align-items: center; margin: 8px 0;
+}
+.mem-diff-bar {
+  height: 28px; border-radius: 6px; display: flex; align-items: center;
+  padding: 0 10px; font-size: 0.72rem; font-weight: 600; color: #fff;
+  transition: width 0.5s ease;
+}
+.mem-diff-label {
+  min-width: 100px; font-size: 0.78rem; color: var(--fg-muted); font-weight: 500;
+}
+.mem-diff-val {
+  min-width: 60px; font-size: 0.78rem; color: var(--fg); font-weight: 600;
+  font-family: var(--font-mono); text-align: right;
+}
+</style>
+</head>
+<body>
+
+<!-- ============ NAVBAR ============ -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <span class="brand-icon">🧠</span>
+      <span class="brand-text">Activation Recomputation</span>
+      <span class="brand-tag">Visual Guide</span>
+    </div>
+    <div class="nav-links">
+      <a href="#what-are-activations">Activations</a>
+      <a href="#memory-breakdown">Memory</a>
+      <a href="#recomputation">Recomputation</a>
+      <a href="#interactive-charts">Charts</a>
+      <a href="#flops">FLOPs</a>
+      <a href="#why-attn">Why Attention?</a>
+      <a href="#flash-attention">Flash Attention</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<section class="hero" id="overview">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-green"></div>
+    <div class="orb orb-cyan"></div>
+    <div class="orb orb-purple"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="pulse-dot"></span>
+      GPU Workshop — Activation Checkpointing Deep Dive
+    </div>
+    <h1>Activation <span class="gradient-text">Recomputation</span></h1>
+    <p class="hero-subtitle">The fundamental memory-compute trade-off in transformer training. Save massive GPU memory by recomputing activations instead of storing them.</p>
+    <div class="hero-cards">
+      <div class="hero-stat-card">
+        <div class="stat-number">34</div>
+        <div class="stat-label">SBH per layer (activations)</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">5nS&sup2;</div>
+        <div class="stat-label">Quadratic attention term</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">~33%</div>
+        <div class="stat-label">Max compute overhead</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">90%+</div>
+        <div class="stat-label">Activation memory saved</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WHAT ARE ACTIVATIONS ============ -->
+<section class="section" id="what-are-activations">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Fundamentals</div>
+      <h2><span class="gradient-text">What Are Activations?</span></h2>
+      <p class="section-subtitle">Every intermediate tensor computed during the forward pass is an "activation". They're the hidden state of your network at each layer.</p>
+    </div>
+
+    <!-- Transformer diagram -->
+    <div class="transformer-visual fade-in">
+      <div class="tf-layer">
+        <div class="tf-block tf-input">Input Embeddings<small>Shape: [S, B, H]</small></div>
+        <div class="tf-arrow">&#8595;</div>
+      </div>
+
+      <div style="border: 1px dashed rgba(0,200,230,0.3); border-radius: 16px; padding: 20px; position: relative; margin: 0 auto; max-width: 540px; width: 100%;">
+        <div style="position: absolute; top: -12px; left: 20px;">
+          <span class="repeat-badge">Repeated L times</span>
+        </div>
+
+        <div class="tf-layer" style="margin-top: 8px;">
+          <div class="tf-block tf-ln">LayerNorm 1<small>Stores: 4 * S*B*H elements</small></div>
+          <div class="tf-arrow">&#8595;</div>
+        </div>
+        <div class="tf-layer">
+          <div class="tf-block tf-attn" style="position: relative;">
+            Multi-Head Attention
+            <small>Stores: 11*S*B*H + 5*n_heads*S&sup2;*B elements</small>
+            <span class="tf-residual" style="right: -90px;">+ Residual</span>
+          </div>
+          <div class="tf-arrow">&#8595;</div>
+        </div>
+        <div class="tf-layer">
+          <div class="tf-block tf-ln">LayerNorm 2<small>Stores: (included above)</small></div>
+          <div class="tf-arrow">&#8595;</div>
+        </div>
+        <div class="tf-layer">
+          <div class="tf-block tf-ffn" style="position: relative;">
+            Feed-Forward Network (FFN/MLP)
+            <small>Stores: 19 * S*B*H elements</small>
+            <span class="tf-residual" style="right: -90px;">+ Residual</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="tf-layer" style="margin-top: 12px;">
+        <div class="tf-arrow">&#8595;</div>
+        <div class="tf-block tf-output">Output / Loss<small>Logits + Cross-Entropy</small></div>
+      </div>
+    </div>
+
+    <!-- Activation breakdown cards -->
+    <div class="grid-3 fade-in" style="margin-top: 40px;">
+      <div class="card">
+        <div style="font-size: 1.5rem; margin-bottom: 8px;">🔵</div>
+        <h3>Attention Activations</h3>
+        <p>The largest component at long sequences. Contains <code>11 * S*B*H</code> linear terms plus <code>5 * n_heads * S&sup2; * B</code> — the infamous quadratic scaling from attention scores and softmax outputs.</p>
+        <div class="equation-box" style="margin-top: 12px; font-size: 0.78rem;">
+          <span class="eq-label">Per Layer</span>
+          11 &middot; SBH + 5 &middot; n<sub>heads</sub> &middot; S&sup2; &middot; B
+        </div>
+      </div>
+      <div class="card">
+        <div style="font-size: 1.5rem; margin-bottom: 8px;">🟢</div>
+        <h3>FFN Activations</h3>
+        <p>The feed-forward network stores intermediate results from its two large linear projections and the activation function (GeLU/SwiGLU). Scales linearly with sequence length.</p>
+        <div class="equation-box" style="margin-top: 12px; font-size: 0.78rem;">
+          <span class="eq-label">Per Layer</span>
+          19 &middot; S &middot; B &middot; H
+        </div>
+      </div>
+      <div class="card">
+        <div style="font-size: 1.5rem; margin-bottom: 8px;">🟠</div>
+        <h3>LayerNorm Activations</h3>
+        <p>Small but always stored. LayerNorm needs to save input statistics (mean, variance) and the normalized output for the backward pass. Rarely worth recomputing.</p>
+        <div class="equation-box" style="margin-top: 12px; font-size: 0.78rem;">
+          <span class="eq-label">Per Layer</span>
+          4 &middot; S &middot; B &middot; H
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-info fade-in" style="margin-top: 32px;">
+      <strong>Total activations per layer:</strong> <code>(11 + 19 + 4) * S*B*H + 5 * n_heads * S&sup2; * B = 34*S*B*H + 5*n_heads*S&sup2;*B</code>. For bf16 (2 bytes per element), multiply by 2 to get bytes. The S&sup2; term is what makes long-context training so memory-hungry.
+    </div>
+  </div>
+</section>
+
+<!-- ============ MEMORY BREAKDOWN ============ -->
+<section class="section section-dark" id="memory-breakdown">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Memory Anatomy</div>
+      <h2><span class="gradient-text">Training Memory Breakdown</span></h2>
+      <p class="section-subtitle">GPU memory during training is split between model state (fixed) and activations (scales with sequence length).</p>
+    </div>
+
+    <!-- Memory formula -->
+    <div class="equation-box fade-in">
+      <span class="eq-label">Total GPU Memory</span>
+      M<sub>total</sub> = <span class="eq-highlight">M<sub>params</sub></span> + <span class="eq-highlight">M<sub>gradients</sub></span> + <span class="eq-highlight">M<sub>optimizer</sub></span> + <span class="eq-highlight">M<sub>activations</sub></span>
+    </div>
+
+    <div class="grid-4 fade-in" style="margin-top: 24px;">
+      <div class="card" style="border-top: 3px solid #a78bfa;">
+        <h3 style="color: #a78bfa;">Parameters</h3>
+        <p>4N bytes (fp32)</p>
+        <p style="font-size: 0.78rem; margin-top: 8px;">Fixed cost. E.g., 8B model = 32 GB</p>
+      </div>
+      <div class="card" style="border-top: 3px solid #7c5cbf;">
+        <h3 style="color: #7c5cbf;">Gradients</h3>
+        <p>4N bytes (fp32)</p>
+        <p style="font-size: 0.78rem; margin-top: 8px;">Same size as parameters</p>
+      </div>
+      <div class="card" style="border-top: 3px solid #5b3a9e;">
+        <h3 style="color: #5b3a9e;">Optimizer</h3>
+        <p>8N bytes (Adam m,v)</p>
+        <p style="font-size: 0.78rem; margin-top: 8px;">Adam stores 2 states per param</p>
+      </div>
+      <div class="card" style="border-top: 3px solid var(--blue);">
+        <h3 style="color: var(--blue);">Activations</h3>
+        <p>Varies with S, B</p>
+        <p style="font-size: 0.78rem; margin-top: 8px;">This is what we can recompute!</p>
+      </div>
+    </div>
+
+    <!-- Visual memory bar for 8B model -->
+    <div class="mem-bar-container fade-in" style="margin-top: 32px;">
+      <div class="mem-bar-label">Llama 3.1 8B — Sequence length: <code id="mem-bar-seq-display">4096</code></div>
+      <div style="margin-bottom: 12px;">
+        <input type="range" min="0" max="4" value="2" id="mem-bar-seq-slider"
+          style="width: 100%; accent-color: var(--primary); cursor: pointer;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.68rem; color: var(--fg-muted); font-family: var(--font-mono);">
+          <span>1024</span><span>2048</span><span>4096</span><span>8192</span><span>16384</span>
+        </div>
+      </div>
+      <div class="mem-bar-row" id="mem-bar-visual"></div>
+      <div style="text-align: right; margin-top: 6px; font-size: 0.78rem; font-family: var(--font-mono);">
+        Total: <span id="mem-bar-total" class="num-green">—</span> GiB
+      </div>
+      <div class="mem-legend">
+        <div class="mem-legend-item"><div class="mem-swatch" style="background: #a78bfa;"></div> Params</div>
+        <div class="mem-legend-item"><div class="mem-swatch" style="background: #7c5cbf;"></div> Gradients</div>
+        <div class="mem-legend-item"><div class="mem-swatch" style="background: #5b3a9e;"></div> Optimizer</div>
+        <div class="mem-legend-item"><div class="mem-swatch" style="background: #42A5F5;"></div> Attention</div>
+        <div class="mem-legend-item"><div class="mem-swatch" style="background: #66BB6A;"></div> FFN</div>
+        <div class="mem-legend-item"><div class="mem-swatch" style="background: #FF9800;"></div> LayerNorm</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RECOMPUTATION ============ -->
+<section class="section" id="recomputation">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">The Core Trade-off</div>
+      <h2><span class="gradient-text">Activation Recomputation</span></h2>
+      <p class="section-subtitle">Don't store activations — recompute them during the backward pass. Trade compute time for memory.</p>
+    </div>
+
+    <!-- Tradeoff visual -->
+    <div class="tradeoff-scale fade-in">
+      <div class="tradeoff-side memory">
+        <div class="tradeoff-icon">💾</div>
+        <div class="tradeoff-label" style="color: var(--blue);">Memory Saved</div>
+        <p style="font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px;">Don't store intermediates</p>
+      </div>
+      <div class="tradeoff-arrow">⇌</div>
+      <div class="tradeoff-side compute">
+        <div class="tradeoff-icon">⚡</div>
+        <div class="tradeoff-label" style="color: var(--orange);">Compute Overhead</div>
+        <p style="font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px;">Re-run forward during backward</p>
+      </div>
+    </div>
+
+    <!-- How it works pipeline -->
+    <div class="grid-2 fade-in" style="margin-top: 32px;">
+      <div class="card">
+        <h3>Baseline (No Recomputation)</h3>
+        <p style="margin-bottom: 12px;">All activations stored in GPU memory during forward pass, used during backward pass.</p>
+        <div class="pipeline-visual">
+          <div style="font-size: 0.75rem; font-weight: 600; color: var(--fg-muted); margin-bottom: 4px;">Forward Pass</div>
+          <div class="pipe-row">
+            <div class="pipe-label">Layer 1</div>
+            <div class="pipe-block pipe-fwd">Compute</div>
+            <div class="pipe-block" style="background: rgba(66,165,245,0.15); color: var(--blue); border: 1px solid rgba(66,165,245,0.3);">Store ✓</div>
+          </div>
+          <div class="pipe-row">
+            <div class="pipe-label">Layer 2</div>
+            <div class="pipe-block pipe-fwd">Compute</div>
+            <div class="pipe-block" style="background: rgba(66,165,245,0.15); color: var(--blue); border: 1px solid rgba(66,165,245,0.3);">Store ✓</div>
+          </div>
+          <div style="font-size: 0.75rem; font-weight: 600; color: var(--fg-muted); margin: 8px 0 4px;">Backward Pass</div>
+          <div class="pipe-row">
+            <div class="pipe-label">Layer 2</div>
+            <div class="pipe-block pipe-bwd">Use stored ✓</div>
+          </div>
+          <div class="pipe-row">
+            <div class="pipe-label">Layer 1</div>
+            <div class="pipe-block pipe-bwd">Use stored ✓</div>
+          </div>
+        </div>
+        <div class="callout callout-warn" style="margin-top: 8px;">
+          <strong>Problem:</strong> Memory grows linearly with number of layers &times; sequence length.
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>With Recomputation (Checkpointing)</h3>
+        <p style="margin-bottom: 12px;">Discard activations during forward, recompute them on-the-fly during backward.</p>
+        <div class="pipeline-visual">
+          <div style="font-size: 0.75rem; font-weight: 600; color: var(--fg-muted); margin-bottom: 4px;">Forward Pass</div>
+          <div class="pipe-row">
+            <div class="pipe-label">Layer 1</div>
+            <div class="pipe-block pipe-fwd">Compute</div>
+            <div class="pipe-block pipe-discard">Discard ✗</div>
+            <div class="pipe-block" style="background: rgba(0,200,230,0.15); color: var(--secondary); border: 1px solid rgba(0,200,230,0.3); font-size: 0.65rem;">Checkpoint</div>
+          </div>
+          <div class="pipe-row">
+            <div class="pipe-label">Layer 2</div>
+            <div class="pipe-block pipe-fwd">Compute</div>
+            <div class="pipe-block pipe-discard">Discard ✗</div>
+            <div class="pipe-block" style="background: rgba(0,200,230,0.15); color: var(--secondary); border: 1px solid rgba(0,200,230,0.3); font-size: 0.65rem;">Checkpoint</div>
+          </div>
+          <div style="font-size: 0.75rem; font-weight: 600; color: var(--fg-muted); margin: 8px 0 4px;">Backward Pass</div>
+          <div class="pipe-row">
+            <div class="pipe-label">Layer 2</div>
+            <div class="pipe-block pipe-recompute">Recompute</div>
+            <div class="pipe-block pipe-bwd">Use ✓</div>
+          </div>
+          <div class="pipe-row">
+            <div class="pipe-label">Layer 1</div>
+            <div class="pipe-block pipe-recompute">Recompute</div>
+            <div class="pipe-block pipe-bwd">Use ✓</div>
+          </div>
+        </div>
+        <div class="callout callout-green" style="margin-top: 8px;">
+          <strong>Result:</strong> Only store small "checkpoint tensors" at layer boundaries. Massive memory savings!
+        </div>
+      </div>
+    </div>
+
+    <!-- What are checkpoint tensors? -->
+    <div style="margin-top: 48px;">
+      <h3 style="text-align: center; font-family: var(--font-serif); font-style: italic; font-size: 1.8rem; margin-bottom: 24px;">
+        What Are <span class="gradient-text">Checkpoint Tensors</span>?
+      </h3>
+
+      <div class="card fade-in" style="max-width: 860px; margin: 0 auto;">
+        <p style="margin-bottom: 16px;">When you discard activations, you can't throw away <em>everything</em> — you still need some "save points" so the backward pass knows <strong>where to start recomputing from</strong>. These save points are called <strong>checkpoint tensors</strong>.</p>
+
+        <div style="display: flex; flex-direction: column; gap: 12px; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 24px; margin: 16px 0;">
+          <div style="font-size: 0.82rem; font-weight: 600; color: var(--secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">Think of it like a video game</div>
+
+          <!-- Visual analogy -->
+          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 200px; text-align: center; padding: 16px; background: rgba(0,200,230,0.06); border: 1px solid rgba(0,200,230,0.2); border-radius: 10px;">
+              <div style="font-size: 2rem; margin-bottom: 6px;">💾</div>
+              <div style="font-size: 0.85rem; font-weight: 600; color: var(--secondary);">Checkpoint = Save Point</div>
+              <p style="font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px;">You save your game at the <em>start</em> of each level. If you need to replay, you load from the save point.</p>
+            </div>
+            <div style="font-size: 1.5rem; color: var(--fg-muted);">→</div>
+            <div style="flex: 1; min-width: 200px; text-align: center; padding: 16px; background: rgba(255,152,0,0.06); border: 1px solid rgba(255,152,0,0.2); border-radius: 10px;">
+              <div style="font-size: 2rem; margin-bottom: 6px;">🔄</div>
+              <div style="font-size: 0.85rem; font-weight: 600; color: var(--orange);">Recompute = Replay Level</div>
+              <p style="font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px;">In backward pass, load the save point and re-play the forward computation for that layer to regenerate all intermediates.</p>
+            </div>
+          </div>
+
+          <!-- Concrete example -->
+          <div style="margin-top: 16px; font-size: 0.85rem; color: var(--fg-muted);">
+            <strong style="color: var(--fg);">Concretely, for a transformer layer:</strong>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; background: rgba(0,0,0,0.3); border-radius: 8px; margin-top: 4px;">
+            <!-- Row 1: Input -->
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="min-width: 140px; padding: 8px 12px; background: rgba(0,200,230,0.12); border: 1px solid rgba(0,200,230,0.3); border-radius: 6px; text-align: center; font-size: 0.78rem; font-weight: 600; color: var(--secondary);">
+                💾 Checkpoint<br><span style="font-size: 0.68rem; font-weight: 400;">input to layer<br>Shape: [S, B, H]</span>
+              </div>
+              <div style="font-size: 0.8rem; color: var(--fg-muted);">→</div>
+              <div style="flex: 1; display: flex; gap: 4px; flex-wrap: wrap;">
+                <div style="padding: 6px 10px; background: rgba(255,112,67,0.1); border: 1px dashed rgba(255,112,67,0.3); border-radius: 6px; font-size: 0.72rem; color: var(--red);">LN output ✗</div>
+                <div style="padding: 6px 10px; background: rgba(255,112,67,0.1); border: 1px dashed rgba(255,112,67,0.3); border-radius: 6px; font-size: 0.72rem; color: var(--red);">Q, K, V ✗</div>
+                <div style="padding: 6px 10px; background: rgba(255,112,67,0.1); border: 1px dashed rgba(255,112,67,0.3); border-radius: 6px; font-size: 0.72rem; color: var(--red);">Attn scores ✗</div>
+                <div style="padding: 6px 10px; background: rgba(255,112,67,0.1); border: 1px dashed rgba(255,112,67,0.3); border-radius: 6px; font-size: 0.72rem; color: var(--red);">FFN hidden ✗</div>
+              </div>
+            </div>
+            <div style="text-align: center; font-size: 0.72rem; color: var(--fg-muted); padding: 4px 0;">
+              <span style="color: var(--secondary); font-weight: 600;">SAVED (tiny)</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="color: var(--red); font-weight: 600;">DISCARDED (huge) — will recompute from checkpoint during backward</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="equation-box" style="margin-top: 16px; font-size: 0.82rem;">
+          <span class="eq-label">Checkpoint memory per layer</span>
+          ~1 &middot; S &middot; B &middot; H &middot; 2 bytes &nbsp;&nbsp;(just one hidden-state tensor in bf16)
+        </div>
+
+        <div class="callout callout-info" style="margin-top: 16px;">
+          <strong>Why ~1*S*B*H?</strong> The checkpoint is typically the <strong>input hidden state</strong> to each transformer layer — a single tensor of shape <code>[S, B, H]</code>. That's <code>S &times; B &times; H</code> elements, stored in bf16 (2 bytes each). Compare this to the <code>34*S*B*H + 5*n*S&sup2;*B</code> elements you'd store without checkpointing — the checkpoint is <strong>~34&times; smaller</strong> (ignoring the S&sup2; term which makes it even more dramatic).
+        </div>
+
+        <p style="margin-top: 16px;">So checkpointing is not "free" in memory — you do store one small tensor per layer. But it's a tiny fraction of what you'd store without checkpointing. That's why the code adds <code>CHECKPOINT_SBH_PER_LAYER = 1</code> to the memory model: even when discarding everything, there's still this small residual cost.</p>
+      </div>
+    </div>
+
+    <!-- Three strategies -->
+    <div style="margin-top: 48px;">
+      <h3 style="text-align: center; font-family: var(--font-serif); font-style: italic; font-size: 1.8rem; margin-bottom: 32px;">
+        Three <span class="gradient-text">Checkpointing Strategies</span>
+      </h3>
+
+      <div class="grid-3 fade-in">
+        <div class="card" style="border-top: 3px solid var(--blue);">
+          <div style="font-size: 1.3rem; margin-bottom: 8px;">🔵 Strategy A</div>
+          <h3>Recompute Attention</h3>
+          <p>Discard all attention activations (both <code>11*SBH</code> and <code>5*n*S&sup2;*B</code> terms). Keeps FFN activations stored.</p>
+          <div class="callout callout-green" style="margin-top: 12px; padding: 10px 14px;">
+            <strong>Eliminates the S&sup2; term!</strong> Memory growth becomes linear.
+          </div>
+        </div>
+        <div class="card" style="border-top: 3px solid var(--green);">
+          <div style="font-size: 1.3rem; margin-bottom: 8px;">🟢 Strategy B</div>
+          <h3>Recompute FFN</h3>
+          <p>Discard FFN activations (<code>19*SBH</code>). Keeps attention activations stored — the S&sup2; term remains.</p>
+          <div class="callout callout-warn" style="margin-top: 12px; padding: 10px 14px;">
+            <strong>S&sup2; term still present.</strong> Less memory savings at long sequences.
+          </div>
+        </div>
+        <div class="card" style="border-top: 3px solid var(--accent);">
+          <div style="font-size: 1.3rem; margin-bottom: 8px;">🟣 Strategy C</div>
+          <h3>Recompute Both</h3>
+          <p>Discard both attention and FFN activations. Only LayerNorm + checkpoints remain in memory.</p>
+          <div class="callout callout-purple" style="margin-top: 12px; padding: 10px 14px;">
+            <strong>Maximum savings.</strong> Only ~5*SBH per layer stored.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ INTERACTIVE CHARTS ============ -->
+<section class="section section-dark" id="interactive-charts">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Interactive</div>
+      <h2><span class="gradient-text">Memory vs. Sequence Length</span></h2>
+      <p class="section-subtitle">See how different checkpointing strategies affect memory across Llama 3.1 model sizes. Click the buttons to switch strategies.</p>
+    </div>
+
+    <!-- Model selector -->
+    <div class="model-tabs" id="model-tabs">
+      <button class="model-tab active" data-model="8B">Llama 3.1 8B</button>
+      <button class="model-tab" data-model="70B">Llama 3.1 70B</button>
+      <button class="model-tab" data-model="405B">Llama 3.1 405B</button>
+    </div>
+
+    <!-- Strategy selector -->
+    <div class="strategy-selector" id="strategy-selector">
+      <button class="strategy-btn active" data-strategy="baseline">Baseline (No Recompute)</button>
+      <button class="strategy-btn" data-strategy="discard_attn">Recompute Attention</button>
+      <button class="strategy-btn" data-strategy="discard_ffn">Recompute FFN</button>
+      <button class="strategy-btn" data-strategy="discard_both">Recompute Both</button>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-container">
+      <h4 id="chart-title">Memory Breakdown — Llama 3.1 8B — Baseline</h4>
+      <div class="chart-subtitle" id="chart-subtitle">All activations stored. Memory grows quadratically with sequence length due to attention S&sup2; term.</div>
+      <div style="position: relative; padding-left: 55px;">
+        <div class="chart-y-axis" id="chart-y-axis"></div>
+        <div class="chart-area" id="chart-area"></div>
+      </div>
+      <div class="chart-legend">
+        <div class="legend-item"><div class="lg-swatch" style="background: #a78bfa;"></div> Params</div>
+        <div class="legend-item"><div class="lg-swatch" style="background: #7c5cbf;"></div> Gradients</div>
+        <div class="legend-item"><div class="lg-swatch" style="background: #5b3a9e;"></div> Optimizer</div>
+        <div class="legend-item"><div class="lg-swatch" style="background: #00c8e6;"></div> Checkpoints</div>
+        <div class="legend-item"><div class="lg-swatch" style="background: #FF9800;"></div> LayerNorm</div>
+        <div class="legend-item"><div class="lg-swatch" style="background: #66BB6A;"></div> FFN</div>
+        <div class="legend-item"><div class="lg-swatch" style="background: #42A5F5;"></div> Attention</div>
+      </div>
+    </div>
+
+    <!-- Savings summary -->
+    <div id="savings-summary" class="callout callout-green fade-in" style="margin-top: 16px;"></div>
+  </div>
+</section>
+
+<!-- ============ FLOPS COMPUTATION ============ -->
+<section class="section" id="flops">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Compute Cost</div>
+      <h2><span class="gradient-text">How FLOPs Are Computed</span></h2>
+      <p class="section-subtitle">Understanding the compute cost of each transformer component is key to understanding recomputation overhead.</p>
+    </div>
+
+    <!-- Forward/Backward ratio -->
+    <div class="equation-box fade-in">
+      <span class="eq-label">Training Step FLOPs</span>
+      FLOPs<sub>step</sub> = FLOPs<sub>forward</sub> + FLOPs<sub>backward</sub> ≈ F + 2F = <span class="eq-highlight">3F</span>
+    </div>
+
+    <div class="callout callout-info fade-in" style="margin-top: 16px;">
+      <strong>Why backward ≈ 2&times; forward?</strong> For each matmul <code>Y = XW</code> in the forward pass, the backward pass computes two matmuls of similar size: <code>dW = X&sup;T dY</code> (gradient w.r.t. weights) and <code>dX = dY W&sup;T</code> (gradient w.r.t. inputs).
+    </div>
+
+    <!-- FLOPs breakdown -->
+    <div class="grid-2 fade-in" style="margin-top: 32px;">
+      <div class="card" style="border-left: 3px solid var(--blue);">
+        <h3 style="color: var(--blue);">Attention FLOPs (per layer)</h3>
+        <div class="equation-box" style="text-align: left; font-size: 0.78rem;">
+          <span class="eq-label">Projections (Q, K, V, Output)</span>
+          8 &middot; B &middot; S &middot; H&sup2;
+        </div>
+        <div class="equation-box" style="text-align: left; font-size: 0.78rem; margin-top: 8px;">
+          <span class="eq-label">Attention Matmuls (QK&sup;T, Score&middot;V)</span>
+          4 &middot; B &middot; S&sup2; &middot; H
+        </div>
+        <p style="margin-top: 12px;">The S&sup2; term in attention compute means attention FLOPs grow quadratically with sequence length, but for typical model sizes, the <code>8BSH&sup2;</code> projection term often still dominates.</p>
+      </div>
+      <div class="card" style="border-left: 3px solid var(--green);">
+        <h3 style="color: var(--green);">FFN FLOPs (per layer)</h3>
+        <div class="equation-box" style="text-align: left; font-size: 0.78rem;">
+          <span class="eq-label">Two Linear Projections (expansion=4)</span>
+          16 &middot; B &middot; S &middot; H&sup2;
+        </div>
+        <p style="margin-top: 12px;">The FFN is purely linear in S — no quadratic terms. But with expansion factor 4, its FLOPs are <strong>2&times; the attention projections</strong>. This makes FFN the compute-dominant block in most configurations.</p>
+        <div class="callout callout-warn" style="margin-top: 12px; padding: 10px 14px;">
+          <strong>Key insight:</strong> FFN has more FLOPs than attention, but attention has the S&sup2; memory term.
+        </div>
+      </div>
+    </div>
+
+    <!-- Recomputation overhead formula -->
+    <div style="margin-top: 48px;">
+      <h3 style="text-align: center; font-family: var(--font-serif); font-style: italic; font-size: 1.8rem; margin-bottom: 24px;">
+        <span class="gradient-text">Compute Overhead Formula</span>
+      </h3>
+      <div class="equation-box fade-in">
+        <span class="eq-label">With Recomputation</span>
+        Overhead = <span class="eq-highlight">F<sub>recomputed</sub></span> / (3 &middot; F<sub>total</sub>)
+      </div>
+
+      <!-- Derivation of the percentages -->
+      <div class="card fade-in" style="margin-top: 24px; max-width: 800px; margin-left: auto; margin-right: auto; border-left: 3px solid var(--secondary);">
+        <h3 style="margin-bottom: 12px;">Where Do These Percentages Come From?</h3>
+        <p style="margin-bottom: 12px;">Let's derive them from the FLOPs formulas. Per layer, the forward FLOPs are:</p>
+        <div class="equation-box" style="text-align: left; font-size: 0.78rem;">
+          <span class="eq-label">Attention forward</span>
+          F<sub>attn</sub> = <span class="eq-highlight">8&middot;B&middot;S&middot;H&sup2;</span> (projections) + <span class="eq-highlight">4&middot;B&middot;S&sup2;&middot;H</span> (score matmuls)
+        </div>
+        <div class="equation-box" style="text-align: left; font-size: 0.78rem;">
+          <span class="eq-label">FFN forward (expansion=4)</span>
+          F<sub>ffn</sub> = <span class="eq-highlight">16&middot;B&middot;S&middot;H&sup2;</span>
+        </div>
+        <p style="margin-top: 12px; margin-bottom: 8px;"><strong>Case 1: Short sequences (S &laquo; H), the S&sup2; term is tiny:</strong></p>
+        <div class="equation-box" style="text-align: left; font-size: 0.78rem;">
+          F<sub>total</sub> &approx; 8BSH&sup2; + 16BSH&sup2; = <span class="eq-highlight">24&middot;B&middot;S&middot;H&sup2;</span>
+        </div>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px;">
+          <div style="flex: 1; min-width: 200px; background: rgba(66,165,245,0.06); border: 1px solid rgba(66,165,245,0.2); border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 0.72rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px;">Attn overhead</div>
+            <div style="font-size: 1.2rem; font-weight: 700; color: var(--blue); margin: 4px 0;">8 / (3&times;24) = 11.1%</div>
+          </div>
+          <div style="flex: 1; min-width: 200px; background: rgba(102,187,106,0.06); border: 1px solid rgba(102,187,106,0.2); border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 0.72rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px;">FFN overhead</div>
+            <div style="font-size: 1.2rem; font-weight: 700; color: var(--green); margin: 4px 0;">16 / (3&times;24) = 22.2%</div>
+          </div>
+          <div style="flex: 1; min-width: 200px; background: rgba(167,139,250,0.06); border: 1px solid rgba(167,139,250,0.2); border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 0.72rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px;">Both overhead</div>
+            <div style="font-size: 1.2rem; font-weight: 700; color: var(--accent); margin: 4px 0;">24 / (3&times;24) = 33.3%</div>
+          </div>
+        </div>
+        <p style="margin-top: 16px; margin-bottom: 8px;"><strong>Case 2: When S = H (e.g., S=4096, H=4096):</strong></p>
+        <p style="margin-bottom: 8px;">Now the <code>4&middot;B&middot;S&sup2;&middot;H</code> term is no longer negligible. Since S=H, this equals <code>4BSH&sup2;</code>, so:</p>
+        <div class="equation-box" style="text-align: left; font-size: 0.78rem;">
+          F<sub>attn</sub> = 8BSH&sup2; + 4BSH&sup2; = <span class="eq-highlight">12&middot;B&middot;S&middot;H&sup2;</span><br>
+          F<sub>total</sub> = 12BSH&sup2; + 16BSH&sup2; = <span class="eq-highlight">28&middot;B&middot;S&middot;H&sup2;</span>
+        </div>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px;">
+          <div style="flex: 1; min-width: 200px; background: rgba(66,165,245,0.06); border: 1px solid rgba(66,165,245,0.2); border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 0.72rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px;">Attn overhead</div>
+            <div style="font-size: 1.2rem; font-weight: 700; color: var(--blue); margin: 4px 0;">12 / (3&times;28) = 14.3%</div>
+          </div>
+          <div style="flex: 1; min-width: 200px; background: rgba(102,187,106,0.06); border: 1px solid rgba(102,187,106,0.2); border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 0.72rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px;">FFN overhead</div>
+            <div style="font-size: 1.2rem; font-weight: 700; color: var(--green); margin: 4px 0;">16 / (3&times;28) = 19.0%</div>
+          </div>
+          <div style="flex: 1; min-width: 200px; background: rgba(167,139,250,0.06); border: 1px solid rgba(167,139,250,0.2); border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 0.72rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px;">Both overhead</div>
+            <div style="font-size: 1.2rem; font-weight: 700; color: var(--accent); margin: 4px 0;">28 / (3&times;28) = 33.3%</div>
+          </div>
+        </div>
+        <div class="callout callout-info" style="margin-top: 16px;">
+          <strong>Key takeaway:</strong> As sequence length grows, attention's <em>compute</em> share increases (because of the S&sup2; FLOPs term), so attention recomputation overhead rises from ~11% toward ~14%+. FFN overhead decreases slightly. "Recompute Both" is always exactly 33.3% because you're replaying the entire forward pass once: <code>F / (3F) = 1/3</code>.
+        </div>
+      </div>
+
+      <!-- Summary cards with corrected numbers -->
+      <div class="grid-3 fade-in" style="margin-top: 24px;">
+        <div class="card" style="text-align: center;">
+          <h3 style="color: var(--blue);">Recompute Attention</h3>
+          <div style="font-size: 2rem; font-weight: 700; margin: 8px 0;">
+            <span class="num-blue">~11–14%</span>
+          </div>
+          <p><code>F_attn / (3 * F_total)</code></p>
+          <p style="margin-top: 8px;">Lower overhead because attention FLOPs are a minority. Rises slightly at long sequences as the S&sup2; compute term grows.</p>
+        </div>
+        <div class="card" style="text-align: center;">
+          <h3 style="color: var(--green);">Recompute FFN</h3>
+          <div style="font-size: 2rem; font-weight: 700; margin: 8px 0;">
+            <span class="num-orange">~19–22%</span>
+          </div>
+          <p><code>F_ffn / (3 * F_total)</code></p>
+          <p style="margin-top: 8px;">Larger overhead because FFN's two big matmuls (16BSH&sup2;) dominate the forward compute budget.</p>
+        </div>
+        <div class="card" style="text-align: center;">
+          <h3 style="color: var(--accent);">Recompute Both</h3>
+          <div style="font-size: 2rem; font-weight: 700; margin: 8px 0;">
+            <span class="num-red">33.3%</span>
+          </div>
+          <p><code>F / (3 * F) = 1/3</code></p>
+          <p style="margin-top: 8px;">Always exactly one-third — you replay the full forward once out of the 3F total step compute.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Numerical example -->
+    <div class="card fade-in" style="margin-top: 32px; max-width: 700px; margin-left: auto; margin-right: auto;">
+      <h3 style="text-align: center; margin-bottom: 16px;">Worked Example</h3>
+      <p style="text-align: center; margin-bottom: 16px;">Suppose per-layer forward FLOPs are: Attention = <span class="num-blue">100</span>, FFN = <span class="num-green">300</span></p>
+      <div class="comp-table-wrap" style="margin: 0;">
+        <table class="comp-table">
+          <thead><tr><th>Strategy</th><th>Step FLOPs</th><th>Overhead</th></tr></thead>
+          <tbody>
+            <tr><td>Baseline</td><td><code>3 &times; 400 = 1200</code></td><td>—</td></tr>
+            <tr><td>Recompute Attention</td><td><code>1200 + 100 = 1300</code></td><td class="val-good">+8.3%</td></tr>
+            <tr><td>Recompute FFN</td><td><code>1200 + 300 = 1500</code></td><td class="val-ok">+25%</td></tr>
+            <tr><td>Recompute Both</td><td><code>1200 + 400 = 1600</code></td><td class="val-bad">+33.3%</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Compute overhead chart (interactive) -->
+    <div class="chart-container fade-in" style="margin-top: 32px;">
+      <h4>Compute Overhead vs. Sequence Length</h4>
+      <div class="chart-subtitle">How recomputation overhead varies with sequence length. Note: attention overhead increases at longer sequences due to S&sup2; FLOPs.</div>
+      <div class="model-tabs" id="overhead-model-tabs" style="margin-bottom: 16px;">
+        <button class="model-tab active" data-model="8B">8B</button>
+        <button class="model-tab" data-model="70B">70B</button>
+        <button class="model-tab" data-model="405B">405B</button>
+      </div>
+      <div id="overhead-chart" class="overhead-chart-area"></div>
+      <div class="chart-legend" style="margin-top: 8px;">
+        <div class="legend-item"><div class="lg-swatch" style="background: #42A5F5;"></div> Recompute Attention</div>
+        <div class="legend-item"><div class="lg-swatch" style="background: #66BB6A;"></div> Recompute FFN</div>
+        <div class="legend-item"><div class="lg-swatch" style="background: #a78bfa;"></div> Recompute Both</div>
+        <div class="legend-item"><div class="lg-swatch" style="background: #555;"></div> No Recompute</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WHY ATTENTION ============ -->
+<section class="section section-dark" id="why-attn">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">The Sweet Spot</div>
+      <h2><span class="gradient-text">Why Checkpoint Attention?</span></h2>
+      <p class="section-subtitle">Attention checkpointing gives you the best bang for your buck: maximum memory savings with minimal compute overhead.</p>
+    </div>
+
+    <!-- The key insight -->
+    <div class="grid-2 fade-in">
+      <div class="card" style="border: 1px solid rgba(66,165,245,0.4); background: rgba(66,165,245,0.03);">
+        <h3>Attention: Memory Hog, Compute Lightweight</h3>
+        <div class="mem-diff-row" style="margin-top: 12px;">
+          <div class="mem-diff-label">Memory share:</div>
+          <div class="mem-diff-bar" style="width: 70%; background: var(--blue);">Dominates at long S</div>
+        </div>
+        <div class="mem-diff-row">
+          <div class="mem-diff-label">Compute share:</div>
+          <div class="mem-diff-bar" style="width: 40%; background: rgba(66,165,245,0.4);">~33-43% of forward</div>
+        </div>
+        <p style="margin-top: 12px;">Attention activations scale as <strong>O(S&sup2;)</strong> in memory but its compute is only a fraction of total FLOPs. Discarding attention saves the most memory per FLOP of recomputation.</p>
+      </div>
+      <div class="card" style="border: 1px solid rgba(102,187,106,0.4); background: rgba(102,187,106,0.03);">
+        <h3>FFN: Compute Heavy, Memory Linear</h3>
+        <div class="mem-diff-row" style="margin-top: 12px;">
+          <div class="mem-diff-label">Memory share:</div>
+          <div class="mem-diff-bar" style="width: 45%; background: var(--green);">Linear in S</div>
+        </div>
+        <div class="mem-diff-row">
+          <div class="mem-diff-label">Compute share:</div>
+          <div class="mem-diff-bar" style="width: 70%; background: rgba(102,187,106,0.4);">~67% of forward</div>
+        </div>
+        <p style="margin-top: 12px;">FFN dominates compute (2&times; more FLOPs than attention projections) but its memory only scales <strong>O(S)</strong>. Recomputing FFN is expensive for modest memory gains.</p>
+      </div>
+    </div>
+
+    <!-- Efficiency ratio -->
+    <div class="card fade-in" style="margin-top: 32px; text-align: center; max-width: 700px; margin-left: auto; margin-right: auto;">
+      <h3 style="margin-bottom: 16px;">Memory Saved per % Compute Overhead</h3>
+      <div class="comp-table-wrap" style="margin: 0;">
+        <table class="comp-table">
+          <thead>
+            <tr><th>Strategy</th><th>Memory Saved (8B, S=16K)</th><th>Compute Overhead</th><th>Efficiency Ratio</th></tr>
+          </thead>
+          <tbody id="efficiency-table-body">
+          </tbody>
+        </table>
+      </div>
+      <div class="callout callout-green" style="margin-top: 16px;">
+        <strong>Verdict:</strong> Recomputing attention saves ~10&times; more memory per unit of extra compute compared to recomputing FFN. This is why most training frameworks default to attention checkpointing.
+      </div>
+    </div>
+
+    <!-- Growing advantage at long sequences -->
+    <div class="card fade-in" style="margin-top: 24px;">
+      <h3>The Advantage Grows with Sequence Length</h3>
+      <p style="margin-bottom: 16px;">As sequence length increases, attention's memory share grows quadratically while its compute share grows less steeply. This means the efficiency of attention checkpointing <em>improves</em> at longer sequences — exactly where you need it most.</p>
+      <div id="advantage-bars" style="padding: 12px 0;"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FLASH ATTENTION ============ -->
+<section class="section" id="flash-attention">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Hardware-Aware</div>
+      <h2><span class="gradient-text">Flash Attention</span></h2>
+      <p class="section-subtitle">Flash Attention is a fused, tiled attention kernel that's both faster and more memory-efficient — and it has deep connections to activation checkpointing.</p>
+    </div>
+
+    <!-- GPU Memory Hierarchy — SRAM vs HBM deep dive -->
+    <div class="card fade-in" style="max-width: 860px; margin: 0 auto; border-top: 3px solid var(--orange);">
+      <h3 style="margin-bottom: 16px;">First: What is SRAM? The GPU Memory Hierarchy</h3>
+      <p style="margin-bottom: 16px;">A GPU doesn't have one uniform pool of memory. It has a <strong>hierarchy</strong>, just like a CPU has L1/L2 cache and main RAM. Understanding this hierarchy is the key to understanding why Flash Attention works.</p>
+
+      <!-- Visual memory hierarchy -->
+      <div style="background: rgba(0,0,0,0.25); border-radius: 14px; padding: 24px; margin: 16px 0;">
+
+        <!-- The hierarchy as nested boxes -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 0;">
+
+          <!-- GPU Chip -->
+          <div style="width: 100%; max-width: 600px; border: 2px solid var(--border-light); border-radius: 16px; padding: 16px; background: rgba(255,255,255,0.02); position: relative;">
+            <div style="position: absolute; top: -10px; left: 20px; background: var(--bg-card); padding: 0 8px; font-size: 0.72rem; font-weight: 600; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px;">GPU Chip (e.g., NVIDIA A100)</div>
+
+            <!-- SMs with SRAM -->
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 16px 0 12px;">
+              <div style="background: rgba(255,152,0,0.12); border: 1.5px solid rgba(255,152,0,0.4); border-radius: 8px; padding: 10px 6px; text-align: center;">
+                <div style="font-size: 0.68rem; font-weight: 700; color: var(--orange);">SM 0</div>
+                <div style="margin-top: 4px; padding: 4px; background: rgba(255,152,0,0.2); border-radius: 4px; font-size: 0.6rem; font-weight: 600; color: var(--orange);">SRAM<br>192 KB</div>
+              </div>
+              <div style="background: rgba(255,152,0,0.12); border: 1.5px solid rgba(255,152,0,0.4); border-radius: 8px; padding: 10px 6px; text-align: center;">
+                <div style="font-size: 0.68rem; font-weight: 700; color: var(--orange);">SM 1</div>
+                <div style="margin-top: 4px; padding: 4px; background: rgba(255,152,0,0.2); border-radius: 4px; font-size: 0.6rem; font-weight: 600; color: var(--orange);">SRAM<br>192 KB</div>
+              </div>
+              <div style="background: rgba(255,152,0,0.12); border: 1.5px solid rgba(255,152,0,0.4); border-radius: 8px; padding: 10px 6px; text-align: center;">
+                <div style="font-size: 0.68rem; font-weight: 700; color: var(--orange);">SM 2</div>
+                <div style="margin-top: 4px; padding: 4px; background: rgba(255,152,0,0.2); border-radius: 4px; font-size: 0.6rem; font-weight: 600; color: var(--orange);">SRAM<br>192 KB</div>
+              </div>
+              <div style="background: rgba(255,152,0,0.08); border: 1.5px dashed rgba(255,152,0,0.3); border-radius: 8px; padding: 10px 6px; text-align: center;">
+                <div style="font-size: 0.68rem; font-weight: 600; color: rgba(255,152,0,0.5);">... &times;108</div>
+                <div style="margin-top: 4px; padding: 4px; font-size: 0.6rem; color: rgba(255,152,0,0.5);">Total SRAM<br>~20 MB</div>
+              </div>
+            </div>
+
+            <div style="text-align: center; font-size: 1rem; color: var(--fg-muted); margin: 4px 0;">&#8597; <span style="font-size: 0.68rem;">on-chip bus (very fast, ~19 TB/s)</span></div>
+
+            <!-- Compute units -->
+            <div style="display: flex; gap: 6px; justify-content: center; margin: 8px 0;">
+              <div style="padding: 6px 12px; background: rgba(0,200,230,0.08); border: 1px solid rgba(0,200,230,0.25); border-radius: 6px; font-size: 0.68rem; font-weight: 600; color: var(--secondary);">CUDA Cores</div>
+              <div style="padding: 6px 12px; background: rgba(0,200,230,0.08); border: 1px solid rgba(0,200,230,0.25); border-radius: 6px; font-size: 0.68rem; font-weight: 600; color: var(--secondary);">Tensor Cores</div>
+            </div>
+          </div>
+
+          <div style="text-align: center; font-size: 1.2rem; color: var(--fg-muted); margin: 8px 0;">&#8597;</div>
+          <div style="text-align: center; font-size: 0.72rem; color: var(--red); font-weight: 600; margin-bottom: 8px;">Off-chip memory bus (~2 TB/s — 10&times; slower!)</div>
+
+          <!-- HBM -->
+          <div style="width: 100%; max-width: 600px; border: 2px solid rgba(255,112,67,0.4); border-radius: 16px; padding: 16px; background: rgba(255,112,67,0.04); position: relative;">
+            <div style="position: absolute; top: -10px; left: 20px; background: var(--bg-card); padding: 0 8px; font-size: 0.72rem; font-weight: 600; color: var(--red); text-transform: uppercase; letter-spacing: 1px;">HBM (High Bandwidth Memory)</div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; justify-content: center;">
+              <div style="padding: 8px 14px; background: rgba(255,112,67,0.1); border: 1px solid rgba(255,112,67,0.25); border-radius: 8px; font-size: 0.75rem; text-align: center;">
+                <div style="font-weight: 600; color: var(--red);">80 GB</div>
+                <div style="font-size: 0.65rem; color: var(--fg-muted);">A100</div>
+              </div>
+              <div style="padding: 8px 14px; background: rgba(255,112,67,0.06); border: 1px solid rgba(255,112,67,0.15); border-radius: 8px; font-size: 0.75rem; text-align: center;">
+                <div style="font-weight: 600; color: rgba(255,112,67,0.7);">Model weights</div>
+              </div>
+              <div style="padding: 8px 14px; background: rgba(255,112,67,0.06); border: 1px solid rgba(255,112,67,0.15); border-radius: 8px; font-size: 0.75rem; text-align: center;">
+                <div style="font-weight: 600; color: rgba(255,112,67,0.7);">Activations</div>
+              </div>
+              <div style="padding: 8px 14px; background: rgba(255,112,67,0.06); border: 1px solid rgba(255,112,67,0.15); border-radius: 8px; font-size: 0.75rem; text-align: center;">
+                <div style="font-weight: 600; color: rgba(255,112,67,0.7);">Optimizer states</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- The comparison table -->
+      <div class="comp-table-wrap" style="margin-top: 16px;">
+        <table class="comp-table">
+          <thead>
+            <tr><th>Property</th><th style="color: var(--orange);">SRAM (On-Chip)</th><th style="color: var(--red);">HBM (Off-Chip)</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>What it is</strong></td>
+              <td>Static RAM cache inside each Streaming Multiprocessor (SM). Also called "shared memory" or "L1 cache".</td>
+              <td>High Bandwidth Memory — the main GPU memory. Multiple stacks of DRAM chips on the GPU package.</td>
+            </tr>
+            <tr>
+              <td><strong>Size</strong></td>
+              <td class="val-bad" style="color: var(--orange) !important;">~192 KB per SM, ~20 MB total</td>
+              <td class="val-good" style="color: var(--primary) !important;">40-80 GB</td>
+            </tr>
+            <tr>
+              <td><strong>Bandwidth</strong></td>
+              <td class="val-good" style="color: var(--primary) !important;">~19 TB/s</td>
+              <td class="val-bad">~2 TB/s (A100)</td>
+            </tr>
+            <tr>
+              <td><strong>Latency</strong></td>
+              <td class="val-good" style="color: var(--primary) !important;">~28 cycles</td>
+              <td class="val-bad">~200-400 cycles</td>
+            </tr>
+            <tr>
+              <td><strong>Programmer controls?</strong></td>
+              <td>Yes — CUDA shared memory, explicitly managed</td>
+              <td>Yes — all <code>torch.tensor</code> allocations live here</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout callout-warn" style="margin-top: 16px;">
+        <strong>The core problem:</strong> SRAM is ~10&times; faster than HBM, but ~4000&times; smaller. Standard attention writes the entire <code>S &times; S</code> attention matrix to HBM because it's too big for SRAM. With S=4096 and 32 heads, that's <code>32 &times; 4096 &times; 4096 &times; 2 bytes = 1 GB</code> per layer — way too large for 20 MB of SRAM. So the GPU spends most of its time waiting for data to move between HBM and SRAM, rather than actually doing math.
+      </div>
+    </div>
+
+    <!-- Standard vs Flash — the problem and solution -->
+    <div style="margin-top: 40px;">
+      <h3 style="text-align: center; font-family: var(--font-serif); font-style: italic; font-size: 1.8rem; margin-bottom: 24px;">
+        Standard Attention vs <span class="gradient-text">Flash Attention</span>
+      </h3>
+
+      <div class="grid-2 fade-in">
+        <div class="card" style="border-top: 3px solid var(--red);">
+          <h3 style="color: var(--red);">Standard Attention</h3>
+          <p style="margin-bottom: 12px;">Each step reads/writes the full matrix to HBM:</p>
+          <div style="background: rgba(0,0,0,0.25); border-radius: 10px; padding: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="min-width: 20px; font-size: 0.72rem; font-weight: 700; color: var(--fg-muted);">1.</span>
+                <div style="flex: 1; padding: 6px 10px; background: rgba(66,165,245,0.1); border: 1px solid rgba(66,165,245,0.25); border-radius: 6px; font-size: 0.75rem;">
+                  Load Q, K from <span style="color: var(--red); font-weight: 600;">HBM</span> → compute S = QK<sup>T</sup> → write S to <span style="color: var(--red); font-weight: 600;">HBM</span>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="min-width: 20px; font-size: 0.72rem; font-weight: 700; color: var(--fg-muted);">2.</span>
+                <div style="flex: 1; padding: 6px 10px; background: rgba(167,139,250,0.1); border: 1px solid rgba(167,139,250,0.25); border-radius: 6px; font-size: 0.75rem;">
+                  Load S from <span style="color: var(--red); font-weight: 600;">HBM</span> → compute P = softmax(S) → write P to <span style="color: var(--red); font-weight: 600;">HBM</span>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="min-width: 20px; font-size: 0.72rem; font-weight: 700; color: var(--fg-muted);">3.</span>
+                <div style="flex: 1; padding: 6px 10px; background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.25); border-radius: 6px; font-size: 0.75rem;">
+                  Load P, V from <span style="color: var(--red); font-weight: 600;">HBM</span> → compute O = PV → write O to <span style="color: var(--red); font-weight: 600;">HBM</span>
+                </div>
+              </div>
+            </div>
+            <div style="margin-top: 10px; padding: 8px; background: rgba(255,112,67,0.08); border-radius: 6px; font-size: 0.72rem; color: var(--red); text-align: center; font-weight: 600;">
+              3 round-trips to HBM! S&times;S matrix written and read repeatedly. Memory-bandwidth bound.
+            </div>
+          </div>
+          <div style="margin-top: 12px; text-align: center;">
+            <div style="font-size: 0.72rem; color: var(--fg-muted); margin-bottom: 4px;">HBM reads + writes:</div>
+            <div style="font-size: 1.1rem; font-weight: 700; color: var(--red); font-family: var(--font-mono);">O(S&sup2;)</div>
+          </div>
+        </div>
+
+        <div class="card" style="border-top: 3px solid var(--primary);">
+          <h3 style="color: var(--primary);">Flash Attention</h3>
+          <p style="margin-bottom: 12px;">Tiles Q, K, V into blocks that <strong>fit in SRAM</strong>:</p>
+          <div style="background: rgba(0,0,0,0.25); border-radius: 10px; padding: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="min-width: 20px; font-size: 0.72rem; font-weight: 700; color: var(--fg-muted);">1.</span>
+                <div style="flex: 1; padding: 6px 10px; background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.25); border-radius: 6px; font-size: 0.75rem;">
+                  Load one <strong>tile</strong> of Q, K, V from HBM → <span style="color: var(--orange); font-weight: 600;">SRAM</span>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="min-width: 20px; font-size: 0.72rem; font-weight: 700; color: var(--fg-muted);">2.</span>
+                <div style="flex: 1; padding: 6px 10px; background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.25); border-radius: 6px; font-size: 0.75rem;">
+                  Compute QK<sup>T</sup>, softmax, &times; V — <strong>all in <span style="color: var(--orange); font-weight: 600;">SRAM</span></strong>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="min-width: 20px; font-size: 0.72rem; font-weight: 700; color: var(--fg-muted);">3.</span>
+                <div style="flex: 1; padding: 6px 10px; background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.25); border-radius: 6px; font-size: 0.75rem;">
+                  Accumulate partial output → repeat for next tile → write <strong>only final O</strong> to HBM
+                </div>
+              </div>
+            </div>
+            <div style="margin-top: 10px; padding: 8px; background: rgba(0,212,106,0.08); border-radius: 6px; font-size: 0.72rem; color: var(--primary); text-align: center; font-weight: 600;">
+              S&times;S matrix never leaves SRAM! Only Q, K, V, O touch HBM. Compute-bound.
+            </div>
+          </div>
+
+          <!-- Tiling visual -->
+          <div style="margin-top: 16px; display: flex; align-items: center; gap: 12px; justify-content: center; flex-wrap: wrap;">
+            <div style="text-align: center;">
+              <div style="font-size: 0.68rem; color: var(--blue); font-weight: 600; margin-bottom: 4px;">Q tiles</div>
+              <div class="tile-grid" style="max-width: 100px;">
+                <div class="tile" style="background: rgba(66,165,245,0.2); border: 1px solid rgba(66,165,245,0.4); color: var(--blue); font-size: 0.55rem;">Q<sub>1</sub></div>
+                <div class="tile" style="background: rgba(66,165,245,0.08); border: 1px solid rgba(66,165,245,0.15); color: rgba(66,165,245,0.4); font-size: 0.55rem;">Q<sub>2</sub></div>
+                <div class="tile" style="background: rgba(66,165,245,0.08); border: 1px solid rgba(66,165,245,0.15); color: rgba(66,165,245,0.4); font-size: 0.55rem;">Q<sub>3</sub></div>
+                <div class="tile" style="background: rgba(66,165,245,0.08); border: 1px solid rgba(66,165,245,0.15); color: rgba(66,165,245,0.4); font-size: 0.55rem;">Q<sub>4</sub></div>
+              </div>
+            </div>
+            <div style="font-size: 1.2rem; color: var(--fg-muted);">&times;</div>
+            <div style="text-align: center;">
+              <div style="font-size: 0.68rem; color: var(--primary); font-weight: 600; margin-bottom: 4px;">K tiles</div>
+              <div class="tile-grid" style="max-width: 100px;">
+                <div class="tile" style="background: rgba(0,212,106,0.2); border: 1px solid rgba(0,212,106,0.4); color: var(--primary); font-size: 0.55rem;">K<sub>1</sub></div>
+                <div class="tile" style="background: rgba(0,212,106,0.08); border: 1px solid rgba(0,212,106,0.15); color: rgba(0,212,106,0.4); font-size: 0.55rem;">K<sub>2</sub></div>
+                <div class="tile" style="background: rgba(0,212,106,0.08); border: 1px solid rgba(0,212,106,0.15); color: rgba(0,212,106,0.4); font-size: 0.55rem;">K<sub>3</sub></div>
+                <div class="tile" style="background: rgba(0,212,106,0.08); border: 1px solid rgba(0,212,106,0.15); color: rgba(0,212,106,0.4); font-size: 0.55rem;">K<sub>4</sub></div>
+              </div>
+            </div>
+            <div style="font-size: 1.2rem; color: var(--fg-muted);">→</div>
+            <div style="text-align: center;">
+              <div style="font-size: 0.68rem; color: var(--orange); font-weight: 600; margin-bottom: 4px;">In SRAM</div>
+              <div style="padding: 10px 16px; background: rgba(255,152,0,0.12); border: 2px solid rgba(255,152,0,0.4); border-radius: 8px; font-size: 0.72rem; font-weight: 600; color: var(--orange);">
+                Q<sub>i</sub>K<sub>j</sub><sup>T</sup> → softmax → &times;V<sub>j</sub><br>
+                <span style="font-size: 0.6rem; font-weight: 400;">One tile at a time</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top: 12px; text-align: center;">
+            <div style="font-size: 0.72rem; color: var(--fg-muted); margin-bottom: 4px;">HBM reads + writes:</div>
+            <div style="font-size: 1.1rem; font-weight: 700; color: var(--primary); font-family: var(--font-mono);">O(S&sup2; / M) where M = SRAM size</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- The online softmax trick -->
+    <div class="card fade-in" style="margin-top: 32px; max-width: 860px; margin-left: auto; margin-right: auto; border-left: 3px solid var(--secondary);">
+      <h3 style="margin-bottom: 12px;">But wait — how can you do softmax on tiles?</h3>
+      <p style="margin-bottom: 12px;">Softmax needs the <em>entire</em> row to compute the denominator <code>sum(exp(x_i))</code>. If you only have one tile, you don't see the full row. Flash Attention solves this with the <strong>online softmax trick</strong>:</p>
+      <div style="display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.2); border-radius: 10px; padding: 16px; margin: 8px 0;">
+        <div style="display: flex; align-items: flex-start; gap: 10px;">
+          <div style="min-width: 24px; height: 24px; background: rgba(0,200,230,0.15); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; color: var(--secondary);">1</div>
+          <p style="font-size: 0.82rem; color: var(--fg-muted);">Process tile 1: compute local softmax, keep running <code>max</code> and running <code>sum(exp)</code></p>
+        </div>
+        <div style="display: flex; align-items: flex-start; gap: 10px;">
+          <div style="min-width: 24px; height: 24px; background: rgba(0,200,230,0.15); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; color: var(--secondary);">2</div>
+          <p style="font-size: 0.82rem; color: var(--fg-muted);">Process tile 2: if new max is larger, <strong>rescale</strong> the previous partial sum and output using correction factor <code>exp(old_max - new_max)</code></p>
+        </div>
+        <div style="display: flex; align-items: flex-start; gap: 10px;">
+          <div style="min-width: 24px; height: 24px; background: rgba(0,200,230,0.15); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; color: var(--secondary);">3</div>
+          <p style="font-size: 0.82rem; color: var(--fg-muted);">Repeat for all tiles. At the end, the accumulated output is <strong>mathematically identical</strong> to full softmax — just computed incrementally.</p>
+        </div>
+      </div>
+      <p>This is why Flash Attention is <strong>exact</strong> (not an approximation). It gives the same result as standard attention, just computed in a more memory-efficient order.</p>
+    </div>
+
+    <!-- Connection to checkpointing -->
+    <div style="margin-top: 48px;">
+      <h3 style="text-align: center; font-family: var(--font-serif); font-style: italic; font-size: 1.8rem; margin-bottom: 24px;">
+        Flash Attention <span class="gradient-text">=</span> Built-in Activation Checkpointing
+      </h3>
+
+      <div class="card fade-in" style="max-width: 860px; margin: 0 auto;">
+        <p style="font-size: 1rem; margin-bottom: 16px;">Flash Attention doesn't store the full S&times;S attention matrix during the forward pass. In the backward pass, it <strong>recomputes</strong> the attention scores tile-by-tile from the stored Q, K, V matrices. This is exactly the same idea as activation checkpointing — but baked into the CUDA kernel itself.</p>
+
+        <div class="comp-table-wrap">
+          <table class="comp-table">
+            <thead>
+              <tr><th>Aspect</th><th>Standard Attention</th><th>Flash Attention</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Forward memory</strong></td>
+                <td class="val-bad">O(S&sup2;) — full attention matrix in HBM</td>
+                <td class="val-good">O(S) — only Q, K, V, O + small stats</td>
+              </tr>
+              <tr>
+                <td><strong>What's stored</strong></td>
+                <td>Full S&times;S score matrix + softmax output</td>
+                <td class="val-great">Just Q, K, V, output, and per-row (max, sum) for softmax</td>
+              </tr>
+              <tr>
+                <td><strong>Backward pass</strong></td>
+                <td>Reads stored S&times;S matrix from HBM</td>
+                <td class="val-great">Recomputes S&times;S tile-by-tile in SRAM from Q, K, V</td>
+              </tr>
+              <tr>
+                <td><strong>HBM reads/writes</strong></td>
+                <td class="val-bad">O(S&sup2;) — memory-bandwidth bound</td>
+                <td class="val-good">O(S&sup2;/M) where M = SRAM size</td>
+              </tr>
+              <tr>
+                <td><strong>Wall-clock speed</strong></td>
+                <td>Slower (waiting for HBM)</td>
+                <td class="val-good">2-4&times; faster (compute-bound, not memory-bound)</td>
+              </tr>
+              <tr>
+                <td><strong>Activation checkpointing</strong></td>
+                <td>Needs explicit torch.checkpoint()</td>
+                <td class="val-great">Built-in! Recomputation is part of the kernel</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout callout-green" style="margin-top: 16px;">
+          <strong>The paradox explained:</strong> Flash Attention does <em>more</em> total FLOPs (it recomputes attention in backward) but is <em>faster</em> in wall-clock time. Why? Because the bottleneck was never compute — it was <strong>memory bandwidth</strong>. By keeping data in fast SRAM and reducing slow HBM transfers, the extra recomputation is "free" — the CUDA cores were idle waiting for data anyway.
+        </div>
+      </div>
+    </div>
+
+    <!-- Synergy -->
+    <div class="grid-3 fade-in" style="margin-top: 32px;">
+      <div class="insight-card">
+        <div class="insight-icon">⚡</div>
+        <h4>Faster + Less Memory</h4>
+        <p>Flash Attention breaks the usual trade-off. By exploiting the SRAM/HBM hierarchy, it's both faster AND uses less memory than standard attention.</p>
+      </div>
+      <div class="insight-card">
+        <div class="insight-icon">🧩</div>
+        <h4>Composable with Checkpointing</h4>
+        <p>Flash Attention handles the attention block's memory. You can still use layer-level checkpointing for FFN activations on top. They stack well.</p>
+      </div>
+      <div class="insight-card">
+        <div class="insight-icon">📏</div>
+        <h4>Enables Long Context</h4>
+        <p>By eliminating the O(S&sup2;) HBM memory cost, Flash Attention makes training with 32K-128K+ sequence lengths feasible. The S&times;S matrix stays in SRAM tiles.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ KEY TAKEAWAYS ============ -->
+<section class="section section-dark" id="takeaways">
+  <div class="container">
+    <div class="section-heading">
+      <div class="section-label">Summary</div>
+      <h2><span class="gradient-text">Key Takeaways</span></h2>
+    </div>
+    <div class="grid-3 fade-in">
+      <div class="takeaway-card">
+        <div class="takeaway-num">1</div>
+        <h4>Activations dominate memory at scale</h4>
+        <p>For long sequences, activation memory can dwarf model parameters + optimizer. The quadratic S&sup2; term from attention is the main culprit.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">2</div>
+        <h4>Checkpoint attention first</h4>
+        <p>Attention recomputation gives the best memory/compute ratio: ~11-14% compute overhead to eliminate the S&sup2; memory term. Always checkpoint attention before FFN.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">3</div>
+        <h4>FFN recomputation is expensive</h4>
+        <p>FFN dominates compute (~57-67% of forward FLOPs depending on sequence length), so recomputing it adds ~19-22% overhead. Only use when you've exhausted other memory savings.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">4</div>
+        <h4>Total overhead caps at ~33%</h4>
+        <p>Even recomputing everything adds at most ~33% compute overhead (one extra forward pass out of the 3F total). This is a known, bounded cost.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">5</div>
+        <h4>Flash Attention is checkpointing</h4>
+        <p>Flash Attention applies the recomputation principle at the hardware level. It eliminates the S&times;S memory footprint while being faster, not slower.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">6</div>
+        <h4>They compose together</h4>
+        <p>Use Flash Attention (eliminates attention S&sup2; memory) + selective FFN checkpointing for the ultimate memory-efficient training setup.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">🧠 Activation Recomputation <span class="gradient-text">Visual Guide</span></div>
+      <p>Part of the ShallowSpeed GPU Workshop series</p>
+      <p class="footer-muted">Built with first-principles math from the Llama 3.1 architecture</p>
+    </div>
+  </div>
+</footer>
+
+<!-- ============ JAVASCRIPT ============ -->
+<script>
+// ===========================
+// Data / Config
+// ===========================
+const V = 128256;
+const models = {
+  "8B":  { h: 4096,  L: 32,  heads: 32,  N: 8e9 },
+  "70B": { h: 8192,  L: 80,  heads: 64,  N: 70e9 },
+  "405B":{ h: 16384, L: 126, heads: 128, N: 405e9 },
+};
+
+const SEQS = [1024, 2048, 4096, 8192, 16384];
+const BS = 1;
+const ACT_BYTES = 2; // bf16
+const ATTN_SBH = 11, FFN_SBH = 19, LN_SBH = 4, ATTN_S2_COEF = 5, CKPT_SBH = 1;
+
+function toGiB(bytes) { return bytes / (1024**3); }
+
+function activationBreakdown(cfg, seq, strategy) {
+  const {h, L, heads} = cfg;
+  const SBH = seq * BS * h;
+  const discardAttn = strategy === 'discard_attn' || strategy === 'discard_both';
+  const discardFFN = strategy === 'discard_ffn' || strategy === 'discard_both';
+  const anyDiscard = discardAttn || discardFFN;
+
+  const ln = L * LN_SBH * SBH * ACT_BYTES;
+  const ffn = discardFFN ? 0 : L * FFN_SBH * SBH * ACT_BYTES;
+  const attn = discardAttn ? 0 : L * (ATTN_SBH * SBH + ATTN_S2_COEF * heads * seq * seq * BS) * ACT_BYTES;
+  const ckpt = anyDiscard ? L * CKPT_SBH * SBH * ACT_BYTES : 0;
+
+  return { ckpt, ln, ffn, attn };
+}
+
+function memoryBreakdown(cfg, seq, strategy) {
+  const N = cfg.N;
+  const p = toGiB(4 * N);
+  const g = toGiB(4 * N);
+  const o = toGiB(8 * N);
+  const act = activationBreakdown(cfg, seq, strategy);
+  return {
+    params: p, grads: g, optim: o,
+    ckpt: toGiB(act.ckpt), ln: toGiB(act.ln), ffn: toGiB(act.ffn), attn: toGiB(act.attn),
+    get total() { return this.params + this.grads + this.optim + this.ckpt + this.ln + this.ffn + this.attn; }
+  };
+}
+
+function computeOverhead(cfg, seq, strategy) {
+  const {h, L, heads} = cfg;
+  const fAttn = (8 * BS * seq * h * h) + (4 * BS * seq * seq * h);
+  const fFFN = 16 * BS * seq * h * h;
+  const fTotal = fAttn + fFFN;
+  const F = L * fTotal;
+  let extra = 0;
+  if (strategy === 'discard_attn' || strategy === 'discard_both') extra += L * fAttn;
+  if (strategy === 'discard_ffn' || strategy === 'discard_both') extra += L * fFFN;
+  return (extra / (3 * F)) * 100;
+}
+
+// ===========================
+// State
+// ===========================
+let currentModel = '8B';
+let currentStrategy = 'baseline';
+let overheadModel = '8B';
+
+// ===========================
+// Interactive Memory Bar (Section 2)
+// ===========================
+const memBarSlider = document.getElementById('mem-bar-seq-slider');
+const memBarSeqDisplay = document.getElementById('mem-bar-seq-display');
+const memBarVisual = document.getElementById('mem-bar-visual');
+const memBarTotal = document.getElementById('mem-bar-total');
+
+function updateMemBar() {
+  const seq = SEQS[memBarSlider.value];
+  memBarSeqDisplay.textContent = seq;
+  const m = memoryBreakdown(models['8B'], seq, 'baseline');
+  const total = m.total;
+  const parts = [
+    { val: m.params, cls: 'params', label: 'Params' },
+    { val: m.grads, cls: 'grads', label: 'Grads' },
+    { val: m.optim, cls: 'optim', label: 'Optim' },
+    { val: m.attn, cls: 'attn-act', label: 'Attn' },
+    { val: m.ffn, cls: 'ffn-act', label: 'FFN' },
+    { val: m.ln, cls: 'ln-act', label: 'LN' },
+  ];
+  memBarVisual.innerHTML = parts.map(p => {
+    const pct = (p.val / total) * 100;
+    return `<div class="mem-seg ${p.cls}" style="flex: ${pct};" title="${p.label}: ${p.val.toFixed(1)} GiB">${pct > 6 ? p.label : ''}</div>`;
+  }).join('');
+  memBarTotal.textContent = total.toFixed(1);
+}
+memBarSlider.addEventListener('input', updateMemBar);
+updateMemBar();
+
+// ===========================
+// Stacked Bar Chart (Section 3)
+// ===========================
+function updateChart() {
+  const cfg = models[currentModel];
+  const area = document.getElementById('chart-area');
+  const yAxis = document.getElementById('chart-y-axis');
+  const titleEl = document.getElementById('chart-title');
+  const subtitleEl = document.getElementById('chart-subtitle');
+  const summaryEl = document.getElementById('savings-summary');
+
+  const stratLabels = {
+    baseline: 'Baseline (No Recompute)',
+    discard_attn: 'Recompute Attention',
+    discard_ffn: 'Recompute FFN',
+    discard_both: 'Recompute Both',
+  };
+  const stratDescriptions = {
+    baseline: 'All activations stored. Memory grows quadratically with sequence length due to attention S² term.',
+    discard_attn: 'Attention activations discarded — S² term eliminated! Memory growth becomes nearly linear.',
+    discard_ffn: 'FFN activations discarded. S² attention term remains — limited savings at long sequences.',
+    discard_both: 'Both attention and FFN discarded. Only LayerNorm + checkpoints remain. Maximum savings.',
+  };
+
+  titleEl.textContent = `Memory Breakdown — Llama 3.1 ${currentModel} — ${stratLabels[currentStrategy]}`;
+  subtitleEl.textContent = stratDescriptions[currentStrategy];
+
+  // Compute baseline max for y-axis
+  const baselineMax = Math.max(...SEQS.map(s => memoryBreakdown(cfg, s, 'baseline').total));
+  const yMax = baselineMax * 1.1;
+
+  // Y axis
+  const yTicks = 5;
+  yAxis.innerHTML = '';
+  for (let i = yTicks; i >= 0; i--) {
+    const val = (yMax * i / yTicks).toFixed(0);
+    const d = document.createElement('span');
+    d.textContent = val;
+    yAxis.appendChild(d);
+  }
+
+  // Bars
+  area.innerHTML = '';
+  const components = ['params', 'grads', 'optim', 'ckpt', 'ln', 'ffn', 'attn'];
+  const colors = { params: '#a78bfa', grads: '#7c5cbf', optim: '#5b3a9e', ckpt: '#00c8e6', ln: '#FF9800', ffn: '#66BB6A', attn: '#42A5F5' };
+
+  SEQS.forEach(seq => {
+    const m = memoryBreakdown(cfg, seq, currentStrategy);
+    const group = document.createElement('div');
+    group.className = 'chart-bar-group';
+
+    const stack = document.createElement('div');
+    stack.className = 'chart-bar-stack';
+    stack.style.height = `${(m.total / yMax) * 100}%`;
+
+    components.forEach(c => {
+      if (m[c] > 0) {
+        const seg = document.createElement('div');
+        seg.className = `chart-bar-seg ${c}`;
+        seg.style.height = `${(m[c] / m.total) * 100}%`;
+        seg.style.background = colors[c];
+        if (m[c] / m.total > 0.08) seg.textContent = m[c].toFixed(0);
+        seg.title = `${c}: ${m[c].toFixed(1)} GiB`;
+        stack.appendChild(seg);
+      }
+    });
+    group.appendChild(stack);
+
+    const totalLabel = document.createElement('div');
+    totalLabel.className = 'chart-total-label';
+    totalLabel.textContent = `${m.total.toFixed(0)} GiB`;
+    group.appendChild(totalLabel);
+
+    const xLabel = document.createElement('div');
+    xLabel.className = 'chart-x-label';
+    xLabel.textContent = seq >= 1024 ? `${seq/1024}K` : seq;
+    group.appendChild(xLabel);
+
+    area.appendChild(group);
+  });
+
+  // Savings summary
+  if (currentStrategy !== 'baseline') {
+    const baseMax = memoryBreakdown(cfg, 16384, 'baseline');
+    const stratMax = memoryBreakdown(cfg, 16384, currentStrategy);
+    const saved = baseMax.total - stratMax.total;
+    const pct = (saved / baseMax.total * 100).toFixed(1);
+    const overhead = computeOverhead(cfg, 16384, currentStrategy).toFixed(1);
+    summaryEl.innerHTML = `<strong>At S=16K:</strong> Saves <span class="num-green">${saved.toFixed(0)} GiB</span> (${pct}% reduction) with only <span class="num-orange">${overhead}%</span> compute overhead.`;
+    summaryEl.style.display = 'block';
+  } else {
+    summaryEl.style.display = 'none';
+  }
+}
+
+// Model tabs
+document.getElementById('model-tabs').addEventListener('click', e => {
+  if (e.target.classList.contains('model-tab')) {
+    document.querySelectorAll('#model-tabs .model-tab').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    currentModel = e.target.dataset.model;
+    updateChart();
+  }
+});
+
+// Strategy buttons
+document.getElementById('strategy-selector').addEventListener('click', e => {
+  if (e.target.classList.contains('strategy-btn')) {
+    document.querySelectorAll('#strategy-selector .strategy-btn').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    currentStrategy = e.target.dataset.strategy;
+    updateChart();
+  }
+});
+
+updateChart();
+
+// ===========================
+// Compute Overhead Line Chart
+// ===========================
+function drawOverheadChart() {
+  const cfg = models[overheadModel];
+  const container = document.getElementById('overhead-chart');
+  const strategies = ['discard_attn', 'discard_ffn', 'discard_both', 'baseline'];
+  const colors = { discard_attn: '#42A5F5', discard_ffn: '#66BB6A', discard_both: '#a78bfa', baseline: '#555' };
+  const labels = { discard_attn: 'Recompute Attn', discard_ffn: 'Recompute FFN', discard_both: 'Recompute Both', baseline: 'No Recompute' };
+
+  const allVals = [];
+  const data = {};
+  strategies.forEach(s => {
+    data[s] = SEQS.map(seq => computeOverhead(cfg, seq, s));
+    allVals.push(...data[s]);
+  });
+  const yMax = Math.max(...allVals) * 1.15 || 40;
+
+  const W = 600, H = 220;
+  const padL = 45, padR = 15, padT = 10, padB = 35;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+
+  function xPos(i) { return padL + (i / (SEQS.length - 1)) * chartW; }
+  function yPos(v) { return padT + chartH - (v / yMax) * chartH; }
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">`;
+
+  // Grid
+  for (let i = 0; i <= 4; i++) {
+    const y = padT + (i / 4) * chartH;
+    const val = (yMax * (4 - i) / 4).toFixed(0);
+    svg += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#262626" stroke-width="1"/>`;
+    svg += `<text x="${padL-8}" y="${y+4}" text-anchor="end" fill="#a3a3a3" font-size="10" font-family="var(--font-mono)">${val}%</text>`;
+  }
+
+  // X labels
+  SEQS.forEach((s, i) => {
+    const x = xPos(i);
+    svg += `<text x="${x}" y="${H-8}" text-anchor="middle" fill="#a3a3a3" font-size="10" font-family="var(--font-mono)">${s >= 1024 ? s/1024+'K' : s}</text>`;
+    svg += `<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT+chartH}" stroke="#1a1a1a" stroke-width="1"/>`;
+  });
+
+  // Lines
+  strategies.forEach(strat => {
+    const pts = data[strat].map((v, i) => `${xPos(i)},${yPos(v)}`).join(' ');
+    svg += `<polyline points="${pts}" fill="none" stroke="${colors[strat]}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+    // Dots
+    data[strat].forEach((v, i) => {
+      svg += `<circle cx="${xPos(i)}" cy="${yPos(v)}" r="4" fill="${colors[strat]}" stroke="#0a0a0a" stroke-width="1.5"/>`;
+    });
+    // End label
+    const lastVal = data[strat][data[strat].length - 1];
+    svg += `<text x="${xPos(SEQS.length-1)+8}" y="${yPos(lastVal)+4}" fill="${colors[strat]}" font-size="9" font-weight="600" font-family="var(--font-sans)">${lastVal.toFixed(1)}%</text>`;
+  });
+
+  svg += '</svg>';
+  container.innerHTML = svg;
+}
+
+document.getElementById('overhead-model-tabs').addEventListener('click', e => {
+  if (e.target.classList.contains('model-tab')) {
+    document.querySelectorAll('#overhead-model-tabs .model-tab').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    overheadModel = e.target.dataset.model;
+    drawOverheadChart();
+  }
+});
+drawOverheadChart();
+
+// ===========================
+// Efficiency Table
+// ===========================
+function updateEfficiencyTable() {
+  const cfg = models['8B'];
+  const seq = 16384;
+  const tbody = document.getElementById('efficiency-table-body');
+  const baseline = memoryBreakdown(cfg, seq, 'baseline');
+
+  const strategies = [
+    { key: 'discard_attn', label: 'Recompute Attention', cls: 'val-good' },
+    { key: 'discard_ffn', label: 'Recompute FFN', cls: 'val-ok' },
+    { key: 'discard_both', label: 'Recompute Both', cls: 'val-great' },
+  ];
+
+  tbody.innerHTML = strategies.map(s => {
+    const m = memoryBreakdown(cfg, seq, s.key);
+    const saved = baseline.total - m.total;
+    const overhead = computeOverhead(cfg, seq, s.key);
+    const ratio = saved / overhead;
+    return `<tr>
+      <td>${s.label}</td>
+      <td class="${s.cls}">${saved.toFixed(0)} GiB</td>
+      <td>${overhead.toFixed(1)}%</td>
+      <td style="color: var(--secondary); font-weight: 700;">${ratio.toFixed(1)} GiB/%</td>
+    </tr>`;
+  }).join('');
+}
+updateEfficiencyTable();
+
+// ===========================
+// Advantage Growing Bars
+// ===========================
+function updateAdvantageBars() {
+  const container = document.getElementById('advantage-bars');
+  const cfg = models['8B'];
+  let html = '<div style="font-size: 0.78rem; color: var(--fg-muted); margin-bottom: 12px;">Memory saved by recomputing attention vs FFN (Llama 8B):</div>';
+
+  SEQS.forEach(seq => {
+    const baseline = memoryBreakdown(cfg, seq, 'baseline');
+    const attnSave = baseline.total - memoryBreakdown(cfg, seq, 'discard_attn').total;
+    const ffnSave = baseline.total - memoryBreakdown(cfg, seq, 'discard_ffn').total;
+    const maxSave = Math.max(attnSave, ffnSave, 1);
+
+    html += `<div style="margin-bottom: 10px;">
+      <div style="font-size: 0.72rem; font-weight: 600; margin-bottom: 4px;">S = ${seq >= 1024 ? seq/1024+'K' : seq}</div>
+      <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 3px;">
+        <span style="min-width: 100px; font-size: 0.7rem; color: var(--blue);">Attn savings:</span>
+        <div style="height: 20px; width: ${Math.max((attnSave/maxSave)*100, 2)}%; background: var(--blue); border-radius: 4px; display: flex; align-items: center; padding: 0 8px; font-size: 0.65rem; color: #fff; font-weight: 600; min-width: 50px;">${attnSave.toFixed(0)} GiB</div>
+      </div>
+      <div style="display: flex; gap: 6px; align-items: center;">
+        <span style="min-width: 100px; font-size: 0.7rem; color: var(--green);">FFN savings:</span>
+        <div style="height: 20px; width: ${Math.max((ffnSave/maxSave)*100, 2)}%; background: var(--green); border-radius: 4px; display: flex; align-items: center; padding: 0 8px; font-size: 0.65rem; color: #fff; font-weight: 600; min-width: 50px;">${ffnSave.toFixed(0)} GiB</div>
+      </div>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+updateAdvantageBars();
+
+// ===========================
+// Scroll Animations
+// ===========================
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1, rootMargin: '-50px' });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// ===========================
+// Smooth nav highlight
+// ===========================
+const navLinks = document.querySelectorAll('.nav-links a');
+const sections = document.querySelectorAll('section[id]');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(section => {
+    const top = section.offsetTop - 100;
+    if (window.scrollY >= top) current = section.id;
+  });
+  navLinks.forEach(link => {
+    link.style.color = link.getAttribute('href') === '#' + current ? 'var(--primary)' : '';
+  });
+});
+</script>
+</body>
+</html>
