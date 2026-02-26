@@ -1225,18 +1225,18 @@ input[type="range"]::-moz-range-thumb {
       <div class="param-card">
         <div class="param-category-badge cat-zero3">ZeRO-3</div>
         <div class="param-name">stage3_max_live_parameters</div>
-        <div class="param-default">1,000,000,000</div>
+        <div class="param-default">1,000M (1 Billion elements)</div>
         <p>Maximum number of parameter elements that can be <strong>materialized</strong> (gathered) across all GPUs at once during forward/backward.</p>
         <p style="margin-top: 8px;">This caps <strong>peak memory from temporary all-gathers</strong>. If a layer needs more than this, it gets broken into smaller chunks and gathered piece by piece.</p>
         <div class="equation-box" style="margin-top: 12px; font-size: 0.78rem;">
           <span class="eq-label">Peak memory cap (BF16)</span>
-          1B &times; 2 bytes = <span class="eq-highlight">~2 GB max live</span>
+          1,000M &times; 2 bytes = <span class="eq-highlight">~2 GB max live</span>
         </div>
       </div>
       <div class="param-card">
         <div class="param-category-badge cat-zero3">ZeRO-3</div>
         <div class="param-name">stage3_max_reuse_distance</div>
-        <div class="param-default">1,000,000,000</div>
+        <div class="param-default">1,000M (1 Billion elements)</div>
         <p>If a parameter will be needed again within this many elements of compute, <strong>keep it around</strong> instead of flushing and re-gathering.</p>
         <p style="margin-top: 8px;">High value = more aggressive caching. Trades <strong>memory for reduced communication</strong>. Useful when the same parameter appears in multiple operations close together.</p>
       </div>
@@ -1246,9 +1246,9 @@ input[type="range"]::-moz-range-thumb {
       <div class="param-card">
         <div class="param-category-badge cat-zero3">ZeRO-3</div>
         <div class="param-name">sub_group_size</div>
-        <div class="param-default">1,000,000,000</div>
+        <div class="param-default">1,000M (1 Billion elements)</div>
         <p>During the <strong>optimizer step</strong>, parameters are processed in sub-groups of this size to control peak memory.</p>
-        <p style="margin-top: 8px;">Smaller = less peak memory during optimizer step, but more overhead from processing many small groups. Default 1B means "process everything at once" for most models.</p>
+        <p style="margin-top: 8px;">Smaller = less peak memory during optimizer step, but more overhead from processing many small groups. Default 1,000M means "process everything at once" for most models.</p>
       </div>
       <div class="param-card">
         <div class="param-category-badge cat-zero3">ZeRO-3</div>
@@ -1383,9 +1383,9 @@ input[type="range"]::-moz-range-thumb {
 
     <span class="cm">// === ZeRO-3: Persistence &amp; Caching ===</span>
     <span class="key">"stage3_param_persistence_threshold"</span>: <span class="num">100000</span>,      <span class="cm">// &lt;100K → keep replicated</span>
-    <span class="key">"stage3_max_live_parameters"</span>:        <span class="num">1000000000</span>,  <span class="cm">// 1B max gathered at once</span>
-    <span class="key">"stage3_max_reuse_distance"</span>:         <span class="num">1000000000</span>,  <span class="cm">// Cache if reused within 1B elems</span>
-    <span class="key">"sub_group_size"</span>:                    <span class="num">1000000000</span>,  <span class="cm">// Optimizer sub-group size</span>
+    <span class="key">"stage3_max_live_parameters"</span>:        <span class="num">1000000000</span>,  <span class="cm">// 1,000M max gathered at once</span>
+    <span class="key">"stage3_max_reuse_distance"</span>:         <span class="num">1000000000</span>,  <span class="cm">// Cache if reused within 1,000M elems</span>
+    <span class="key">"sub_group_size"</span>:                    <span class="num">1000000000</span>,  <span class="cm">// 1,000M optimizer sub-group</span>
 
     <span class="cm">// === Checkpointing ===</span>
     <span class="key">"stage3_gather_16bit_weights_on_model_save"</span>: <span class="kw">true</span>  <span class="cm">// Full checkpoint</span>
@@ -1457,21 +1457,21 @@ input[type="range"]::-moz-range-thumb {
             </tr>
             <tr>
               <td><code>stage3_max_live_parameters</code></td>
-              <td><span class="num-orange">1B</span></td>
+              <td><span class="num-orange">1,000M</span></td>
               <td><span class="param-category-badge cat-zero3" style="margin: 0;">ZeRO-3</span></td>
               <td class="val-bad">Higher peak memory</td>
               <td class="val-good">Lower peak memory, more chunks</td>
             </tr>
             <tr>
               <td><code>stage3_max_reuse_distance</code></td>
-              <td><span class="num-orange">1B</span></td>
+              <td><span class="num-orange">1,000M</span></td>
               <td><span class="param-category-badge cat-zero3" style="margin: 0;">ZeRO-3</span></td>
               <td class="val-neutral">More caching (mem ↑, comm ↓)</td>
               <td class="val-neutral">Less caching (mem ↓, comm ↑)</td>
             </tr>
             <tr>
               <td><code>sub_group_size</code></td>
-              <td><span class="num-orange">1B</span></td>
+              <td><span class="num-orange">1,000M</span></td>
               <td><span class="param-category-badge cat-zero3" style="margin: 0;">ZeRO-3</span></td>
               <td class="val-bad">Higher peak optimizer memory</td>
               <td class="val-good">Lower peak, more overhead</td>

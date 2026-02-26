@@ -1,0 +1,2081 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShallowSpeed GPU Benchmark — Visual Code Walkthrough</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ============ NAVBAR ============ -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <span class="brand-icon">⚡</span>
+      <span class="brand-text">ShallowSpeed</span>
+      <span class="brand-tag">Visual Guide</span>
+    </div>
+    <div class="nav-links">
+      <a href="#overview">Overview</a>
+      <a href="#concepts">Concepts</a>
+      <a href="#env-check">Environment</a>
+      <a href="#model">Model</a>
+      <a href="#single-gpu">Single GPU</a>
+      <a href="#naive-dp">Naive DP</a>
+      <a href="#interleaved-dp">Interleaved DP</a>
+      <a href="#ddp">PyTorch DDP</a>
+      <a href="#benchmark">Benchmark</a>
+      <a href="#results">Results</a>
+      <a href="#ring-allreduce">Ring AllReduce</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<section class="hero" id="overview">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-green"></div>
+    <div class="orb orb-cyan"></div>
+    <div class="orb orb-purple"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="pulse-dot"></span>
+      GPU Workshop — Data Parallelism Deep Dive
+    </div>
+    <h1>ShallowSpeed on <span class="gradient-text">GPU</span></h1>
+    <p class="hero-subtitle">A visual, from-first-principles walkthrough of data-parallel training — from a single GPU baseline to production-grade PyTorch DDP.</p>
+
+    <!-- Colab CTAs -->
+    <div class="colab-cta-row">
+      <a href="https://colab.research.google.com/github/VizuaraAI/shallowspeed-visual-guide/blob/main/ShallowSpeed_GPU_Benchmark.ipynb" target="_blank" rel="noopener noreferrer" class="colab-cta">
+        <div class="colab-cta-inner">
+          <div class="colab-icon">
+            <svg viewBox="0 0 24 24" width="36" height="36" fill="none">
+              <path d="M4.54 9.46a8.03 8.03 0 0 1 14.92 0" stroke="#F9AB00" stroke-width="2.2" stroke-linecap="round"/>
+              <path d="M19.46 14.54a8.03 8.03 0 0 1-14.92 0" stroke="#F9AB00" stroke-width="2.2" stroke-linecap="round"/>
+              <circle cx="12" cy="12" r="3.8" fill="#F9AB00"/>
+              <circle cx="6.5" cy="12" r="2.6" fill="#E8710A"/>
+              <circle cx="17.5" cy="12" r="2.6" fill="#E8710A"/>
+            </svg>
+          </div>
+          <div class="colab-cta-text">
+            <span class="colab-cta-title">Basic Benchmark</span>
+            <span class="colab-cta-desc">4 training modes, 2-4 GPUs, FP32. Start here.</span>
+          </div>
+          <div class="colab-arrow">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 17L17 7M17 7H7M17 7v10"/>
+            </svg>
+          </div>
+        </div>
+      </a>
+
+      <a href="https://colab.research.google.com/github/VizuaraAI/shallowspeed-visual-guide/blob/main/ShallowSpeed_Advanced_Benchmark.ipynb" target="_blank" rel="noopener noreferrer" class="colab-cta colab-cta-advanced">
+        <div class="colab-cta-inner">
+          <div class="colab-icon">
+            <svg viewBox="0 0 24 24" width="36" height="36" fill="none">
+              <path d="M4.54 9.46a8.03 8.03 0 0 1 14.92 0" stroke="#F9AB00" stroke-width="2.2" stroke-linecap="round"/>
+              <path d="M19.46 14.54a8.03 8.03 0 0 1-14.92 0" stroke="#F9AB00" stroke-width="2.2" stroke-linecap="round"/>
+              <circle cx="12" cy="12" r="3.8" fill="#F9AB00"/>
+              <circle cx="6.5" cy="12" r="2.6" fill="#E8710A"/>
+              <circle cx="17.5" cy="12" r="2.6" fill="#E8710A"/>
+            </svg>
+          </div>
+          <div class="colab-cta-text">
+            <span class="colab-cta-title">Advanced Benchmark</span>
+            <span class="colab-cta-desc">8 GPUs, Mixed Precision, Gradient Accumulation, torch.profiler traces.</span>
+          </div>
+          <div class="colab-arrow">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 17L17 7M17 7H7M17 7v10"/>
+            </svg>
+          </div>
+        </div>
+      </a>
+    </div>
+
+    <div class="hero-cards">
+      <div class="hero-stat-card">
+        <div class="stat-number">4</div>
+        <div class="stat-label">Training Modes</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">4×</div>
+        <div class="stat-label">A100 80GB GPUs</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">52M</div>
+        <div class="stat-label">Parameters (XLarge)</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">2.4×</div>
+        <div class="stat-label">Best Speedup</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WHAT WE BENCHMARK ============ -->
+<section class="section" id="concepts">
+  <div class="container">
+    <div class="section-heading">
+      <span class="section-label">The Big Picture</span>
+      <h2>What Are We <span class="gradient-text">Benchmarking?</span></h2>
+      <p class="section-subtitle">Four different ways to train the same model — each progressively smarter about overlapping communication with computation.</p>
+    </div>
+
+    <div class="four-modes-grid">
+      <!-- Mode 1 -->
+      <div class="mode-card" data-mode="1">
+        <div class="mode-number">1</div>
+        <div class="mode-icon">🖥️</div>
+        <h3>Single GPU</h3>
+        <p class="mode-desc">Standard training on 1 GPU. No communication needed. This is our <strong>baseline</strong>.</p>
+        <div class="mode-timeline">
+          <div class="tl-bar tl-compute" style="width:80%">FWD + BWD</div>
+          <div class="tl-bar tl-update" style="width:20%">Update</div>
+        </div>
+        <span class="mode-tag tag-baseline">Baseline</span>
+      </div>
+      <!-- Mode 2 -->
+      <div class="mode-card" data-mode="2">
+        <div class="mode-number">2</div>
+        <div class="mode-icon">🐢</div>
+        <h3>Naive DP</h3>
+        <p class="mode-desc">N GPUs. Full forward + backward, <strong>then</strong> blocking AllReduce. Communication and computation are <strong>separate phases</strong>.</p>
+        <div class="mode-timeline">
+          <div class="tl-bar tl-compute" style="width:40%">FWD+BWD</div>
+          <div class="tl-bar tl-comm" style="width:40%">AllReduce ALL</div>
+          <div class="tl-bar tl-update" style="width:20%">Update</div>
+        </div>
+        <span class="mode-tag tag-naive">Non-Interleaved</span>
+      </div>
+      <!-- Mode 3 -->
+      <div class="mode-card" data-mode="3">
+        <div class="mode-number">3</div>
+        <div class="mode-icon">🚀</div>
+        <h3>Interleaved DP</h3>
+        <p class="mode-desc">N GPUs. Non-blocking AllReduce fires <strong>per layer</strong> during backward. Communication <strong>overlaps</strong> with computation.</p>
+        <div class="mode-timeline">
+          <div class="tl-bar tl-compute" style="width:25%">FWD</div>
+          <div class="tl-bar tl-overlap" style="width:55%">BWD + AllReduce ⚡</div>
+          <div class="tl-bar tl-update" style="width:20%">Update</div>
+        </div>
+        <span class="mode-tag tag-interleaved">Overlapped</span>
+      </div>
+      <!-- Mode 4 -->
+      <div class="mode-card" data-mode="4">
+        <div class="mode-number">4</div>
+        <div class="mode-icon">🏆</div>
+        <h3>PyTorch DDP</h3>
+        <p class="mode-desc">Production-grade interleaved DP with <strong>gradient bucketing</strong> for fewer, larger AllReduce calls.</p>
+        <div class="mode-timeline">
+          <div class="tl-bar tl-compute" style="width:25%">FWD</div>
+          <div class="tl-bar tl-ddp" style="width:55%">BWD + Bucketed AR 🪣</div>
+          <div class="tl-bar tl-update" style="width:20%">Update</div>
+        </div>
+        <span class="mode-tag tag-ddp">Production</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FIRST PRINCIPLES: WHAT IS DATA PARALLELISM? ============ -->
+<section class="section section-dark" id="first-principles">
+  <div class="container">
+    <div class="section-heading">
+      <span class="section-label">From First Principles</span>
+      <h2>What is <span class="gradient-text">Data Parallelism?</span></h2>
+    </div>
+
+    <div class="principles-grid">
+      <div class="principle-card">
+        <div class="principle-step">1</div>
+        <h3>The Problem</h3>
+        <div class="principle-visual">
+          <div class="gpu-box single">
+            <span>GPU 0</span>
+            <div class="data-bar full">All 32,768 samples</div>
+          </div>
+        </div>
+        <p>One GPU processes the entire dataset. Training is slow because a single GPU can only process one batch at a time.</p>
+      </div>
+
+      <div class="principle-card">
+        <div class="principle-step">2</div>
+        <h3>The Idea: Split the Data</h3>
+        <div class="principle-visual">
+          <div class="gpu-box multi">
+            <span>GPU 0</span>
+            <div class="data-bar half-a">Shard A (16,384)</div>
+          </div>
+          <div class="gpu-box multi">
+            <span>GPU 1</span>
+            <div class="data-bar half-b">Shard B (16,384)</div>
+          </div>
+        </div>
+        <p>Each GPU gets a <strong>shard</strong> of the batch. Both GPUs compute forward + backward <strong>in parallel</strong> — ~2× faster compute!</p>
+      </div>
+
+      <div class="principle-card">
+        <div class="principle-step">3</div>
+        <h3>The Catch: Sync Gradients</h3>
+        <div class="principle-visual">
+          <div class="sync-diagram">
+            <div class="gpu-node">GPU 0<br><small>∇ grad_A</small></div>
+            <div class="sync-arrows">
+              <span class="arrow-lr">⟷</span>
+              <span class="arrow-label">AllReduce</span>
+            </div>
+            <div class="gpu-node">GPU 1<br><small>∇ grad_B</small></div>
+          </div>
+          <div class="sync-result">Both GPUs now have: <code>(grad_A + grad_B) / 2</code></div>
+        </div>
+        <p>Each GPU computed gradients from different data. We must <strong>average</strong> them so all GPUs update weights identically. This is <strong>AllReduce</strong>.</p>
+      </div>
+
+      <div class="principle-card">
+        <div class="principle-step">4</div>
+        <h3>The Key Question</h3>
+        <div class="principle-visual">
+          <div class="question-box">
+            <span class="question-mark">?</span>
+            <em>When</em> do you run AllReduce?
+          </div>
+        </div>
+        <p><strong>After all gradients</strong> are computed (Naive)? Or <strong>during</strong> backward, per-layer (Interleaved)? That choice is what this notebook explores.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WHAT IS ALLREDUCE? ============ -->
+<section class="section">
+  <div class="container">
+    <div class="section-heading">
+      <span class="section-label">Core Operation</span>
+      <h2>What is <span class="gradient-text">AllReduce?</span></h2>
+      <p class="section-subtitle">The most important collective communication operation in distributed training.</p>
+    </div>
+
+    <div class="allreduce-visual">
+      <div class="ar-step">
+        <h4>Before AllReduce</h4>
+        <div class="ar-gpus">
+          <div class="ar-gpu"><span>GPU 0</span><div class="ar-val" style="background:#FF7043">grad = [3, 1]</div></div>
+          <div class="ar-gpu"><span>GPU 1</span><div class="ar-val" style="background:#42A5F5">grad = [1, 5]</div></div>
+        </div>
+      </div>
+      <div class="ar-arrow">
+        <svg width="60" height="40"><path d="M5 20 L50 20" stroke="#00d46a" stroke-width="3" marker-end="url(#arrowhead)"/><defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#00d46a"/></marker></defs></svg>
+        <small>SUM + Average</small>
+      </div>
+      <div class="ar-step">
+        <h4>After AllReduce</h4>
+        <div class="ar-gpus">
+          <div class="ar-gpu"><span>GPU 0</span><div class="ar-val" style="background:#66BB6A">grad = [2, 3]</div></div>
+          <div class="ar-gpu"><span>GPU 1</span><div class="ar-val" style="background:#66BB6A">grad = [2, 3]</div></div>
+        </div>
+      </div>
+    </div>
+    <p class="ar-caption">Every GPU ends up with the <strong>same averaged gradient</strong>. This ensures weight updates are identical across all GPUs, keeping models in sync.</p>
+  </div>
+</section>
+
+
+<!-- ============ SECTION 1: ENVIRONMENT CHECK ============ -->
+<section class="section section-dark" id="env-check">
+  <div class="container">
+    <div class="section-heading">
+      <span class="section-label">Cell 1 — Environment Check</span>
+      <h2>Setting Up the <span class="gradient-text">GPU Environment</span></h2>
+      <p class="section-subtitle">Before anything, verify that we have GPUs and NCCL (the GPU communication library).</p>
+    </div>
+
+    <div class="code-explain-row">
+      <div class="code-panel">
+        <div class="code-header">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          <span class="code-filename">Cell 1 — Environment Check</span>
+        </div>
+        <pre><code><span class="kw">import</span> <span class="mod">torch</span>
+<span class="kw">import</span> <span class="mod">os</span>
+
+<span class="cmt"># How many GPUs does this machine have?</span>
+NUM_GPUS = torch.cuda.<span class="fn">device_count</span>()
+
+<span class="fn">print</span>(<span class="str">f"PyTorch version : </span>{torch.__version__}<span class="str">"</span>)
+<span class="fn">print</span>(<span class="str">f"CUDA available  : </span>{torch.cuda.<span class="fn">is_available</span>()}<span class="str">"</span>)
+<span class="fn">print</span>(<span class="str">f"NCCL available  : </span>{torch.distributed.<span class="fn">is_nccl_available</span>()}<span class="str">"</span>)
+<span class="fn">print</span>(<span class="str">f"GPUs found      : </span>{NUM_GPUS}<span class="str">"</span>)
+
+<span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(NUM_GPUS):
+    props = torch.cuda.<span class="fn">get_device_properties</span>(i)
+    mem = props.total_memory / <span class="num">1024</span>**<span class="num">3</span>
+    <span class="fn">print</span>(<span class="str">f"  GPU </span>{i}<span class="str">: </span>{props.name}<span class="str"> (</span>{mem:.1f}<span class="str"> GB)"</span>)</code></pre>
+        <div class="code-output">
+          <div class="output-header">Output</div>
+          <pre>PyTorch version : 2.4.1+cu124
+CUDA available  : True
+NCCL available  : True
+GPUs found      : 4
+  GPU 0: NVIDIA A100 80GB PCIe (79.3 GB)
+  GPU 1: NVIDIA A100 80GB PCIe (79.3 GB)
+  GPU 2: NVIDIA A100 80GB PCIe (79.3 GB)
+  GPU 3: NVIDIA A100 80GB PCIe (79.3 GB)</pre>
+        </div>
+      </div>
+      <div class="explain-panel">
+        <div class="explain-block">
+          <div class="explain-icon">📦</div>
+          <h4>torch.cuda.device_count()</h4>
+          <p>Returns the number of NVIDIA GPUs available. We need <strong>at least 2</strong> for data parallelism (one model copy per GPU).</p>
+        </div>
+        <div class="explain-block">
+          <div class="explain-icon">🔗</div>
+          <h4>What is NCCL?</h4>
+          <p><strong>NVIDIA Collective Communications Library</strong> — the library that handles GPU-to-GPU communication. It implements AllReduce, Broadcast, and other operations using high-speed interconnects like <strong>NVLink</strong> or <strong>PCIe</strong>.</p>
+        </div>
+        <div class="explain-block">
+          <div class="explain-icon">🖥️</div>
+          <h4>Our Hardware</h4>
+          <p>We're running on <strong>4× A100 80GB</strong> — NVIDIA's datacenter GPU with 80GB of HBM2e memory. Each one has ~312 TFLOPS of BF16 compute. Having 4 GPUs lets us test both 2-GPU and 4-GPU scaling.</p>
+        </div>
+        <div class="callout callout-info">
+          <strong>Why check this first?</strong> If NCCL isn't available or we have fewer than 2 GPUs, the distributed training scripts will fail. Always verify your environment.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ SECTION 2: MODEL DEFINITION ============ -->
+<section class="section" id="model">
+  <div class="container">
+    <div class="section-heading">
+      <span class="section-label">Cell 2 — Shared Model & Dataset</span>
+      <h2>Building the <span class="gradient-text">Deep MLP</span></h2>
+      <p class="section-subtitle">A deliberately deep model so that interleaved AllReduce has many layers to overlap with.</p>
+    </div>
+
+    <div class="code-explain-row">
+      <div class="code-panel">
+        <div class="code-header">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          <span class="code-filename">model_common.py</span>
+        </div>
+        <pre><code><span class="kw">import</span> <span class="mod">torch</span>
+<span class="kw">import</span> <span class="mod">torch.nn</span> <span class="kw">as</span> <span class="mod">nn</span>
+
+<span class="kw">def</span> <span class="fn">build_model</span>(size=<span class="str">'medium'</span>):
+    configs = {
+        <span class="str">'small'</span>:  [<span class="num">784</span>, <span class="num">1024</span>, <span class="num">512</span>, <span class="num">256</span>, <span class="num">10</span>],          <span class="cmt"># ~1.2M params</span>
+        <span class="str">'medium'</span>: [<span class="num">784</span>, <span class="num">2048</span>, <span class="num">2048</span>, <span class="num">1024</span>, <span class="num">512</span>, <span class="num">10</span>],  <span class="cmt"># ~7.2M params</span>
+        <span class="str">'large'</span>:  [<span class="num">784</span>, <span class="num">4096</span>, <span class="num">4096</span>, <span class="num">2048</span>,           <span class="cmt"># ~35M params</span>
+                   <span class="num">2048</span>, <span class="num">1024</span>, <span class="num">512</span>, <span class="num">10</span>],
+    }
+    sizes = configs[size]
+    layers = []
+    <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">len</span>(sizes) - <span class="num">1</span>):
+        layers.<span class="fn">append</span>(nn.<span class="fn">Linear</span>(sizes[i], sizes[i+<span class="num">1</span>]))
+        <span class="kw">if</span> i < <span class="fn">len</span>(sizes) - <span class="num">2</span>:
+            layers.<span class="fn">append</span>(nn.<span class="fn">ReLU</span>())
+    model = nn.<span class="fn">Sequential</span>(*layers)
+    <span class="kw">return</span> model
+
+<span class="kw">def</span> <span class="fn">make_dataset</span>(n_samples=<span class="num">32768</span>):
+    torch.<span class="fn">manual_seed</span>(<span class="num">42</span>)
+    X = torch.<span class="fn">randn</span>(n_samples, <span class="num">784</span>)
+    y = torch.<span class="fn">randint</span>(<span class="num">0</span>, <span class="num">10</span>, (n_samples,))
+    <span class="kw">return</span> X, y</code></pre>
+      </div>
+      <div class="explain-panel">
+        <div class="explain-block">
+          <div class="explain-icon">🧠</div>
+          <h4>Why a Deep MLP?</h4>
+          <p>The model is a <strong>Multi-Layer Perceptron</strong> (fully-connected neural network). It's made <strong>deliberately deep</strong> (many layers) because interleaved AllReduce benefits from having many layers — each layer's gradient can overlap with the <em>next</em> layer's communication.</p>
+        </div>
+
+        <!-- Model architecture visual -->
+        <div class="model-arch-visual">
+          <h4>Medium Model Architecture</h4>
+          <div class="layer-stack">
+            <div class="layer-box" style="width:30%"><span>784</span><small>Input</small></div>
+            <div class="layer-arrow">↓ Linear + ReLU</div>
+            <div class="layer-box" style="width:80%"><span>2048</span><small>Hidden 1</small></div>
+            <div class="layer-arrow">↓ Linear + ReLU</div>
+            <div class="layer-box" style="width:80%"><span>2048</span><small>Hidden 2</small></div>
+            <div class="layer-arrow">↓ Linear + ReLU</div>
+            <div class="layer-box" style="width:55%"><span>1024</span><small>Hidden 3</small></div>
+            <div class="layer-arrow">↓ Linear + ReLU</div>
+            <div class="layer-box" style="width:35%"><span>512</span><small>Hidden 4</small></div>
+            <div class="layer-arrow">↓ Linear</div>
+            <div class="layer-box output" style="width:15%"><span>10</span><small>Output</small></div>
+          </div>
+        </div>
+
+        <div class="explain-block">
+          <div class="explain-icon">📊</div>
+          <h4>Synthetic Dataset</h4>
+          <p><strong>32,768 samples</strong> of random data shaped like MNIST (784 features, 10 classes). Using a fixed seed ensures every GPU generates identical data — critical for fair sharding.</p>
+        </div>
+
+        <div class="model-sizes-table">
+          <table>
+            <thead><tr><th>Size</th><th>Layers</th><th>Parameters</th></tr></thead>
+            <tbody>
+              <tr><td>Small</td><td>4</td><td>1.5M</td></tr>
+              <tr class="highlight"><td>Medium</td><td>5</td><td>8.4M</td></tr>
+              <tr><td>Large</td><td>7</td><td>35.2M</td></tr>
+              <tr><td>XLarge</td><td>8</td><td>52M</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ SECTION 3: SINGLE GPU BASELINE ============ -->
+<section class="section section-dark" id="single-gpu">
+  <div class="container">
+    <div class="section-heading">
+      <span class="section-label">Mode 1 — Baseline</span>
+      <h2>Single GPU <span class="gradient-text">Training</span></h2>
+      <p class="section-subtitle">The simplest possible training loop. No communication, no parallelism. Our speed baseline.</p>
+    </div>
+
+    <!-- Visual timeline -->
+    <div class="timeline-diagram">
+      <h4>Single GPU Timeline (per batch)</h4>
+      <div class="timeline-row">
+        <div class="tl-label">GPU 0</div>
+        <div class="tl-block tl-fwd">Forward</div>
+        <div class="tl-block tl-bwd">Backward</div>
+        <div class="tl-block tl-upd">Update</div>
+      </div>
+      <div class="timeline-row">
+        <div class="tl-label">Network</div>
+        <div class="tl-block tl-idle" style="width:100%">Idle (no communication needed)</div>
+      </div>
+    </div>
+
+    <div class="code-explain-row">
+      <div class="code-panel">
+        <div class="code-header">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          <span class="code-filename">train_single_gpu.py</span>
+        </div>
+        <pre><code><span class="cmt"># Standard training loop — the simplest possible form</span>
+device = torch.device(<span class="str">'cuda:0'</span>)
+
+model, n_params = <span class="fn">build_model</span>(config[<span class="str">'model_size'</span>])
+model = model.<span class="fn">to</span>(device)   <span class="cmt"># Move model to GPU</span>
+optimizer = torch.optim.<span class="fn">SGD</span>(model.<span class="fn">parameters</span>(), lr=<span class="num">0.01</span>)
+loss_fn = nn.<span class="fn">CrossEntropyLoss</span>()
+
+X, y = <span class="fn">make_dataset</span>(<span class="num">32768</span>)
+X, y = X.<span class="fn">to</span>(device), y.<span class="fn">to</span>(device)  <span class="cmt"># Data → GPU</span>
+
+<span class="cmt"># --- Warmup (so CUDA kernels are compiled) ---</span>
+<span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(<span class="num">3</span>):
+    idx = torch.<span class="fn">randint</span>(<span class="num">0</span>, <span class="fn">len</span>(X), (bs,))
+    out = <span class="fn">model</span>(X[idx])
+    <span class="fn">loss_fn</span>(out, y[idx]).<span class="fn">backward</span>()
+    optimizer.<span class="fn">zero_grad</span>()
+torch.cuda.<span class="fn">synchronize</span>()
+
+<span class="cmt"># --- Training loop ---</span>
+<span class="kw">for</span> epoch <span class="kw">in</span> <span class="fn">range</span>(n_epochs):
+    <span class="kw">for</span> start <span class="kw">in</span> <span class="fn">range</span>(<span class="num">0</span>, <span class="fn">len</span>(X), bs):
+        xb = X[start:start+bs]
+        yb = y[start:start+bs]
+
+        optimizer.<span class="fn">zero_grad</span>()     <span class="cmt"># 1. Clear old gradients</span>
+        out = <span class="fn">model</span>(xb)           <span class="cmt"># 2. Forward pass</span>
+        loss = <span class="fn">loss_fn</span>(out, yb)   <span class="cmt"># 3. Compute loss</span>
+        loss.<span class="fn">backward</span>()            <span class="cmt"># 4. Backward pass (gradients)</span>
+        optimizer.<span class="fn">step</span>()           <span class="cmt"># 5. Update weights</span></code></pre>
+      </div>
+      <div class="explain-panel">
+        <div class="explain-block">
+          <div class="explain-icon">🔄</div>
+          <h4>The 5-Step Training Loop</h4>
+          <p>Every neural network training follows these steps:</p>
+          <ol class="step-list">
+            <li><strong>zero_grad()</strong> — Reset gradients from previous batch</li>
+            <li><strong>model(xb)</strong> — Forward pass: data flows through all layers</li>
+            <li><strong>loss_fn()</strong> — Measure how wrong the predictions are</li>
+            <li><strong>loss.backward()</strong> — Backward pass: compute gradients for every parameter</li>
+            <li><strong>optimizer.step()</strong> — Update weights using gradients</li>
+          </ol>
+        </div>
+        <div class="explain-block">
+          <div class="explain-icon">🔥</div>
+          <h4>Why Warmup?</h4>
+          <p>The first time a CUDA kernel runs, PyTorch must compile it. This one-time cost would skew our benchmarks. Running 3 dummy batches ensures all kernels are <strong>pre-compiled</strong> before we start timing.</p>
+        </div>
+        <div class="explain-block">
+          <div class="explain-icon">⏱️</div>
+          <h4>cuda.synchronize()</h4>
+          <p>GPU operations are <strong>asynchronous</strong> — the CPU queues work and moves on. <code>synchronize()</code> makes the CPU <strong>wait</strong> until all GPU work is done. Essential for accurate timing.</p>
+        </div>
+        <div class="callout callout-green">
+          <strong>Key takeaway:</strong> This is the simplest form. It uses 100% of one GPU's compute power, but only one GPU. Can we go faster with two?
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ SECTION 4: NAIVE DATA PARALLEL ============ -->
+<section class="section" id="naive-dp">
+  <div class="container">
+    <div class="section-heading">
+      <span class="section-label">Mode 2 — The Straightforward (Suboptimal) Approach</span>
+      <h2>Naive Data-Parallel <span class="gradient-text">(Non-Interleaved)</span></h2>
+      <p class="section-subtitle">Split the batch across GPUs, compute gradients independently, then synchronize everything at once.</p>
+    </div>
+
+    <!-- Visual timeline -->
+    <div class="timeline-diagram warn">
+      <h4>Naive DP Timeline — The Problem is Visible</h4>
+      <div class="timeline-row">
+        <div class="tl-label">GPU 0</div>
+        <div class="tl-block tl-fwd" style="width:20%">FWD</div>
+        <div class="tl-block tl-bwd" style="width:25%">BWD</div>
+        <div class="tl-block tl-idle-bad" style="width:35%">⏳ IDLE (waiting for AllReduce)</div>
+        <div class="tl-block tl-upd" style="width:10%">Upd</div>
+      </div>
+      <div class="timeline-row">
+        <div class="tl-label">GPU 1</div>
+        <div class="tl-block tl-fwd" style="width:20%">FWD</div>
+        <div class="tl-block tl-bwd" style="width:25%">BWD</div>
+        <div class="tl-block tl-idle-bad" style="width:35%">⏳ IDLE (waiting for AllReduce)</div>
+        <div class="tl-block tl-upd" style="width:10%">Upd</div>
+      </div>
+      <div class="timeline-row">
+        <div class="tl-label">Network</div>
+        <div class="tl-block tl-idle" style="width:45%">Idle (wasted!)</div>
+        <div class="tl-block tl-comm-bar" style="width:35%">🔴 AllReduce ALL gradients</div>
+        <div class="tl-block tl-idle" style="width:10%"></div>
+      </div>
+    </div>
+
+    <div class="code-explain-row">
+      <div class="code-panel">
+        <div class="code-header">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          <span class="code-filename">train_dp_naive.py — Setup</span>
+        </div>
+        <pre><code><span class="cmt"># --- Setup distributed process group ---</span>
+dist.<span class="fn">init_process_group</span>(backend=<span class="str">'nccl'</span>)
+rank = dist.<span class="fn">get_rank</span>()           <span class="cmt"># Which GPU am I? (0 or 1)</span>
+world_size = dist.<span class="fn">get_world_size</span>() <span class="cmt"># How many GPUs total?</span>
+device = torch.device(<span class="str">f'cuda:</span>{rank}<span class="str">'</span>)
+torch.cuda.<span class="fn">set_device</span>(device)
+
+<span class="cmt"># All ranks build SAME model (same seed = same weights)</span>
+torch.<span class="fn">manual_seed</span>(<span class="num">42</span>)
+model, n_params = <span class="fn">build_model</span>(config[<span class="str">'model_size'</span>])
+model = model.<span class="fn">to</span>(device)
+
+<span class="cmt"># Each rank loads full dataset, then shards per batch</span>
+X_all, y_all = <span class="fn">make_dataset</span>(<span class="num">32768</span>)
+X_all, y_all = X_all.<span class="fn">to</span>(device), y_all.<span class="fn">to</span>(device)</code></pre>
+        <div class="code-header" style="margin-top: 16px">
+          <span class="code-filename">train_dp_naive.py — Training Loop</span>
+        </div>
+        <pre><code><span class="kw">for</span> start <span class="kw">in</span> <span class="fn">range</span>(<span class="num">0</span>, <span class="fn">len</span>(X_all), bs):
+    xb, yb = X_all[start:start+bs], y_all[start:start+bs]
+
+    <span class="cmt"># ① Shard the batch across GPUs</span>
+    chunk = <span class="fn">len</span>(xb) // world_size
+    s = rank * chunk
+    e = s + chunk
+    x_local, y_local = xb[s:e], yb[s:e]
+
+    <span class="cmt"># ② COMPUTATION PHASE: full forward + backward</span>
+    optimizer.<span class="fn">zero_grad</span>()
+    out = <span class="fn">model</span>(x_local)
+    loss = <span class="fn">loss_fn</span>(out, y_local)
+    loss.<span class="fn">backward</span>()   <span class="cmt"># ALL gradients computed</span>
+
+    <span class="cmt"># ③ COMMUNICATION PHASE: AllReduce ALL grads (BLOCKING)</span>
+    <span class="kw">for</span> param <span class="kw">in</span> model.<span class="fn">parameters</span>():
+        <span class="kw">if</span> param.grad <span class="kw">is not None</span>:
+            dist.<span class="fn">all_reduce</span>(param.grad, op=dist.ReduceOp.SUM)
+            param.grad /= world_size  <span class="cmt"># Average</span>
+
+    <span class="cmt"># ④ WEIGHT UPDATE</span>
+    optimizer.<span class="fn">step</span>()</code></pre>
+      </div>
+      <div class="explain-panel">
+        <div class="explain-block">
+          <div class="explain-icon">🌐</div>
+          <h4>init_process_group('nccl')</h4>
+          <p><code>torchrun</code> launches <strong>one process per GPU</strong>. This call connects them into a group so they can communicate. <strong>NCCL</strong> is the backend that handles the actual GPU-to-GPU data transfer.</p>
+        </div>
+        <div class="explain-block">
+          <div class="explain-icon">🏷️</div>
+          <h4>rank & world_size</h4>
+          <p><strong>rank</strong> = this process's ID (0 or 1). <strong>world_size</strong> = total processes (2). Each process is assigned to a different GPU.</p>
+        </div>
+        <div class="explain-block">
+          <div class="explain-icon">✂️</div>
+          <h4>Batch Sharding</h4>
+          <p>A batch of 1024 samples gets <strong>split in half</strong>: GPU 0 processes samples 0-511, GPU 1 processes samples 512-1023. Each GPU does ~half the compute.</p>
+        </div>
+        <div class="explain-block highlight-bad">
+          <div class="explain-icon">🐌</div>
+          <h4>The Bottleneck: Blocking AllReduce</h4>
+          <p>After <code>loss.backward()</code> finishes, we loop through <strong>every parameter</strong> and call <code>dist.all_reduce()</code>. This is <strong>blocking</strong> — the GPU sits completely idle while gradients are transferred over the network. For 35M parameters, this can waste <strong>20-40% of total time</strong>.</p>
+        </div>
+        <div class="callout callout-warn">
+          <strong>Quote from ShallowSpeed:</strong> "This is suboptimal since it divides training into two stages. During the first stage the network does nothing. During the second stage the processors twiddle their fans."
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ SECTION 5: INTERLEAVED DATA PARALLEL ============ -->
+<section class="section section-dark" id="interleaved-dp">
+  <div class="container">
+    <div class="section-heading">
+      <span class="section-label">Mode 3 — The Smart Approach</span>
+      <h2>Interleaved Data-Parallel <span class="gradient-text">(Overlapped AllReduce)</span></h2>
+      <p class="section-subtitle">Fire non-blocking AllReduce per layer during backward — overlap communication with computation!</p>
+    </div>
+
+    <!-- Visual timeline -->
+    <div class="timeline-diagram good">
+      <h4>Interleaved DP Timeline — Communication Overlaps with Computation!</h4>
+      <div class="timeline-row">
+        <div class="tl-label">GPU 0</div>
+        <div class="tl-block tl-fwd" style="width:15%">FWD</div>
+        <div class="tl-block tl-overlap-block" style="width:18%">BWD L6</div>
+        <div class="tl-block tl-overlap-block" style="width:18%">BWD L5</div>
+        <div class="tl-block tl-overlap-block" style="width:18%">BWD L4</div>
+        <div class="tl-block tl-overlap-block" style="width:12%">BWD...</div>
+        <div class="tl-block tl-upd" style="width:8%">Upd</div>
+      </div>
+      <div class="timeline-row">
+        <div class="tl-label">Network</div>
+        <div class="tl-block tl-idle" style="width:15%"></div>
+        <div class="tl-block tl-comm-good" style="width:18%">AR(L6)</div>
+        <div class="tl-block tl-comm-good" style="width:18%">AR(L5)</div>
+        <div class="tl-block tl-comm-good" style="width:18%">AR(L4)</div>
+        <div class="tl-block tl-comm-good" style="width:12%">AR...</div>
+        <div class="tl-block tl-idle" style="width:8%"></div>
+      </div>
+      <div class="overlap-label">⚡ GPU computes grad for layer N while network transfers grad for layer N+1 — <strong>parallel!</strong></div>
+    </div>
+
+    <div class="code-explain-row">
+      <div class="code-panel">
+        <div class="code-header">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          <span class="code-filename">train_dp_interleaved.py — The Hook System</span>
+        </div>
+        <pre><code><span class="kw">class</span> <span class="fn">InterleavedDP</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, model, world_size):
+        self.model = model
+        self.world_size = world_size
+        self._handles = []  <span class="cmt"># async AllReduce handles</span>
+
+        <span class="cmt"># Register a hook on EVERY parameter</span>
+        <span class="cmt"># When a gradient is ready → fire async AllReduce</span>
+        <span class="kw">for</span> param <span class="kw">in</span> self.model.<span class="fn">parameters</span>():
+            param.<span class="fn">register_post_accumulate_grad_hook</span>(
+                self.<span class="fn">_make_hook</span>(param)
+            )
+
+    <span class="kw">def</span> <span class="fn">_make_hook</span>(self, param):
+        <span class="kw">def</span> <span class="fn">hook</span>(p):
+            <span class="cmt"># 🔑 KEY: Non-blocking AllReduce!</span>
+            <span class="cmt"># Fire immediately, don't wait</span>
+            handle = dist.<span class="fn">all_reduce</span>(
+                p.grad,
+                op=dist.ReduceOp.SUM,
+                <span class="hl">async_op=True</span>  <span class="cmt"># ← NON-BLOCKING!</span>
+            )
+            self._handles.<span class="fn">append</span>((handle, p))
+        <span class="kw">return</span> hook
+
+    <span class="kw">def</span> <span class="fn">finish_allreduce</span>(self):
+        <span class="cmt"># Wait for ALL async ops before weight update</span>
+        <span class="kw">for</span> handle, param <span class="kw">in</span> self._handles:
+            handle.<span class="fn">wait</span>()
+            param.grad /= self.world_size
+        self._handles.<span class="fn">clear</span>()</code></pre>
+        <div class="code-header" style="margin-top: 16px">
+          <span class="code-filename">train_dp_interleaved.py — Training Loop</span>
+        </div>
+        <pre><code>dp = <span class="fn">InterleavedDP</span>(model, world_size)
+
+<span class="cmt"># Training loop — almost identical to naive!</span>
+optimizer.<span class="fn">zero_grad</span>()
+out = <span class="fn">model</span>(x_local)
+loss = <span class="fn">loss_fn</span>(out, y_local)
+
+<span class="cmt"># Backward fires async AllReduce per layer via hooks</span>
+loss.<span class="fn">backward</span>()
+
+<span class="cmt"># Wait for all async AllReduces to complete</span>
+dp.<span class="fn">finish_allreduce</span>()
+
+optimizer.<span class="fn">step</span>()</code></pre>
+      </div>
+      <div class="explain-panel">
+        <div class="explain-block highlight-good">
+          <div class="explain-icon">⚡</div>
+          <h4>The Key Insight: async_op=True</h4>
+          <p>Instead of <strong>blocking</strong> AllReduce after all gradients are computed, we fire a <strong>non-blocking</strong> AllReduce the <em>instant</em> each layer's gradient is ready. While NCCL transfers layer 6's gradients, the GPU is already computing layer 5's gradients.</p>
+        </div>
+        <div class="explain-block">
+          <div class="explain-icon">🪝</div>
+          <h4>Gradient Hooks</h4>
+          <p><code>register_post_accumulate_grad_hook</code> tells PyTorch: "Call this function the moment this parameter's gradient is computed." This is exactly how ShallowSpeed does it with MPI:</p>
+          <code class="inline-code">autograd.register_grad_hook(backprop_allreduce_gradient)</code>
+        </div>
+        <div class="explain-block">
+          <div class="explain-icon">🏁</div>
+          <h4>finish_allreduce()</h4>
+          <p>Before <code>optimizer.step()</code>, we must ensure ALL async AllReduces are complete. <code>handle.wait()</code> blocks until that specific operation finishes. This mirrors ShallowSpeed's <code>MPI.Request.Waitall()</code>.</p>
+        </div>
+
+        <div class="comparison-box">
+          <h4>Naive vs Interleaved — Same Math, Better Scheduling</h4>
+          <div class="comp-row">
+            <div class="comp-naive">
+              <strong>Naive:</strong>
+              <div class="comp-timeline">
+                <span class="ct-compute">Compute ALL</span>
+                <span class="ct-then">→ then →</span>
+                <span class="ct-comm">Sync ALL</span>
+              </div>
+            </div>
+          </div>
+          <div class="comp-row">
+            <div class="comp-interleaved">
+              <strong>Interleaved:</strong>
+              <div class="comp-timeline">
+                <span class="ct-overlap">Compute & Sync overlap per layer</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ SECTION 6: PyTorch DDP ============ -->
+<section class="section" id="ddp">
+  <div class="container">
+    <div class="section-heading">
+      <span class="section-label">Mode 4 — Production Grade</span>
+      <h2>PyTorch <span class="gradient-text">DistributedDataParallel</span></h2>
+      <p class="section-subtitle">The same interleaving idea, but with gradient bucketing for even fewer AllReduce calls.</p>
+    </div>
+
+    <!-- Bucketing Visual -->
+    <div class="bucketing-visual">
+      <h4>Why Bucketing? Reducing AllReduce Overhead</h4>
+      <div class="bucket-compare">
+        <div class="bucket-side">
+          <h5>Our Interleaved (per-parameter)</h5>
+          <div class="bucket-params">
+            <div class="bp">W1<br><small>4K</small></div><span class="bp-arrow">→ AR</span>
+            <div class="bp">b1<br><small>2K</small></div><span class="bp-arrow">→ AR</span>
+            <div class="bp">W2<br><small>4M</small></div><span class="bp-arrow">→ AR</span>
+            <div class="bp">b2<br><small>2K</small></div><span class="bp-arrow">→ AR</span>
+            <div class="bp">W3<br><small>2M</small></div><span class="bp-arrow">→ AR</span>
+            <div class="bp-count">12 AllReduce calls</div>
+          </div>
+        </div>
+        <div class="bucket-side">
+          <h5>DDP (bucketed, ~25MB each)</h5>
+          <div class="bucket-params">
+            <div class="bp-bucket">
+              <div class="bp small">W1</div><div class="bp small">b1</div><div class="bp small">W2</div><div class="bp small">b2</div>
+              <span class="bp-arrow">→ 1 AR</span>
+            </div>
+            <div class="bp-bucket">
+              <div class="bp small">W3</div><div class="bp small">b3</div><div class="bp small">W4</div><div class="bp small">b4</div>
+              <span class="bp-arrow">→ 1 AR</span>
+            </div>
+            <div class="bp-count">2 AllReduce calls ✓</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-explain-row">
+      <div class="code-panel">
+        <div class="code-header">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          <span class="code-filename">train_ddp_builtin.py</span>
+        </div>
+        <pre><code><span class="kw">from</span> <span class="mod">torch.nn.parallel</span> <span class="kw">import</span> DistributedDataParallel <span class="kw">as</span> DDP
+
+<span class="cmt"># Setup (same as naive)</span>
+dist.<span class="fn">init_process_group</span>(backend=<span class="str">'nccl'</span>)
+rank = dist.<span class="fn">get_rank</span>()
+device = torch.device(<span class="str">f'cuda:</span>{rank}<span class="str">'</span>)
+
+torch.<span class="fn">manual_seed</span>(<span class="num">42</span>)
+model, n_params = <span class="fn">build_model</span>(config[<span class="str">'model_size'</span>])
+model = model.<span class="fn">to</span>(device)
+
+<span class="cmt"># ✨ ONE LINE — wraps model with DDP magic</span>
+<span class="hl">model = DDP(model, device_ids=[rank])</span>
+
+optimizer = torch.optim.<span class="fn">SGD</span>(model.<span class="fn">parameters</span>(), lr=<span class="num">0.01</span>)
+loss_fn = nn.<span class="fn">CrossEntropyLoss</span>()
+
+<span class="cmt"># Training loop — IDENTICAL to single GPU!</span>
+optimizer.<span class="fn">zero_grad</span>()
+out = <span class="fn">model</span>(x_local)
+loss = <span class="fn">loss_fn</span>(out, y_local)
+loss.<span class="fn">backward</span>()    <span class="cmt"># DDP handles AllReduce automatically!</span>
+optimizer.<span class="fn">step</span>()</code></pre>
+      </div>
+      <div class="explain-panel">
+        <div class="explain-block highlight-good">
+          <div class="explain-icon">✨</div>
+          <h4>One Line: DDP(model)</h4>
+          <p>PyTorch's <code>DistributedDataParallel</code> wraps your model and automatically:</p>
+          <ol class="step-list">
+            <li>Registers gradient hooks (like our InterleavedDP)</li>
+            <li><strong>Buckets</strong> small gradients into ~25MB groups</li>
+            <li>Fires one AllReduce per bucket (not per parameter)</li>
+            <li>Overlaps communication with backward computation</li>
+          </ol>
+        </div>
+        <div class="explain-block">
+          <div class="explain-icon">🪣</div>
+          <h4>Gradient Bucketing Explained</h4>
+          <p>Each NCCL AllReduce call has fixed launch overhead (~10-50μs). With 12 parameters, that's 12 launches. DDP groups them into 2-3 large buckets → fewer launches, better bandwidth utilization.</p>
+        </div>
+        <div class="callout callout-green">
+          <strong>Why this matters:</strong> The training loop code is <em>identical</em> to single GPU! DDP encapsulates all the complexity. In production, you should always use DDP — not roll your own.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ SECTION 7: BENCHMARK RUNNER ============ -->
+<section class="section section-dark" id="benchmark">
+  <div class="container">
+    <div class="section-heading">
+      <span class="section-label">The Orchestrator</span>
+      <h2>Benchmark <span class="gradient-text">Runner</span></h2>
+      <p class="section-subtitle">A script that launches all 4 training modes with torchrun and collects timing results.</p>
+    </div>
+
+    <div class="code-explain-row">
+      <div class="code-panel">
+        <div class="code-header">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          <span class="code-filename">run_benchmarks.py — Key Parts</span>
+        </div>
+        <pre><code><span class="cmt"># Configuration for all benchmark runs</span>
+base = {
+    <span class="str">'n_samples'</span>: <span class="num">32768</span>,    <span class="cmt"># Dataset size</span>
+    <span class="str">'batch_size'</span>: <span class="num">1024</span>,    <span class="cmt"># Samples per batch</span>
+    <span class="str">'lr'</span>: <span class="num">0.01</span>,            <span class="cmt"># Learning rate</span>
+    <span class="str">'n_epochs'</span>: <span class="num">5</span>,          <span class="cmt"># Training epochs</span>
+}
+
+model_sizes = [<span class="str">'small'</span>, <span class="str">'medium'</span>, <span class="str">'large'</span>]
+
+<span class="cmt"># For each model size, run all 4 modes:</span>
+<span class="kw">for</span> msz <span class="kw">in</span> model_sizes:
+    <span class="cmt"># 1. Single GPU baseline</span>
+    <span class="fn">run</span>([<span class="str">'python'</span>, <span class="str">'train_single_gpu.py'</span>, cfg_str])
+
+    <span class="cmt"># 2-4. Multi-GPU modes via torchrun</span>
+    tr = [<span class="str">'torchrun'</span>, <span class="str">'--nproc_per_node'</span>, str(ng)]
+    <span class="fn">run</span>(tr + [<span class="str">'train_dp_naive.py'</span>, cfg_str])
+    <span class="fn">run</span>(tr + [<span class="str">'train_dp_interleaved.py'</span>, cfg_str])
+    <span class="fn">run</span>(tr + [<span class="str">'train_ddp_builtin.py'</span>, cfg_str])</code></pre>
+      </div>
+      <div class="explain-panel">
+        <div class="explain-block">
+          <div class="explain-icon">🚀</div>
+          <h4>What is torchrun?</h4>
+          <p>PyTorch's launcher for distributed training. <code>--nproc_per_node 2</code> starts <strong>2 identical processes</strong>, one per GPU. Each process gets assigned a unique rank (0 or 1) and knows the total world_size (2).</p>
+        </div>
+        <div class="explain-block">
+          <div class="explain-icon">📊</div>
+          <h4>4 Model Sizes × 7 Configurations</h4>
+          <p>We test small (1.5M), medium (8.4M), large (35.2M), and xlarge (52M) models across 1, 2, and 4 GPUs. That's <strong>28 benchmark runs</strong>. Bigger models have more parameters to communicate — making the naive vs interleaved gap more visible.</p>
+        </div>
+        <div class="explain-block">
+          <div class="explain-icon">📝</div>
+          <h4>RESULTS_JSON Protocol</h4>
+          <p>Each training script prints results as a JSON string prefixed with <code>RESULTS_JSON:</code>. The benchmark runner captures stdout and parses this line. A simple, reliable way to collect metrics from subprocess runs.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ SECTION 8: RESULTS ============ -->
+<section class="section" id="results">
+  <div class="container">
+    <div class="section-heading">
+      <span class="section-label">The Payoff</span>
+      <h2>Benchmark <span class="gradient-text">Results</span></h2>
+      <p class="section-subtitle">Real numbers from 4× A100 80GB GPUs. 28 benchmark runs across 4 model sizes, testing 2-GPU and 4-GPU scaling.</p>
+    </div>
+
+    <!-- Results Table -->
+    <div class="results-table-wrapper">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Mode</th>
+            <th>GPUs</th>
+            <th>Params</th>
+            <th>Avg Epoch</th>
+            <th>Comm Time</th>
+            <th>Throughput</th>
+            <th>Speedup</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- SMALL -->
+          <tr class="row-baseline">
+            <td rowspan="7">Small</td>
+            <td><span class="badge badge-base">Single GPU</span></td>
+            <td>1</td><td>1.5M</td><td>0.0361s</td><td>—</td><td>908,941/s</td><td>1.00×</td>
+          </tr>
+          <tr class="row-naive"><td><span class="badge badge-naive">Naive DP</span></td><td>2</td><td>1.5M</td><td>0.0602s</td><td>0.0284s</td><td>544,589/s</td><td class="val-bad">0.60×</td></tr>
+          <tr class="row-inter"><td><span class="badge badge-inter">Interleaved</span></td><td>2</td><td>1.5M</td><td>0.0620s</td><td>—</td><td>528,861/s</td><td class="val-bad">0.58×</td></tr>
+          <tr class="row-ddp"><td><span class="badge badge-ddp">PyTorch DDP</span></td><td>2</td><td>1.5M</td><td>0.0436s</td><td>—</td><td>751,415/s</td><td class="val-bad">0.83×</td></tr>
+          <tr class="row-naive"><td><span class="badge badge-naive">Naive DP</span></td><td>4</td><td>1.5M</td><td>0.0653s</td><td>0.0307s</td><td>501,482/s</td><td class="val-bad">0.55×</td></tr>
+          <tr class="row-inter"><td><span class="badge badge-inter">Interleaved</span></td><td>4</td><td>1.5M</td><td>0.0643s</td><td>—</td><td>510,000/s</td><td class="val-bad">0.56×</td></tr>
+          <tr class="row-ddp"><td><span class="badge badge-ddp">PyTorch DDP</span></td><td>4</td><td>1.5M</td><td>0.0482s</td><td>—</td><td>679,871/s</td><td class="val-bad">0.75×</td></tr>
+
+          <!-- MEDIUM -->
+          <tr class="row-baseline row-sep">
+            <td rowspan="7">Medium</td>
+            <td><span class="badge badge-base">Single GPU</span></td>
+            <td>1</td><td>8.4M</td><td>0.1180s</td><td>—</td><td>277,724/s</td><td>1.00×</td>
+          </tr>
+          <tr class="row-naive"><td><span class="badge badge-naive">Naive DP</span></td><td>2</td><td>8.4M</td><td>0.1071s</td><td>0.0328s</td><td>305,929/s</td><td class="val-ok">1.10×</td></tr>
+          <tr class="row-inter"><td><span class="badge badge-inter">Interleaved</span></td><td>2</td><td>8.4M</td><td>0.0898s</td><td>—</td><td>364,829/s</td><td class="val-good">1.31×</td></tr>
+          <tr class="row-ddp"><td><span class="badge badge-ddp">PyTorch DDP</span></td><td>2</td><td>8.4M</td><td>0.0871s</td><td>—</td><td>376,138/s</td><td class="val-good">1.35×</td></tr>
+          <tr class="row-naive"><td><span class="badge badge-naive">Naive DP</span></td><td>4</td><td>8.4M</td><td>0.0863s</td><td>0.0370s</td><td>379,604/s</td><td class="val-good">1.37×</td></tr>
+          <tr class="row-inter"><td><span class="badge badge-inter">Interleaved</span></td><td>4</td><td>8.4M</td><td>0.0871s</td><td>—</td><td>376,152/s</td><td class="val-good">1.35×</td></tr>
+          <tr class="row-ddp"><td><span class="badge badge-ddp">PyTorch DDP</span></td><td>4</td><td>8.4M</td><td>0.0674s</td><td>—</td><td>486,144/s</td><td class="val-great">1.75×</td></tr>
+
+          <!-- LARGE -->
+          <tr class="row-baseline row-sep">
+            <td rowspan="7">Large</td>
+            <td><span class="badge badge-base">Single GPU</span></td>
+            <td>1</td><td>35.2M</td><td>0.4112s</td><td>—</td><td>79,681/s</td><td>1.00×</td>
+          </tr>
+          <tr class="row-naive"><td><span class="badge badge-naive">Naive DP</span></td><td>2</td><td>35.2M</td><td>0.2850s</td><td>0.0501s</td><td>114,977/s</td><td class="val-ok">1.44×</td></tr>
+          <tr class="row-inter"><td><span class="badge badge-inter">Interleaved</span></td><td>2</td><td>35.2M</td><td>0.2644s</td><td>—</td><td>123,937/s</td><td class="val-good">1.56×</td></tr>
+          <tr class="row-ddp"><td><span class="badge badge-ddp">PyTorch DDP</span></td><td>2</td><td>35.2M</td><td>0.2597s</td><td>—</td><td>126,171/s</td><td class="val-good">1.58×</td></tr>
+          <tr class="row-naive"><td><span class="badge badge-naive">Naive DP</span></td><td>4</td><td>35.2M</td><td>0.2143s</td><td>0.0744s</td><td>152,925/s</td><td class="val-good">1.92×</td></tr>
+          <tr class="row-inter"><td><span class="badge badge-inter">Interleaved</span></td><td>4</td><td>35.2M</td><td>0.1837s</td><td>—</td><td>178,394/s</td><td class="val-great">2.24×</td></tr>
+          <tr class="row-ddp"><td><span class="badge badge-ddp">PyTorch DDP</span></td><td>4</td><td>35.2M</td><td>0.1784s</td><td>—</td><td>183,684/s</td><td class="val-great">2.31×</td></tr>
+
+          <!-- XLARGE -->
+          <tr class="row-baseline row-sep">
+            <td rowspan="7">XLarge</td>
+            <td><span class="badge badge-base">Single GPU</span></td>
+            <td>1</td><td>52.0M</td><td>0.5956s</td><td>—</td><td>55,016/s</td><td>1.00×</td>
+          </tr>
+          <tr class="row-naive"><td><span class="badge badge-naive">Naive DP</span></td><td>2</td><td>52.0M</td><td>0.4045s</td><td>0.0700s</td><td>81,008/s</td><td class="val-ok">1.47×</td></tr>
+          <tr class="row-inter"><td><span class="badge badge-inter">Interleaved</span></td><td>2</td><td>52.0M</td><td>0.3669s</td><td>—</td><td>89,303/s</td><td class="val-good">1.62×</td></tr>
+          <tr class="row-ddp"><td><span class="badge badge-ddp">PyTorch DDP</span></td><td>2</td><td>52.0M</td><td>0.3620s</td><td>—</td><td>90,531/s</td><td class="val-good">1.65×</td></tr>
+          <tr class="row-naive"><td><span class="badge badge-naive">Naive DP</span></td><td>4</td><td>52.0M</td><td>0.2898s</td><td>0.0940s</td><td>113,077/s</td><td class="val-great">2.06×</td></tr>
+          <tr class="row-inter"><td><span class="badge badge-inter">Interleaved</span></td><td>4</td><td>52.0M</td><td>0.2485s</td><td>—</td><td>131,844/s</td><td class="val-great">2.40×</td></tr>
+          <tr class="row-ddp"><td><span class="badge badge-ddp">PyTorch DDP</span></td><td>4</td><td>52.0M</td><td>0.2496s</td><td>—</td><td>131,300/s</td><td class="val-great">2.39×</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Key Insights -->
+    <div class="insights-grid">
+      <div class="insight-card">
+        <div class="insight-icon">🔬</div>
+        <h4>Small Models: Parallelism Hurts</h4>
+        <p>With only 1.5M parameters, computation finishes in <strong>36ms on one GPU</strong>. Every parallel mode is slower — even 4-GPU DDP achieves only 0.75× of the single-GPU speed. The overhead of process setup, batch sharding, and AllReduce communication <strong>exceeds the compute savings</strong>. The small model simply doesn't have enough work to keep the GPUs busy while communication happens.</p>
+      </div>
+      <div class="insight-card">
+        <div class="insight-icon">📈</div>
+        <h4>Scaling Improves with Model Size</h4>
+        <p>As models grow from 8.4M to 52M parameters, scaling efficiency dramatically improves. The XLarge model achieves <strong>2.40× speedup on 4 GPUs</strong> (60% scaling efficiency) vs medium's 1.75×. Larger models have more FLOPs per layer, giving NCCL more time to finish AllReduce before the next gradient is needed.</p>
+      </div>
+      <div class="insight-card">
+        <div class="insight-icon">⚡</div>
+        <h4>Interleaved Consistently Beats Naive</h4>
+        <p>Across all model sizes with 4 GPUs: Large naive=1.92× vs interleaved=<strong>2.24×</strong> (14% faster). XLarge naive=2.06× vs interleaved=<strong>2.40×</strong> (14% faster). The improvement comes purely from overlapping communication with computation — the exact optimization ShallowSpeed teaches.</p>
+      </div>
+      <div class="insight-card">
+        <div class="insight-icon">🏆</div>
+        <h4>DDP Matches or Beats Hand-Rolled</h4>
+        <p>PyTorch DDP consistently matches our interleaved implementation (within 1-2%) and sometimes beats it — e.g., Medium 4G: DDP=<strong>1.75×</strong> vs interleaved=1.35×. DDP's <strong>gradient bucketing</strong> helps most when there are many small parameter tensors, reducing NCCL launch overhead.</p>
+      </div>
+      <div class="insight-card">
+        <div class="insight-icon">🔄</div>
+        <h4>4 GPUs: Communication Overhead Grows</h4>
+        <p>Naive DP's communication time jumps from 0.050s (2G) to <strong>0.074s (4G)</strong> for the large model — a 49% increase. Ring AllReduce requires <code>2(N-1)/N</code> rounds with N GPUs. More GPUs = more communication rounds, making interleaving even more critical.</p>
+      </div>
+      <div class="insight-card">
+        <div class="insight-icon">🎯</div>
+        <h4>The Sweet Spot: XLarge on 4 GPUs</h4>
+        <p>Our best result: XLarge model, 4 GPUs, interleaved DP = <strong>2.40× speedup</strong>, processing 131,844 samples/sec vs 55,016/sec baseline. At this scale, the compute-to-communication ratio is high enough that interleaving hides nearly all communication latency.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ VISUALIZATION CHARTS SECTION ============ -->
+<section class="section section-dark" id="charts">
+  <div class="container">
+    <div class="section-heading">
+      <span class="section-label">Visual Analysis</span>
+      <h2>Understanding <span class="gradient-text">The Charts</span></h2>
+      <p class="section-subtitle">The notebook generates 6 charts. Here's what each one reveals about our 4× A100 benchmark.</p>
+    </div>
+
+    <!-- CHART 1: Epoch Time Full Width -->
+    <div class="chart-full-card">
+      <div class="chart-full-header">
+        <div class="chart-num">Chart 1</div>
+        <h4>Epoch Time: Single GPU vs Naive DP vs Interleaved DP vs PyTorch DDP</h4>
+      </div>
+      <div class="chart-full-body">
+        <div class="chart-bar-viz">
+          <!-- Small -->
+          <div class="cbv-group">
+            <div class="cbv-bars">
+              <div class="cbv-bar" style="height:6.1%"><span class="cbv-val">0.036</span><div class="cbv-fill" style="background:#37474F"></div></div>
+              <div class="cbv-bar" style="height:10.1%"><span class="cbv-val">0.060</span><div class="cbv-fill" style="background:#FF7043"></div></div>
+              <div class="cbv-bar" style="height:10.4%"><span class="cbv-val">0.062</span><div class="cbv-fill" style="background:#42A5F5"></div></div>
+              <div class="cbv-bar" style="height:7.3%"><span class="cbv-val">0.044</span><div class="cbv-fill" style="background:#66BB6A"></div></div>
+              <div class="cbv-bar" style="height:11.0%"><span class="cbv-val">0.065</span><div class="cbv-fill" style="background:#E64A19"></div></div>
+              <div class="cbv-bar" style="height:10.8%"><span class="cbv-val">0.064</span><div class="cbv-fill" style="background:#1E88E5"></div></div>
+              <div class="cbv-bar" style="height:8.1%"><span class="cbv-val">0.048</span><div class="cbv-fill" style="background:#2E7D32"></div></div>
+            </div>
+            <div class="cbv-label">Small<br>(1.5M)</div>
+          </div>
+          <!-- Medium -->
+          <div class="cbv-group">
+            <div class="cbv-bars">
+              <div class="cbv-bar" style="height:19.8%"><span class="cbv-val">0.118</span><div class="cbv-fill" style="background:#37474F"></div></div>
+              <div class="cbv-bar" style="height:18.0%"><span class="cbv-val">0.107</span><div class="cbv-fill" style="background:#FF7043"></div></div>
+              <div class="cbv-bar" style="height:15.1%"><span class="cbv-val">0.090</span><div class="cbv-fill" style="background:#42A5F5"></div></div>
+              <div class="cbv-bar" style="height:14.6%"><span class="cbv-val">0.087</span><div class="cbv-fill" style="background:#66BB6A"></div></div>
+              <div class="cbv-bar" style="height:14.5%"><span class="cbv-val">0.086</span><div class="cbv-fill" style="background:#E64A19"></div></div>
+              <div class="cbv-bar" style="height:14.6%"><span class="cbv-val">0.087</span><div class="cbv-fill" style="background:#1E88E5"></div></div>
+              <div class="cbv-bar" style="height:11.3%"><span class="cbv-val">0.067</span><div class="cbv-fill" style="background:#2E7D32"></div></div>
+            </div>
+            <div class="cbv-label">Medium<br>(8.4M)</div>
+          </div>
+          <!-- Large -->
+          <div class="cbv-group">
+            <div class="cbv-bars">
+              <div class="cbv-bar" style="height:69.0%"><span class="cbv-val">0.411</span><div class="cbv-fill" style="background:#37474F"></div></div>
+              <div class="cbv-bar" style="height:47.8%"><span class="cbv-val">0.285</span><div class="cbv-fill" style="background:#FF7043"></div></div>
+              <div class="cbv-bar" style="height:44.4%"><span class="cbv-val">0.264</span><div class="cbv-fill" style="background:#42A5F5"></div></div>
+              <div class="cbv-bar" style="height:43.6%"><span class="cbv-val">0.260</span><div class="cbv-fill" style="background:#66BB6A"></div></div>
+              <div class="cbv-bar" style="height:36.0%"><span class="cbv-val">0.214</span><div class="cbv-fill" style="background:#E64A19"></div></div>
+              <div class="cbv-bar" style="height:30.8%"><span class="cbv-val">0.184</span><div class="cbv-fill" style="background:#1E88E5"></div></div>
+              <div class="cbv-bar" style="height:29.9%"><span class="cbv-val">0.178</span><div class="cbv-fill" style="background:#2E7D32"></div></div>
+            </div>
+            <div class="cbv-label">Large<br>(35.2M)</div>
+          </div>
+          <!-- XLarge -->
+          <div class="cbv-group">
+            <div class="cbv-bars">
+              <div class="cbv-bar" style="height:100%"><span class="cbv-val">0.596</span><div class="cbv-fill" style="background:#37474F"></div></div>
+              <div class="cbv-bar" style="height:67.9%"><span class="cbv-val">0.405</span><div class="cbv-fill" style="background:#FF7043"></div></div>
+              <div class="cbv-bar" style="height:61.6%"><span class="cbv-val">0.367</span><div class="cbv-fill" style="background:#42A5F5"></div></div>
+              <div class="cbv-bar" style="height:60.7%"><span class="cbv-val">0.362</span><div class="cbv-fill" style="background:#66BB6A"></div></div>
+              <div class="cbv-bar" style="height:48.7%"><span class="cbv-val">0.290</span><div class="cbv-fill" style="background:#E64A19"></div></div>
+              <div class="cbv-bar" style="height:41.7%"><span class="cbv-val">0.249</span><div class="cbv-fill" style="background:#1E88E5"></div></div>
+              <div class="cbv-bar" style="height:41.9%"><span class="cbv-val">0.250</span><div class="cbv-fill" style="background:#2E7D32"></div></div>
+            </div>
+            <div class="cbv-label">XLarge<br>(52.0M)</div>
+          </div>
+        </div>
+        <div class="chart-legend">
+          <span class="legend-item"><span class="lg-swatch" style="background:#37474F"></span>1 GPU (baseline)</span>
+          <span class="legend-item"><span class="lg-swatch" style="background:#FF7043"></span>Naive DP (2G)</span>
+          <span class="legend-item"><span class="lg-swatch" style="background:#42A5F5"></span>Interleaved DP (2G)</span>
+          <span class="legend-item"><span class="lg-swatch" style="background:#66BB6A"></span>PyTorch DDP (2G)</span>
+          <span class="legend-item"><span class="lg-swatch" style="background:#E64A19"></span>Naive DP (4G)</span>
+          <span class="legend-item"><span class="lg-swatch" style="background:#1E88E5"></span>Interleaved DP (4G)</span>
+          <span class="legend-item"><span class="lg-swatch" style="background:#2E7D32"></span>PyTorch DDP (4G)</span>
+        </div>
+      </div>
+      <div class="chart-full-explain">
+        <p><strong>The Researcher's Mindset — Why does the crossover happen?</strong></p>
+        <p>Every distributed training step has two costs: <strong>computation</strong> (forward + backward FLOPs) and <strong>communication</strong> (transferring gradients via AllReduce). Speedup only happens when the computation saved by splitting data across GPUs <em>exceeds</em> the communication overhead added.</p>
+        <p>For the <strong>small model (1.5M params)</strong>, a single forward+backward pass takes only ~5ms of GPU compute — the A100 chews through it almost instantly. But AllReduce of 1.5M parameters over PCIe takes ~28ms regardless. So the communication is <strong>5-6× more expensive than the compute it's trying to parallelize</strong>. Adding GPUs just adds overhead with no meaningful compute savings.</p>
+        <p>For the <strong>XLarge model (52M params)</strong>, a single forward+backward takes ~500ms — a heavy workload. AllReduce of 52M params takes ~70-94ms. Now the compute-to-communication ratio has flipped: computation is <strong>5-7× larger than communication</strong>. Splitting this across 4 GPUs saves ~375ms of compute while adding ~94ms of communication — a net win of ~280ms per epoch. This is why you see the dark bar (0.596s) shrink to the dark green bar (0.250s).</p>
+        <p><strong>The fundamental law:</strong> Data parallelism pays off when <code>T_compute / T_communication >> 1</code>. Bigger models have more FLOPs per parameter, pushing this ratio higher. This is why in the real world, data parallelism is used for models with <strong>billions</strong> of parameters, not thousands.</p>
+      </div>
+    </div>
+
+    <!-- CHART 2: Speedup -->
+    <div class="chart-full-card">
+      <div class="chart-full-header">
+        <div class="chart-num">Chart 2</div>
+        <h4>Scaling Efficiency: Speedup over Single-GPU Baseline</h4>
+      </div>
+      <div class="chart-full-body">
+        <div class="speedup-panels">
+          <!-- Small -->
+          <div class="speedup-panel">
+            <h5>Small (1.5M)</h5>
+            <div class="speedup-chart-area">
+              <svg viewBox="0 0 100 100" class="speedup-svg">
+                <line x1="10" y1="85" x2="90" y2="10" stroke="#444" stroke-width="0.5" stroke-dasharray="3"/>
+                <text x="92" y="10" font-size="5" fill="#666">ideal</text>
+                <line x1="10" y1="85" x2="10" y2="10" stroke="#333" stroke-width="0.3"/>
+                <line x1="10" y1="85" x2="90" y2="85" stroke="#333" stroke-width="0.3"/>
+                <!-- Naive: 1→0.60→0.55 -->
+                <polyline points="10,85 50,72 90,74" fill="none" stroke="#FF5722" stroke-width="1.5"/>
+                <circle cx="50" cy="72" r="2" fill="#FF5722"/>
+                <circle cx="90" cy="74" r="2" fill="#FF5722"/>
+                <!-- Interleaved: 1→0.58→0.56 -->
+                <polyline points="10,85 50,73 90,74" fill="none" stroke="#1E88E5" stroke-width="1.5"/>
+                <rect x="48" y="71" width="4" height="4" fill="#1E88E5"/>
+                <rect x="88" y="72" width="4" height="4" fill="#1E88E5"/>
+                <!-- DDP: 1→0.83→0.75 -->
+                <polyline points="10,85 50,66 90,69" fill="none" stroke="#2E7D32" stroke-width="1.5"/>
+                <polygon points="50,64 52,68 48,68" fill="#2E7D32"/>
+                <polygon points="90,67 92,71 88,71" fill="#2E7D32"/>
+                <text x="12" y="88" font-size="4.5" fill="#888">1</text>
+                <text x="47" y="95" font-size="4.5" fill="#888">2</text>
+                <text x="87" y="95" font-size="4.5" fill="#888">4</text>
+                <text x="3" y="85" font-size="4" fill="#888">1×</text>
+                <text x="3" y="48" font-size="4" fill="#888">2×</text>
+                <text x="3" y="10" font-size="4" fill="#888">4×</text>
+              </svg>
+              <span class="sp-verdict bad">All below 1× — slower than 1 GPU</span>
+            </div>
+          </div>
+          <!-- Medium -->
+          <div class="speedup-panel">
+            <h5>Medium (8.4M)</h5>
+            <div class="speedup-chart-area">
+              <svg viewBox="0 0 100 100" class="speedup-svg">
+                <line x1="10" y1="85" x2="90" y2="10" stroke="#444" stroke-width="0.5" stroke-dasharray="3"/>
+                <line x1="10" y1="85" x2="10" y2="10" stroke="#333" stroke-width="0.3"/>
+                <line x1="10" y1="85" x2="90" y2="85" stroke="#333" stroke-width="0.3"/>
+                <polyline points="10,85 50,64 90,59" fill="none" stroke="#FF5722" stroke-width="1.5"/>
+                <circle cx="50" cy="64" r="2" fill="#FF5722"/>
+                <circle cx="90" cy="59" r="2" fill="#FF5722"/>
+                <polyline points="10,85 50,60 90,59" fill="none" stroke="#1E88E5" stroke-width="1.5"/>
+                <rect x="48" y="58" width="4" height="4" fill="#1E88E5"/>
+                <rect x="88" y="57" width="4" height="4" fill="#1E88E5"/>
+                <polyline points="10,85 50,59 90,48" fill="none" stroke="#2E7D32" stroke-width="1.5"/>
+                <polygon points="50,57 52,61 48,61" fill="#2E7D32"/>
+                <polygon points="90,46 92,50 88,50" fill="#2E7D32"/>
+                <text x="12" y="88" font-size="4.5" fill="#888">1</text>
+                <text x="47" y="95" font-size="4.5" fill="#888">2</text>
+                <text x="87" y="95" font-size="4.5" fill="#888">4</text>
+                <text x="3" y="85" font-size="4" fill="#888">1×</text>
+                <text x="3" y="48" font-size="4" fill="#888">2×</text>
+              </svg>
+              <span class="sp-verdict ok">DDP 4G reaches 1.75×</span>
+            </div>
+          </div>
+          <!-- Large -->
+          <div class="speedup-panel">
+            <h5>Large (35.2M)</h5>
+            <div class="speedup-chart-area">
+              <svg viewBox="0 0 100 100" class="speedup-svg">
+                <line x1="10" y1="85" x2="90" y2="10" stroke="#444" stroke-width="0.5" stroke-dasharray="3"/>
+                <line x1="10" y1="85" x2="10" y2="10" stroke="#333" stroke-width="0.3"/>
+                <line x1="10" y1="85" x2="90" y2="85" stroke="#333" stroke-width="0.3"/>
+                <polyline points="10,85 50,57 90,45" fill="none" stroke="#FF5722" stroke-width="1.5"/>
+                <circle cx="50" cy="57" r="2" fill="#FF5722"/>
+                <circle cx="90" cy="45" r="2" fill="#FF5722"/>
+                <polyline points="10,85 50,53 90,37" fill="none" stroke="#1E88E5" stroke-width="1.5"/>
+                <rect x="48" y="51" width="4" height="4" fill="#1E88E5"/>
+                <rect x="88" y="35" width="4" height="4" fill="#1E88E5"/>
+                <polyline points="10,85 50,52 90,35" fill="none" stroke="#2E7D32" stroke-width="1.5"/>
+                <polygon points="50,50 52,54 48,54" fill="#2E7D32"/>
+                <polygon points="90,33 92,37 88,37" fill="#2E7D32"/>
+                <text x="12" y="88" font-size="4.5" fill="#888">1</text>
+                <text x="47" y="95" font-size="4.5" fill="#888">2</text>
+                <text x="87" y="95" font-size="4.5" fill="#888">4</text>
+                <text x="3" y="85" font-size="4" fill="#888">1×</text>
+                <text x="3" y="48" font-size="4" fill="#888">2×</text>
+              </svg>
+              <span class="sp-verdict good">DDP 4G reaches 2.31×</span>
+            </div>
+          </div>
+          <!-- XLarge -->
+          <div class="speedup-panel">
+            <h5>XLarge (52.0M)</h5>
+            <div class="speedup-chart-area">
+              <svg viewBox="0 0 100 100" class="speedup-svg">
+                <line x1="10" y1="85" x2="90" y2="10" stroke="#444" stroke-width="0.5" stroke-dasharray="3"/>
+                <line x1="10" y1="85" x2="10" y2="10" stroke="#333" stroke-width="0.3"/>
+                <line x1="10" y1="85" x2="90" y2="85" stroke="#333" stroke-width="0.3"/>
+                <polyline points="10,85 50,55 90,40" fill="none" stroke="#FF5722" stroke-width="1.5"/>
+                <circle cx="50" cy="55" r="2" fill="#FF5722"/>
+                <circle cx="90" cy="40" r="2" fill="#FF5722"/>
+                <polyline points="10,85 50,52 90,32" fill="none" stroke="#1E88E5" stroke-width="1.5"/>
+                <rect x="48" y="50" width="4" height="4" fill="#1E88E5"/>
+                <rect x="88" y="30" width="4" height="4" fill="#1E88E5"/>
+                <polyline points="10,85 50,51 90,33" fill="none" stroke="#2E7D32" stroke-width="1.5"/>
+                <polygon points="50,49 52,53 48,53" fill="#2E7D32"/>
+                <polygon points="90,31 92,35 88,35" fill="#2E7D32"/>
+                <text x="12" y="88" font-size="4.5" fill="#888">1</text>
+                <text x="47" y="95" font-size="4.5" fill="#888">2</text>
+                <text x="87" y="95" font-size="4.5" fill="#888">4</text>
+                <text x="3" y="85" font-size="4" fill="#888">1×</text>
+                <text x="3" y="48" font-size="4" fill="#888">2×</text>
+              </svg>
+              <span class="sp-verdict great">Interleaved 4G = 2.40×!</span>
+            </div>
+          </div>
+        </div>
+        <div class="chart-legend" style="margin-top:12px">
+          <span class="legend-item"><span class="lg-swatch" style="background:#FF5722"></span>Naive DP</span>
+          <span class="legend-item"><span class="lg-swatch" style="background:#1E88E5"></span>Interleaved DP</span>
+          <span class="legend-item"><span class="lg-swatch" style="background:#2E7D32"></span>PyTorch DDP</span>
+          <span class="legend-item" style="color:#666">- - - Ideal linear</span>
+        </div>
+      </div>
+      <div class="chart-full-explain">
+        <p><strong>The Researcher's Mindset — Why can't we reach ideal linear scaling, and why does the naive-interleaved gap widen?</strong></p>
+
+        <p><strong>1. Why not ideal scaling?</strong> Ideal linear scaling (4 GPUs = 4×) requires zero communication overhead. In practice, Ring AllReduce requires <code>2(N-1)/N × D</code> data transfers (see the Ring AllReduce section above). With 4 GPUs and 52M parameters (each 4 bytes = 208MB of gradient data), that's <code>1.5 × 208MB = 312MB</code> transferred per GPU. Over PCIe Gen4 (~25 GB/s effective), this takes at minimum ~12ms just for raw transfer — plus per-step latency for 6 sequential ring steps. This communication tax is irreducible overhead that prevents reaching the ideal.</p>
+
+        <p><strong>2. Why does naive (red) always lag behind interleaved (blue/green)?</strong> The math is precise:</p>
+        <p style="padding-left:16px">
+          Naive total time: <code>T_naive = T_compute/N + T_allreduce</code> (sequential: compute first, then communicate)<br>
+          Interleaved total time: <code>T_interleaved ≈ max(T_compute/N, T_allreduce)</code> (overlapped: compute and communicate in parallel)
+        </p>
+        <p>The gap between them = <code>T_naive - T_interleaved = T_compute/N + T_allreduce - max(T_compute/N, T_allreduce) = min(T_compute/N, T_allreduce)</code>. In other words, interleaving saves <strong>whichever is smaller: the compute time or the communication time</strong>.</p>
+
+        <p><strong>3. Why does this gap WIDEN for larger models?</strong> Let's plug in real numbers:</p>
+        <p style="padding-left:16px">
+          <strong>Small (4G):</strong> T_compute/4 ≈ 3ms, T_allreduce ≈ 31ms → Gap = min(3, 31) = <strong>3ms</strong> (tiny — compute is so small there's almost nothing to overlap)<br>
+          <strong>Medium (4G):</strong> T_compute/4 ≈ 12ms, T_allreduce ≈ 37ms → Gap = min(12, 37) = <strong>12ms</strong> (growing — more compute to overlap with)<br>
+          <strong>Large (4G):</strong> T_compute/4 ≈ 35ms, T_allreduce ≈ 74ms → Gap = min(35, 74) = <strong>35ms</strong> (significant — interleaving hides all the compute behind communication)<br>
+          <strong>XLarge (4G):</strong> T_compute/4 ≈ 50ms, T_allreduce ≈ 94ms → Gap = min(50, 94) = <strong>50ms</strong> (massive — 50ms of GPU idle time eliminated per epoch)
+        </p>
+        <p>As models grow, <code>T_compute/N</code> grows, so <code>min(T_compute/N, T_allreduce)</code> grows — meaning <strong>interleaving saves more and more time</strong>. The gap keeps widening because there's more backward computation available to run concurrently with AllReduce. This is the central insight: interleaving is most valuable when both compute and communication are significant, and its benefit scales with model size.</p>
+
+        <p><strong>4. Why do lines curve upward from 2→4 GPUs for large models but stay flat for small?</strong> Going from 2→4 GPUs halves per-GPU compute (saving ~100ms for XLarge) but increases AllReduce time by ~24ms (more ring steps). For large models, the net savings is ~76ms — a huge win. For small models, halving ~5ms of compute while adding ~3ms of communication yields a net savings of only ~2ms, swamped by the fixed overhead of additional process coordination. You're <strong>communication-bound</strong> — adding GPUs adds latency with negligible compute savings.</p>
+      </div>
+    </div>
+
+    <!-- CHART 3 & 4 side by side -->
+    <div class="chart-explain-grid">
+      <!-- Chart 3: Comm Overhead -->
+      <div class="chart-card">
+        <div class="chart-num">Chart 3</div>
+        <h4>Naive DP: Computation vs Communication Time</h4>
+        <div class="chart-mock stacked-chart-mock" style="height:200px">
+          <div class="mock-stacked">
+            <div class="mock-stack-bar">
+              <div class="ms-compute" style="height:55%">Compute</div>
+              <div class="ms-comm" style="height:38%">Comm</div>
+              <span class="ms-pct">47%</span>
+              <span class="mock-label">Small 2G</span>
+            </div>
+            <div class="mock-stack-bar">
+              <div class="ms-compute" style="height:52%">Compute</div>
+              <div class="ms-comm" style="height:43%">Comm</div>
+              <span class="ms-pct">47%</span>
+              <span class="mock-label">Small 4G</span>
+            </div>
+            <div class="mock-stack-bar">
+              <div class="ms-compute" style="height:67%">Compute</div>
+              <div class="ms-comm" style="height:27%">Comm</div>
+              <span class="ms-pct">31%</span>
+              <span class="mock-label">Med 2G</span>
+            </div>
+            <div class="mock-stack-bar">
+              <div class="ms-compute" style="height:55%">Compute</div>
+              <div class="ms-comm" style="height:39%">Comm</div>
+              <span class="ms-pct">43%</span>
+              <span class="mock-label">Med 4G</span>
+            </div>
+            <div class="mock-stack-bar">
+              <div class="ms-compute" style="height:78%">Compute</div>
+              <div class="ms-comm" style="height:16%">Comm</div>
+              <span class="ms-pct">18%</span>
+              <span class="mock-label">Large 2G</span>
+            </div>
+            <div class="mock-stack-bar">
+              <div class="ms-compute" style="height:60%">Compute</div>
+              <div class="ms-comm" style="height:32%">Comm</div>
+              <span class="ms-pct">35%</span>
+              <span class="mock-label">Large 4G</span>
+            </div>
+            <div class="mock-stack-bar">
+              <div class="ms-compute" style="height:80%">Compute</div>
+              <div class="ms-comm" style="height:14%">Comm</div>
+              <span class="ms-pct">17%</span>
+              <span class="mock-label">XL 2G</span>
+            </div>
+            <div class="mock-stack-bar">
+              <div class="ms-compute" style="height:62%">Compute</div>
+              <div class="ms-comm" style="height:28%">Comm</div>
+              <span class="ms-pct">32%</span>
+              <span class="mock-label">XL 4G</span>
+            </div>
+          </div>
+        </div>
+        <p><strong>The Researcher's Mindset:</strong> Why does communication % <em>increase</em> with more GPUs? Two effects compound: <strong>(1)</strong> Ring AllReduce does <code>2(N-1)/N</code> data passes — going from 2→4 GPUs increases total data transferred from 1× to 1.5× the gradient size. <strong>(2)</strong> Each GPU's compute <em>halves</em> (processing 1/4 vs 1/2 of the batch), so the denominator shrinks while the numerator grows. For small models (47% comm), the compute per GPU is only ~3ms while AllReduce takes ~28ms — the system is <strong>communication-bound</strong>. For XLarge (17% at 2G), compute dominates. This ratio is the single most important number in distributed training design.</p>
+      </div>
+
+      <!-- Chart 4: Direct Comparison -->
+      <div class="chart-card">
+        <div class="chart-num">Chart 4</div>
+        <h4>Naive vs Interleaved vs DDP — Direct Comparison</h4>
+        <div class="chart-mock compare-chart-mock" style="height:200px">
+          <div class="mock-compare">
+            <div class="mc-group">
+              <div class="mc-bar naive" style="height:34%"></div>
+              <div class="mc-bar inter" style="height:35%"></div>
+              <div class="mc-bar ddp" style="height:25%"></div>
+              <span class="mc-save" style="color:#666">2%</span>
+              <span class="mock-label">Sm 2G</span>
+            </div>
+            <div class="mc-group">
+              <div class="mc-bar naive" style="height:37%"></div>
+              <div class="mc-bar inter" style="height:36%"></div>
+              <div class="mc-bar ddp" style="height:27%"></div>
+              <span class="mc-save" style="color:#666">2%</span>
+              <span class="mock-label">Sm 4G</span>
+            </div>
+            <div class="mc-group">
+              <div class="mc-bar naive" style="height:60%"></div>
+              <div class="mc-bar inter" style="height:50%"></div>
+              <div class="mc-bar ddp" style="height:49%"></div>
+              <span class="mc-save">16%</span>
+              <span class="mock-label">Med 2G</span>
+            </div>
+            <div class="mc-group">
+              <div class="mc-bar naive" style="height:49%"></div>
+              <div class="mc-bar inter" style="height:49%"></div>
+              <div class="mc-bar ddp" style="height:38%"></div>
+              <span class="mock-label">Med 4G</span>
+            </div>
+            <div class="mc-group">
+              <div class="mc-bar naive" style="height:80%"></div>
+              <div class="mc-bar inter" style="height:74%"></div>
+              <div class="mc-bar ddp" style="height:73%"></div>
+              <span class="mc-save">7%</span>
+              <span class="mock-label">Lg 2G</span>
+            </div>
+            <div class="mc-group">
+              <div class="mc-bar naive" style="height:60%"></div>
+              <div class="mc-bar inter" style="height:52%"></div>
+              <div class="mc-bar ddp" style="height:50%"></div>
+              <span class="mc-save">14%</span>
+              <span class="mock-label">Lg 4G</span>
+            </div>
+            <div class="mc-group">
+              <div class="mc-bar naive" style="height:100%"></div>
+              <div class="mc-bar inter" style="height:91%"></div>
+              <div class="mc-bar ddp" style="height:90%"></div>
+              <span class="mc-save">9%</span>
+              <span class="mock-label">XL 2G</span>
+            </div>
+            <div class="mc-group">
+              <div class="mc-bar naive" style="height:72%"></div>
+              <div class="mc-bar inter" style="height:62%"></div>
+              <div class="mc-bar ddp" style="height:62%"></div>
+              <span class="mc-save">14%</span>
+              <span class="mock-label">XL 4G</span>
+            </div>
+          </div>
+        </div>
+        <p><strong>The Researcher's Mindset:</strong> Why does interleaving save <em>more</em> at 4 GPUs than 2? Because <strong>AllReduce time grows with GPU count</strong> (more Ring hops), creating more idle time for naive DP to waste. Interleaving hides this growing cost by running communication <em>concurrently</em> with backward computation. The 14% savings at 4G represents ~30ms of overlapped communication per epoch — time the naive approach spends with GPUs <strong>completely idle</strong>. DDP slightly beats our interleaved because bucketing reduces NCCL kernel launch overhead: 2-3 large AllReduces are faster than 12+ small ones, even with the same total data volume. Each NCCL call has ~10-50μs of fixed overhead, which adds up.</p>
+      </div>
+
+      <!-- Chart 5: Loss Convergence -->
+      <div class="chart-card">
+        <div class="chart-num">Chart 5</div>
+        <h4>Loss Convergence — XLarge Model</h4>
+        <div class="chart-mock loss-chart-mock">
+          <div class="mock-line-area">
+            <svg viewBox="0 0 200 100" preserveAspectRatio="none">
+              <!-- Three clusters grouped by GPU count -->
+              <!-- Cluster 1: Single GPU (1G) — highest loss -->
+              <polyline points="10,8 50,22 100,38 150,50 190,58" fill="none" stroke="#37474F" stroke-width="2.5"/>
+              <!-- Cluster 2: 2-GPU modes (dp_naive 2G, dp_interleaved 2G, ddp_builtin 2G) — middle -->
+              <polyline points="10,25 50,38 100,50 150,60 190,68" fill="none" stroke="#FF5722" stroke-width="1.5" stroke-dasharray="4"/>
+              <polyline points="10,25 50,38 100,50 150,60 190,68" fill="none" stroke="#1E88E5" stroke-width="1.5"/>
+              <polyline points="10,25 50,38 100,50 150,60 190,68" fill="none" stroke="#2E7D32" stroke-width="1.5"/>
+              <!-- Cluster 3: 4-GPU modes (dp_naive 4G, dp_interleaved 4G, ddp_builtin 4G) — lowest -->
+              <polyline points="10,60 50,68 100,76 150,82 190,88" fill="none" stroke="#FF5722" stroke-width="1.5" stroke-dasharray="4"/>
+              <polyline points="10,60 50,68 100,76 150,82 190,88" fill="none" stroke="#1E88E5" stroke-width="1.5"/>
+              <polyline points="10,60 50,68 100,76 150,82 190,88" fill="none" stroke="#2E7D32" stroke-width="1.5"/>
+            </svg>
+            <span class="mock-y-label" style="font-size:0.65rem;">Loss</span>
+          </div>
+        </div>
+        <p><strong>The Researcher's Mindset:</strong> There are <strong>three distinct clusters</strong>, grouped by <strong>GPU count</strong>: single GPU (1G) sits highest, 2-GPU modes (dp_naive, dp_interleaved, ddp_builtin) cluster together in the middle, and 4-GPU modes cluster at the bottom.</p>
+
+        <p><strong>Why do modes within the same GPU count produce identical curves?</strong> Because they're all doing the same math. Regardless of whether you use naive, interleaved, or DDP — every mode does <code>AllReduce(SUM)/N</code> on the gradients. The gradient update is mathematically identical. The only difference is <em>when</em> the AllReduce happens (after all layers vs. per-layer), not <em>what</em> it computes.</p>
+
+        <p><strong>But why do different GPU counts produce different clusters?</strong> This is actually a <strong>logging artifact</strong>, not a real training difference. Here's what the code does:</p>
+
+        <div style="background:rgba(0,0,0,0.3); border-radius:8px; padding:16px; margin:12px 0; font-family:monospace; font-size:0.85rem; line-height:1.6;">
+          <span style="color:#888;">// Each GPU computes loss on its LOCAL shard only</span><br>
+          <span style="color:#42A5F5;">out</span> = model(<span style="color:#66BB6A;">x_local</span>) &nbsp;&nbsp;<span style="color:#888;">// x_local = 512 samples for 2 GPUs, 256 for 4 GPUs</span><br>
+          <span style="color:#42A5F5;">loss</span> = loss_fn(out, y_local)<br>
+          loss.backward()<br>
+          <br>
+          <span style="color:#888;">// AllReduce syncs GRADIENTS — but NOT the loss value</span><br>
+          dist.all_reduce(param.<span style="color:#FF7043;">grad</span>) &nbsp;&nbsp;<span style="color:#888;">// ← only gradients are synchronized</span><br>
+          <br>
+          epoch_loss += <span style="color:#FF7043;">loss.item()</span> &nbsp;&nbsp;<span style="color:#888;">// ← logs rank 0's LOCAL loss, not the global average</span>
+        </div>
+
+        <p>The <strong>effective batch size is actually the same</strong> across all GPU counts (1024 samples). The batch is split across GPUs, each GPU computes gradients on its shard, and <code>AllReduce(SUM)/N</code> produces the exact same averaged gradient as a single GPU processing all 1024 samples. The models are learning identically.</p>
+
+        <p>The visual separation happens because <code>loss.item()</code> captures rank 0's <strong>local micro-batch loss</strong> (computed on 1024, 512, or 256 samples depending on GPU count) — and rank 0 always sees the same fixed slice of each batch (indices <code>[0:chunk]</code>) since the dataset isn't shuffled. These fixed subsets have systematically different average loss values.</p>
+
+        <p><strong>Why not log the true average loss?</strong> You'd need an extra <code>dist.all_reduce(loss_tensor)</code> call every step just for monitoring. This adds communication overhead that would distort the timing benchmarks — which is the whole point of this notebook. For production training you'd want the averaged loss, but for benchmarking speed, this shortcut is acceptable.</p>
+
+        <p><strong>Key takeaway:</strong> If you plotted loss vs <strong>total samples seen</strong> (instead of loss vs step), or if you averaged the loss across all ranks before logging, all three clusters would collapse onto the <strong>same curve</strong>. The training is identical — only the monitoring differs.</p>
+      </div>
+
+      <!-- Chart 6: Throughput -->
+      <div class="chart-card">
+        <div class="chart-num">Chart 6</div>
+        <h4>Training Throughput (samples/sec)</h4>
+        <div class="chart-mock throughput-chart-mock" style="height:200px;">
+          <div class="mock-bars" style="align-items:flex-end;">
+            <div class="mock-bar-group">
+              <div class="mock-bar" style="height:100%;background:#37474F"></div>
+              <div class="mock-bar" style="height:60%;background:#FF7043"></div>
+              <div class="mock-bar" style="height:58%;background:#42A5F5"></div>
+              <div class="mock-bar" style="height:83%;background:#66BB6A"></div>
+              <div class="mock-bar" style="height:55%;background:#E64A19"></div>
+              <div class="mock-bar" style="height:56%;background:#1E88E5"></div>
+              <div class="mock-bar" style="height:75%;background:#2E7D32"></div>
+              <span class="mock-label">Small</span>
+            </div>
+            <div class="mock-bar-group">
+              <div class="mock-bar" style="height:31%;background:#37474F"></div>
+              <div class="mock-bar" style="height:34%;background:#FF7043"></div>
+              <div class="mock-bar" style="height:40%;background:#42A5F5"></div>
+              <div class="mock-bar" style="height:41%;background:#66BB6A"></div>
+              <div class="mock-bar" style="height:42%;background:#E64A19"></div>
+              <div class="mock-bar" style="height:41%;background:#1E88E5"></div>
+              <div class="mock-bar" style="height:53%;background:#2E7D32"></div>
+              <span class="mock-label">Med</span>
+            </div>
+            <div class="mock-bar-group">
+              <div class="mock-bar" style="height:9%;background:#37474F"></div>
+              <div class="mock-bar" style="height:13%;background:#FF7043"></div>
+              <div class="mock-bar" style="height:14%;background:#42A5F5"></div>
+              <div class="mock-bar" style="height:14%;background:#66BB6A"></div>
+              <div class="mock-bar" style="height:17%;background:#E64A19"></div>
+              <div class="mock-bar" style="height:20%;background:#1E88E5"></div>
+              <div class="mock-bar" style="height:20%;background:#2E7D32"></div>
+              <span class="mock-label">Large</span>
+            </div>
+            <div class="mock-bar-group">
+              <div class="mock-bar" style="height:6%;background:#37474F"></div>
+              <div class="mock-bar" style="height:9%;background:#FF7043"></div>
+              <div class="mock-bar" style="height:10%;background:#42A5F5"></div>
+              <div class="mock-bar" style="height:10%;background:#66BB6A"></div>
+              <div class="mock-bar" style="height:12%;background:#E64A19"></div>
+              <div class="mock-bar" style="height:14%;background:#1E88E5"></div>
+              <div class="mock-bar" style="height:14%;background:#2E7D32"></div>
+              <span class="mock-label">XLarge</span>
+            </div>
+          </div>
+        </div>
+        <p><strong>The Researcher's Mindset:</strong> Whether adding GPUs helps depends entirely on the <strong>compute-to-communication ratio</strong>. Parallel epoch time = <code>T_compute/N + T_comm</code>. If T_comm exceeds the compute saved, you lose.</p>
+        <p><strong>Small (1.5M):</strong> Single GPU = 0.036s. With 4 GPUs: compute drops to ~0.009s but AllReduce adds ~0.030s → total 0.065s. <strong>Slower</strong>, because communication (0.030s) exceeds compute saved (0.027s). All parallel modes produce <span style="color:#ff6b6b;">0.55–0.83×</span> throughput.</p>
+        <p><strong>XLarge (52M):</strong> Single GPU = 0.596s. With 4 GPUs: compute drops to ~0.149s and AllReduce costs ~0.094s → total 0.249s. <strong>Much faster</strong>, because compute saved (0.447s) dwarfs communication cost. Interleaved achieves <span style="color:#66BB6A;">2.40× speedup</span>.</p>
+        <p><strong>Where does f come from?</strong> We measure <code>f</code> directly from our naive DP benchmarks, where compute and communication are separate phases. For XLarge 4G: T_compute = epoch_time − comm_time = 0.290 − 0.094 = 0.196s, T_comm = 0.094s. Relative to the original single-GPU time: <code>f = T_compute_single / (T_compute_single + T_comm) = 0.596 / (0.596 + 0.094) = 0.86</code>. Plugging into <strong>Amdahl's Law</strong>: <code>speedup = 1/((1-f) + f/N)</code>. The intuition: your total work has a parallelizable fraction <code>f</code> (compute, which splits across N GPUs → <code>f/N</code>) and a serial fraction <code>1-f</code> (communication, which doesn't shrink with more GPUs). No matter how many GPUs you add, you can never eliminate that <code>1-f</code> serial portion — it sets a hard ceiling on speedup. For XLarge: 1/(0.14 + 0.86/4) = <strong>2.7× theoretical max</strong> — we achieve 2.4× (89% efficiency). For small models: f = 0.036/(0.036+0.030) = 0.55, theoretical max = 1.3× — but fixed overhead (process launch, NCCL init, barriers) pushes actual speedup below 1×.</p>
+        <p><strong>Real-world implication:</strong> LLMs with billions of parameters have f &gt; 0.999 — communication is negligible relative to compute. This is why training on thousands of GPUs works efficiently.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+
+<!-- ============ RING ALLREDUCE DEEP DIVE ============ -->
+<section class="section section-dark" id="ring-allreduce">
+  <div class="container">
+    <div class="section-heading">
+      <span class="section-label">The Algorithm That Makes It All Work</span>
+      <h2>How <span class="gradient-text">Ring AllReduce</span> Actually Works</h2>
+      <p class="section-subtitle">AllReduce is the operation that synchronizes gradients across GPUs. Understanding <em>how</em> it works explains every number in our benchmarks.</p>
+    </div>
+
+    <!-- ===== PART 1: THE PROBLEM ===== -->
+    <div class="ring-explainer-card">
+      <div class="ring-explainer-num">1</div>
+      <h3>The Problem: Every GPU Needs the Same Average Gradient</h3>
+      <div class="ring-explainer-body">
+        <p>In data-parallel training, each GPU processes a <strong>different shard of the batch</strong> and computes its own gradient vector. But to update the weights, <strong>every GPU must end up with the same gradient</strong> — the average across all GPUs.</p>
+
+        <div class="ring-scenario-visual">
+          <div class="ring-scenario-box">
+            <div class="rsb-title">Setup: 4 GPUs, each with a gradient vector</div>
+            <div class="rsb-gpus">
+              <div class="rsb-gpu"><span class="rsb-label">GPU 0</span><span class="rsb-grad" style="background:rgba(0,212,106,0.15);border-color:var(--primary);">G<sub>0</sub></span><span class="rsb-desc">gradient from batch shard 0</span></div>
+              <div class="rsb-gpu"><span class="rsb-label">GPU 1</span><span class="rsb-grad" style="background:rgba(66,165,245,0.15);border-color:var(--blue);">G<sub>1</sub></span><span class="rsb-desc">gradient from batch shard 1</span></div>
+              <div class="rsb-gpu"><span class="rsb-label">GPU 2</span><span class="rsb-grad" style="background:rgba(0,200,230,0.15);border-color:var(--secondary);">G<sub>2</sub></span><span class="rsb-desc">gradient from batch shard 2</span></div>
+              <div class="rsb-gpu"><span class="rsb-label">GPU 3</span><span class="rsb-grad" style="background:rgba(167,139,250,0.15);border-color:var(--accent);">G<sub>3</sub></span><span class="rsb-desc">gradient from batch shard 3</span></div>
+            </div>
+          </div>
+          <div class="ring-scenario-arrow">
+            <svg viewBox="0 0 40 40" width="40" height="40"><polygon points="20,35 5,15 35,15" fill="var(--primary)" opacity="0.5"/></svg>
+          </div>
+          <div class="ring-scenario-box goal-box">
+            <div class="rsb-title">Goal: Every GPU has the SAME average</div>
+            <div class="rsb-gpus">
+              <div class="rsb-gpu"><span class="rsb-label">GPU 0</span><span class="rsb-grad hl-done">(G₀+G₁+G₂+G₃)/4</span></div>
+              <div class="rsb-gpu"><span class="rsb-label">GPU 1</span><span class="rsb-grad hl-done">(G₀+G₁+G₂+G₃)/4</span></div>
+              <div class="rsb-gpu"><span class="rsb-label">GPU 2</span><span class="rsb-grad hl-done">(G₀+G₁+G₂+G₃)/4</span></div>
+              <div class="rsb-gpu"><span class="rsb-label">GPU 3</span><span class="rsb-grad hl-done">(G₀+G₁+G₂+G₃)/4</span></div>
+            </div>
+          </div>
+        </div>
+
+        <p>Each gradient vector G<sub>i</sub> is a <strong>huge array of numbers</strong> — one number per model parameter. For our XLarge model, that's <strong>52 million float32 numbers = 208 MB</strong> per GPU. The question is: <em>how do we get the average of four 208 MB arrays onto all four GPUs as fast as possible?</em></p>
+      </div>
+    </div>
+
+    <!-- ===== PART 2: THE NAIVE WAY ===== -->
+    <div class="ring-explainer-card">
+      <div class="ring-explainer-num">2</div>
+      <h3>The Naive Way: Send Everything to One GPU</h3>
+      <div class="ring-explainer-body">
+        <p>The simplest approach: pick one GPU (say GPU 0) as the "leader." Every other GPU sends its entire gradient to GPU 0. GPU 0 adds them all up, divides by N, and sends the result back.</p>
+
+        <div class="ring-naive-timeline">
+          <div class="rnt-step">
+            <div class="rnt-step-num">Step 1</div>
+            <div class="rnt-step-desc">
+              <strong>Gather:</strong> GPU 1, 2, 3 each send their full gradient (208 MB) to GPU 0.
+              <div class="rnt-detail">GPU 0 receives 3 × 208 MB = <strong>624 MB</strong> of data through its single network link.</div>
+            </div>
+          </div>
+          <div class="rnt-step">
+            <div class="rnt-step-num">Step 2</div>
+            <div class="rnt-step-desc">
+              <strong>Compute:</strong> GPU 0 sums all four gradients and divides by 4.
+              <div class="rnt-detail">G<sub>avg</sub> = (G₀ + G₁ + G₂ + G₃) / 4</div>
+            </div>
+          </div>
+          <div class="rnt-step">
+            <div class="rnt-step-num">Step 3</div>
+            <div class="rnt-step-desc">
+              <strong>Broadcast:</strong> GPU 0 sends the averaged gradient back to GPU 1, 2, 3.
+              <div class="rnt-detail">GPU 0 sends 3 × 208 MB = <strong>624 MB</strong> out through its single network link.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ring-problem-callout">
+          <h4>The Bottleneck Problem</h4>
+          <p>GPU 0's network link must handle <strong>624 MB in + 624 MB out = 1,248 MB total</strong>. Meanwhile, GPU 1, 2, 3 are <strong>sitting idle</strong> — they only use their links once to send and once to receive.</p>
+          <p>With N GPUs, GPU 0 must transfer <code>2 × (N-1) × D</code> data, where D is the gradient size. This <strong>grows linearly with N</strong>. With 100 GPUs, GPU 0 would need to transfer 198 × 208 MB = <strong>41 GB</strong>. That would take <em>minutes</em>.</p>
+          <p>The core problem: <strong>one GPU does all the work while the others wait.</strong> We're wasting N-1 perfectly good network links.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== PART 3: THE KEY INSIGHT ===== -->
+    <div class="ring-explainer-card">
+      <div class="ring-explainer-num">3</div>
+      <h3>The Key Insight: Split the Gradient Into Chunks</h3>
+      <div class="ring-explainer-body">
+        <p>Here's the insight that makes Ring AllReduce work: <strong>you don't have to send the entire gradient as one big blob.</strong></p>
+
+        <p>Think of each gradient vector as a long array of 52 million numbers. We can <strong>split it into N equal pieces</strong> (one piece per GPU). For 4 GPUs:</p>
+
+        <div class="ring-chunk-visual">
+          <div class="rcv-label">GPU 0's gradient (52M parameters):</div>
+          <div class="rcv-bar">
+            <div class="rcv-chunk c0" style="width:25%"><span>Chunk 0</span><small>13M params</small></div>
+            <div class="rcv-chunk c1" style="width:25%"><span>Chunk 1</span><small>13M params</small></div>
+            <div class="rcv-chunk c2" style="width:25%"><span>Chunk 2</span><small>13M params</small></div>
+            <div class="rcv-chunk c3" style="width:25%"><span>Chunk 3</span><small>13M params</small></div>
+          </div>
+        </div>
+
+        <p><strong>Why split?</strong> Because now we can make each GPU <em>responsible for averaging just one chunk</em>. GPU 0 collects and averages Chunk 0 from all GPUs. GPU 1 collects and averages Chunk 1 from all GPUs. And so on. <strong>All four GPUs work in parallel</strong> — no bottleneck!</p>
+
+        <p>But there's a problem: if GPU 0 needs Chunk 0 from all other GPUs, and GPU 1 needs Chunk 1 from all other GPUs, etc., we'd need all-to-all communication — which has the same bottleneck. We need a smarter pattern for <em>how</em> the chunks travel between GPUs. That's where the <strong>ring topology</strong> comes in.</p>
+      </div>
+    </div>
+
+    <!-- ===== PART 4: THE RING TOPOLOGY ===== -->
+    <div class="ring-explainer-card">
+      <div class="ring-explainer-num">4</div>
+      <h3>The Ring: Each GPU Only Talks to Its Neighbors</h3>
+      <div class="ring-explainer-body">
+        <p>Arrange the GPUs in a <strong>logical ring</strong>. Each GPU has exactly two connections:</p>
+        <ul>
+          <li>It sends data to its <strong>right neighbor</strong></li>
+          <li>It receives data from its <strong>left neighbor</strong></li>
+        </ul>
+
+        <div class="ring-topo-visual">
+          <svg viewBox="0 0 320 220" class="ring-svg-large">
+            <!-- Ring circle -->
+            <circle cx="160" cy="110" r="80" fill="none" stroke="var(--border)" stroke-width="2" stroke-dasharray="6"/>
+            <!-- GPU nodes -->
+            <circle cx="160" cy="30" r="26" fill="#1a1a2e" stroke="var(--primary)" stroke-width="2.5"/>
+            <text x="160" y="34" text-anchor="middle" fill="var(--fg)" font-size="11" font-weight="600">GPU 0</text>
+            <circle cx="240" cy="110" r="26" fill="#1a1a2e" stroke="var(--blue)" stroke-width="2.5"/>
+            <text x="240" y="114" text-anchor="middle" fill="var(--fg)" font-size="11" font-weight="600">GPU 1</text>
+            <circle cx="160" cy="190" r="26" fill="#1a1a2e" stroke="var(--secondary)" stroke-width="2.5"/>
+            <text x="160" y="194" text-anchor="middle" fill="var(--fg)" font-size="11" font-weight="600">GPU 2</text>
+            <circle cx="80" cy="110" r="26" fill="#1a1a2e" stroke="var(--accent)" stroke-width="2.5"/>
+            <text x="80" y="114" text-anchor="middle" fill="var(--fg)" font-size="11" font-weight="600">GPU 3</text>
+            <!-- Arrows around ring (clockwise) -->
+            <defs><marker id="arRing" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="var(--primary)"/></marker></defs>
+            <path d="M183 40 L218 88" stroke="var(--primary)" stroke-width="2.5" marker-end="url(#arRing)"/>
+            <path d="M236 136 L183 180" stroke="var(--blue)" stroke-width="2.5" marker-end="url(#arRing)"/>
+            <path d="M137 180 L104 136" stroke="var(--secondary)" stroke-width="2.5" marker-end="url(#arRing)"/>
+            <path d="M104 88 L137 40" stroke="var(--accent)" stroke-width="2.5" marker-end="url(#arRing)"/>
+            <!-- Labels -->
+            <text x="210" y="58" fill="var(--fg-muted)" font-size="8">sends →</text>
+            <text x="246" y="160" fill="var(--fg-muted)" font-size="8">sends →</text>
+            <text x="96" y="168" fill="var(--fg-muted)" font-size="8">← sends</text>
+            <text x="90" y="58" fill="var(--fg-muted)" font-size="8">← sends</text>
+          </svg>
+        </div>
+
+        <p><strong>The crucial property:</strong> At every step, <strong>all four GPUs send and receive simultaneously</strong>. No GPU is ever idle. No GPU is ever overloaded. Every network link in the system is used at full bandwidth, all the time.</p>
+
+        <p>The algorithm runs in <strong>two phases</strong>:</p>
+        <ol>
+          <li><strong>Scatter-Reduce</strong> — Pass chunks around the ring, <em>adding</em> as you go. After N-1 steps, each GPU has the <strong>complete sum</strong> of one chunk.</li>
+          <li><strong>AllGather</strong> — Pass the completed chunks around the ring, <em>replacing</em> as you go. After N-1 more steps, every GPU has <strong>all chunks</strong>.</li>
+        </ol>
+
+        <p>Let's walk through both phases step by step.</p>
+      </div>
+    </div>
+
+    <!-- ===== PART 5: SCATTER-REDUCE ===== -->
+    <div class="ring-explainer-card">
+      <div class="ring-explainer-num">5</div>
+      <h3>Phase 1: Scatter-Reduce — Building Up the Sum</h3>
+      <div class="ring-explainer-body">
+        <p>Recall: each GPU's gradient is split into 4 chunks. We label them: GPU 0 has chunks <strong>[A₀, A₁, A₂, A₃]</strong>, GPU 1 has <strong>[B₀, B₁, B₂, B₃]</strong>, etc. The subscript is the chunk index, the letter is which GPU it came from.</p>
+
+        <p>The goal of Phase 1: make GPU 0 hold the sum A₀+B₀+C₀+D₀ (all GPUs' chunk 0), GPU 1 hold A₁+B₁+C₁+D₁, etc.</p>
+
+        <div class="ring-step-grid">
+          <!-- Initial State -->
+          <div class="ring-step-card">
+            <div class="rs-label">Initial State</div>
+            <div class="rs-gpus">
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 0</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">A₀</span><span class="rs-chunk c1">A₁</span><span class="rs-chunk c2">A₂</span><span class="rs-chunk c3">A₃</span>
+                </div>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 1</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">B₀</span><span class="rs-chunk c1">B₁</span><span class="rs-chunk c2">B₂</span><span class="rs-chunk c3">B₃</span>
+                </div>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 2</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">C₀</span><span class="rs-chunk c1">C₁</span><span class="rs-chunk c2">C₂</span><span class="rs-chunk c3">C₃</span>
+                </div>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 3</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">D₀</span><span class="rs-chunk c1">D₁</span><span class="rs-chunk c2">D₂</span><span class="rs-chunk c3">D₃</span>
+                </div>
+              </div>
+            </div>
+            <p class="rs-note">Each GPU has its own gradient, split into 4 equal chunks (52 MB each for our XLarge model).</p>
+          </div>
+
+          <!-- Step 1 -->
+          <div class="ring-step-card">
+            <div class="rs-label">Step 1</div>
+            <div class="rs-action">GPU 0 sends <span class="c0-text">A₀</span> → GPU 1. &nbsp; GPU 1 sends <span class="c1-text">B₁</span> → GPU 2. &nbsp; GPU 2 sends <span class="c2-text">C₂</span> → GPU 3. &nbsp; GPU 3 sends <span class="c3-text">D₃</span> → GPU 0.</div>
+            <div class="rs-gpus">
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 0</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">A₀</span><span class="rs-chunk c1">A₁</span><span class="rs-chunk c2">A₂</span><span class="rs-chunk c3 hl-add">A₃+D₃</span>
+                </div>
+                <span class="rs-detail">received D₃ from GPU 3, added to own A₃</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 1</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0 hl-add">B₀+A₀</span><span class="rs-chunk c1">B₁</span><span class="rs-chunk c2">B₂</span><span class="rs-chunk c3">B₃</span>
+                </div>
+                <span class="rs-detail">received A₀ from GPU 0, added to own B₀</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 2</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">C₀</span><span class="rs-chunk c1 hl-add">C₁+B₁</span><span class="rs-chunk c2">C₂</span><span class="rs-chunk c3">C₃</span>
+                </div>
+                <span class="rs-detail">received B₁ from GPU 1, added to own C₁</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 3</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">D₀</span><span class="rs-chunk c1">D₁</span><span class="rs-chunk c2 hl-add">D₂+C₂</span><span class="rs-chunk c3">D₃</span>
+                </div>
+                <span class="rs-detail">received C₂ from GPU 2, added to own D₂</span>
+              </div>
+            </div>
+            <p class="rs-note"><strong>Key rule:</strong> Each GPU sends one chunk to the right, receives one chunk from the left, and <strong>adds</strong> the received chunk to its own. Notice: all 4 GPUs send/receive <strong>simultaneously</strong>.</p>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="ring-step-card">
+            <div class="rs-label">Step 2</div>
+            <div class="rs-action">Now each GPU sends the chunk it just <em>updated</em> (the one with 2 GPUs' worth of data) to the next GPU.</div>
+            <div class="rs-gpus">
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 0</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">A₀</span><span class="rs-chunk c1">A₁</span><span class="rs-chunk c2 hl-add">A₂+D₂+C₂</span><span class="rs-chunk c3">A₃+D₃</span>
+                </div>
+                <span class="rs-detail">received (D₂+C₂) from GPU 3, added to own A₂ → now has 3 GPUs' data</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 1</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">B₀+A₀</span><span class="rs-chunk c1">B₁</span><span class="rs-chunk c2">B₂</span><span class="rs-chunk c3 hl-add">B₃+A₃+D₃</span>
+                </div>
+                <span class="rs-detail">received (A₃+D₃) from GPU 0, added to own B₃ → 3 GPUs' data</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 2</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0 hl-add">C₀+B₀+A₀</span><span class="rs-chunk c1">C₁+B₁</span><span class="rs-chunk c2">C₂</span><span class="rs-chunk c3">C₃</span>
+                </div>
+                <span class="rs-detail">received (B₀+A₀) from GPU 1, added to own C₀ → 3 GPUs' data</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 3</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">D₀</span><span class="rs-chunk c1 hl-add">D₁+C₁+B₁</span><span class="rs-chunk c2">D₂+C₂</span><span class="rs-chunk c3">D₃</span>
+                </div>
+                <span class="rs-detail">received (C₁+B₁) from GPU 2, added to own D₁ → 3 GPUs' data</span>
+              </div>
+            </div>
+            <p class="rs-note">After step 2, the highlighted chunks contain partial sums from <strong>3 out of 4 GPUs</strong>. One more step to go.</p>
+          </div>
+
+          <!-- Step 3 — DETAILED BREAKDOWN -->
+          <div class="ring-step-card">
+            <div class="rs-label">Step 3 — Scatter-Reduce Complete!</div>
+            <div class="rs-action">Each GPU sends its 3-GPU partial sum onward. The receiver <strong>adds</strong> it to its own untouched value → complete sum of all 4 GPUs.<br>
+            GPU 0 sends <code>A₂+D₂+C₂</code> → GPU 1. &nbsp; GPU 1 sends <code>B₃+A₃+D₃</code> → GPU 2. &nbsp; GPU 2 sends <code>C₀+B₀+A₀</code> → GPU 3. &nbsp; GPU 3 sends <code>D₁+C₁+B₁</code> → GPU 0.</div>
+
+            <div class="rs-gpus">
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 0</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">A₀</span><span class="rs-chunk c1 hl-done">A₁+B₁+C₁+D₁</span><span class="rs-chunk c2">A₂+D₂+C₂</span><span class="rs-chunk c3">A₃+D₃</span>
+                </div>
+                <span class="rs-detail">chunk 1: own A₁ + received (D₁+C₁+B₁) = ALL 4 GPUs</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 1</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">B₀+A₀</span><span class="rs-chunk c1">B₁</span><span class="rs-chunk c2 hl-done">A₂+B₂+C₂+D₂</span><span class="rs-chunk c3">B₃+A₃+D₃</span>
+                </div>
+                <span class="rs-detail">chunk 2: own B₂ + received (A₂+D₂+C₂) = ALL 4 GPUs</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 2</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">C₀+B₀+A₀</span><span class="rs-chunk c1">C₁+B₁</span><span class="rs-chunk c2">C₂</span><span class="rs-chunk c3 hl-done">A₃+B₃+C₃+D₃</span>
+                </div>
+                <span class="rs-detail">chunk 3: own C₃ + received (B₃+A₃+D₃) = ALL 4 GPUs</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 3</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0 hl-done">A₀+B₀+C₀+D₀</span><span class="rs-chunk c1">D₁+C₁+B₁</span><span class="rs-chunk c2">D₂+C₂</span><span class="rs-chunk c3">D₃</span>
+                </div>
+                <span class="rs-detail">chunk 0: own D₀ + received (C₀+B₀+A₀) = ALL 4 GPUs</span>
+              </div>
+            </div>
+
+            <p class="rs-note"><strong>Why does this work?</strong> The accumulation <em>rotated</em> through chunks: Step 1 updated chunk 3/0/1/2, Step 2 updated chunk 2/3/0/1, Step 3 updated chunk 1/2/3/0. Each GPU had <strong>one chunk untouched</strong> for steps 1-2 — the chunk that received the final 3-GPU sum in Step 3, completing the full sum. Each GPU now holds 1/4 of the complete result. Phase 2 distributes these.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== PART 6: ALLGATHER ===== -->
+    <div class="ring-explainer-card">
+      <div class="ring-explainer-num">6</div>
+      <h3>Phase 2: AllGather — Distributing the Completed Chunks</h3>
+      <div class="ring-explainer-body">
+        <p>After Scatter-Reduce, each GPU has the complete sum of one chunk. Now we need to <strong>distribute</strong> those completed chunks so every GPU has all of them.</p>
+
+        <p>We use the same ring pattern — each GPU sends its completed chunk to the right, receives a completed chunk from the left — but this time we <strong>replace</strong> instead of adding (the incoming chunk is already the final sum, so we just overwrite).</p>
+
+        <div class="ring-step-grid">
+          <div class="ring-step-card">
+            <div class="rs-label">AllGather Step 1</div>
+            <div class="rs-gpus">
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 0</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk c2">...</span><span class="rs-chunk c3">...</span>
+                </div>
+                <span class="rs-detail">Had Σchunk₁, received Σchunk₀ from GPU 3</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 1</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">...</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk c3">...</span>
+                </div>
+                <span class="rs-detail">Had Σchunk₂, received Σchunk₁ from GPU 0</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 2</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk c0">...</span><span class="rs-chunk c1">...</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk hl-done">Σchunk₃</span>
+                </div>
+                <span class="rs-detail">Had Σchunk₃, received Σchunk₂ from GPU 1</span>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 3</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk c1">...</span><span class="rs-chunk c2">...</span><span class="rs-chunk hl-done">Σchunk₃</span>
+                </div>
+                <span class="rs-detail">Had Σchunk₀, received Σchunk₃ from GPU 2</span>
+              </div>
+            </div>
+            <p class="rs-note">Each GPU now has 2 completed chunks. 2 more steps to distribute the remaining ones...</p>
+          </div>
+
+          <div class="ring-step-card final">
+            <div class="rs-label">After 3 AllGather Steps — Done!</div>
+            <div class="rs-gpus">
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 0</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk hl-done">Σchunk₃</span>
+                </div>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 1</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk hl-done">Σchunk₃</span>
+                </div>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 2</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk hl-done">Σchunk₃</span>
+                </div>
+              </div>
+              <div class="rs-gpu">
+                <span class="rs-name">GPU 3</span>
+                <div class="rs-chunks">
+                  <span class="rs-chunk hl-done">Σchunk₀</span><span class="rs-chunk hl-done">Σchunk₁</span><span class="rs-chunk hl-done">Σchunk₂</span><span class="rs-chunk hl-done">Σchunk₃</span>
+                </div>
+              </div>
+            </div>
+            <p class="rs-note"><strong>Every GPU now has the identical, fully-summed gradient vector.</strong> Divide by N (=4) to get the average, then update weights. Every GPU updates identically.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== PART 7: COMPARISON TABLE ===== -->
+    <div class="ring-explainer-card">
+      <div class="ring-explainer-num">7</div>
+      <h3>Naive vs Ring AllReduce — The Numbers</h3>
+      <div class="ring-explainer-body">
+        <p>Let's compare the two approaches concretely for our XLarge model (D = 208 MB) on 4 GPUs:</p>
+
+        <table class="ring-compare-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Naive (Central Server)</th>
+              <th>Ring AllReduce</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Data GPU 0 must send</strong></td>
+              <td class="val-bad">(N-1) × D = 3 × 208 = 624 MB</td>
+              <td class="val-good">2 × (N-1) × D/N = 2 × 3/4 × 208 = 312 MB</td>
+            </tr>
+            <tr>
+              <td><strong>Data GPU 0 must receive</strong></td>
+              <td class="val-bad">(N-1) × D = 624 MB</td>
+              <td class="val-good">2 × (N-1) × D/N = 312 MB</td>
+            </tr>
+            <tr>
+              <td><strong>Bottleneck GPU's total load</strong></td>
+              <td class="val-bad">1,248 MB (GPU 0 does everything)</td>
+              <td class="val-good">624 MB (spread equally across all GPUs)</td>
+            </tr>
+            <tr>
+              <td><strong>GPUs idle during transfer?</strong></td>
+              <td class="val-bad">Yes — GPU 1,2,3 idle while GPU 0 works</td>
+              <td class="val-good">No — all GPUs send/receive simultaneously</td>
+            </tr>
+            <tr>
+              <td><strong>Scales to 100 GPUs?</strong></td>
+              <td class="val-bad">GPU 0 transfers 99×208 = 20.6 GB</td>
+              <td class="val-good">Each GPU transfers ~2×208 = 416 MB</td>
+            </tr>
+            <tr>
+              <td><strong>Steps required</strong></td>
+              <td>2 (gather + broadcast)</td>
+              <td>2×(N-1) = 6 steps (more latency per step)</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>The critical difference: with naive, the bottleneck GPU's load <strong>grows linearly with N</strong>. With Ring AllReduce, each GPU's load approaches <strong>2D regardless of N</strong>. At N=100, the naive approach is <strong>50× slower</strong> than Ring AllReduce.</p>
+      </div>
+    </div>
+
+    <!-- ===== PART 8: THE MATH ===== -->
+    <div class="ring-math-card">
+      <h4>The Math: Why 2(N-1)/N Data Per GPU?</h4>
+      <div class="ring-math-grid">
+        <div class="rm-block">
+          <h5>Chunk Size</h5>
+          <p>Gradient has D bytes total, split into N chunks → each chunk is <strong>D/N</strong> bytes.</p>
+        </div>
+        <div class="rm-block">
+          <h5>Per Step</h5>
+          <p>Each GPU sends exactly <strong>one chunk (D/N bytes)</strong> to its right neighbor and receives one chunk from its left.</p>
+        </div>
+        <div class="rm-block">
+          <h5>Scatter-Reduce</h5>
+          <p>Takes <strong>N-1 steps</strong>. Each step, every GPU sends D/N. Total sent per GPU: <code>(N-1) × D/N</code></p>
+        </div>
+        <div class="rm-block">
+          <h5>AllGather</h5>
+          <p>Takes another <strong>N-1 steps</strong> with D/N per step. Total sent per GPU: <code>(N-1) × D/N</code></p>
+        </div>
+        <div class="rm-block highlight-math" style="grid-column: 1 / -1;">
+          <h5>Grand Total Per GPU</h5>
+          <p style="font-size:1.1rem;">
+            <code>2 × (N-1) × D/N = 2(N-1)/N × D</code>
+          </p>
+          <div class="ring-math-examples">
+            <div class="rme"><strong>N=2 GPUs:</strong> 2 × 1/2 × D = <strong>1.0 × D</strong> (each GPU sends 208 MB)</div>
+            <div class="rme"><strong>N=4 GPUs:</strong> 2 × 3/4 × D = <strong>1.5 × D</strong> (each GPU sends 312 MB)</div>
+            <div class="rme"><strong>N=8 GPUs:</strong> 2 × 7/8 × D = <strong>1.75 × D</strong> (each GPU sends 364 MB)</div>
+            <div class="rme"><strong>N=1000:</strong> 2 × 999/1000 × D ≈ <strong>2.0 × D</strong> (each GPU sends ~416 MB)</div>
+          </div>
+          <p>As N→∞, the total approaches <strong>2D</strong> — essentially constant, <em>independent of how many GPUs you have!</em></p>
+        </div>
+      </div>
+      <div class="ring-math-insight">
+        <p><strong>This is the beauty of Ring AllReduce:</strong> Adding more GPUs barely increases the per-GPU communication cost. Compare to the naive approach where the bottleneck GPU must handle <code>2(N-1) × D</code> — which grows <em>linearly</em> with N. Ring AllReduce is why distributed training can scale to <strong>hundreds or thousands of GPUs</strong>.</p>
+        <p><strong>The catch:</strong> More GPUs means more <strong>sequential steps</strong> (N-1 per phase). Each step has fixed latency (~10-50μs for NCCL kernel launch + network round-trip). With 4 GPUs: 6 steps. With 8 GPUs: 14 steps. This per-step latency is why AllReduce time <em>does</em> grow somewhat with GPU count — our benchmarks show communication going from 50ms (2 GPUs) to 94ms (4 GPUs) for XLarge. But it grows <em>much slower</em> than the naive approach would.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+
+<!-- ============ KEY TAKEAWAYS ============ -->
+<section class="section" id="takeaways">
+  <div class="container">
+    <div class="section-heading">
+      <span class="section-label">Summary</span>
+      <h2>Key <span class="gradient-text">Takeaways</span></h2>
+    </div>
+
+    <div class="takeaways-grid">
+      <div class="takeaway-card">
+        <div class="takeaway-num">1</div>
+        <h4>Data Parallelism = Same Model, Split Data</h4>
+        <p>Every GPU has an identical copy of the model. The <strong>batch is split</strong> across GPUs. Each computes gradients on its shard, then they average gradients via AllReduce.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">2</div>
+        <h4>Naive DP Wastes GPU Time</h4>
+        <p>Computing all gradients first, then syncing them, means the GPU sits <strong>idle during AllReduce</strong>. This is the "two-stage" problem.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">3</div>
+        <h4>Interleaving Hides Communication</h4>
+        <p>Firing async AllReduce <strong>per layer during backward</strong> lets the GPU compute the next layer's gradients while the network transfers the current layer's.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">4</div>
+        <h4>Deeper Models Benefit More</h4>
+        <p>More layers = more opportunities to overlap. A 2-layer model has almost no benefit. A 7-layer model has 6 opportunities to overlap.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">5</div>
+        <h4>DDP Adds Bucketing</h4>
+        <p>PyTorch DDP groups small gradient tensors into ~25MB buckets, reducing the number of AllReduce kernel launches. Production-grade and battle-tested.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">6</div>
+        <h4>Interconnect Matters</h4>
+        <p><strong>NVLink</strong> (~600 GB/s) makes AllReduce fast — naive and interleaved gap shrinks. <strong>PCIe</strong> (~32 GB/s) makes AllReduce slow — interleaving saves much more time.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <span class="brand-icon">⚡</span> ShallowSpeed Visual Guide
+      </div>
+      <p>Built for the Vizuara AI GPU Workshop. Based on <a href="https://github.com/siboehm/shallowspeed" target="_blank">siboehm/ShallowSpeed</a>.</p>
+      <p class="footer-muted">Walk through code. Understand parallelism. From first principles.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
