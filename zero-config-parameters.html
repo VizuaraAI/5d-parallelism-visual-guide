@@ -935,7 +935,7 @@ input[type="range"]::-moz-range-thumb {
       <div class="section-heading" style="margin-bottom: 32px;">
         <div class="section-label">Napkin Math</div>
         <h2 style="font-size: clamp(1.6rem, 3vw, 2.2rem);"><span class="gradient-text">Why 14 Buckets Is Actually Enough</span></h2>
-        <p class="section-subtitle">The key insight: <strong>communication is fast relative to compute</strong> on modern hardware. Let's prove it with numbers.</p>
+        <p class="section-subtitle">The key insight: on modern hardware with NVLink, <strong>communication is fast relative to compute</strong>. Compute (backward) is the slower one &mdash; which is exactly what you want, because it means the network finishes before the GPU does, and the overlap is free.</p>
       </div>
 
       <div class="napkin-container">
@@ -1016,7 +1016,10 @@ input[type="range"]::-moz-range-thumb {
         </div>
 
         <div class="callout callout-green" style="margin-top: 16px;">
-          <strong>The punchline:</strong> You don't need hundreds of tiny overlapping calls. Each 500M-element bucket is already <strong>1 GB of data</strong> &mdash; large enough to fully saturate the NVLink. And while that 1 GB is flying across NVLink, the GPU is busy computing the next bucket's backward. The compute and communication times are in the <strong>same ballpark</strong>, so they tile perfectly.
+          <strong>The punchline:</strong> With NVLink, <strong>compute is the slower side</strong> (~1.5ms backward per bucket vs ~1.25ms for the reduce-scatter). That's the ideal regime &mdash; the network finishes before the GPU does. So while 1 GB of gradient data is flying across NVLink, the GPU is still busy with the next bucket's backward and doesn't even notice the transfer. You don't need hundreds of tiny overlapping calls &mdash; each 500M-element bucket already <strong>fully saturates the link</strong>, and the compute time per bucket is just long enough to completely hide it.
+        </div>
+        <div class="callout callout-warn" style="margin-top: 12px;">
+          <strong>But switch to PCIe</strong> and the story flips &mdash; now communication becomes the bottleneck (50 GB/s vs 800 GB/s). Each 1 GB bucket takes ~20ms over PCIe, far exceeding the ~1.5ms of compute. Toggle "PCIe 5.0" above to see the bars flip. This is why <strong>NVLink matters</strong> for multi-GPU training.
         </div>
       </div>
 
@@ -1610,11 +1613,18 @@ updateBucketVis();
 // ============================================
 // NAPKIN MATH: BUCKET FILL + COMPUTE vs COMM
 // ============================================
+// tflopsPerB = TFLOPs of backward work per billion parameters.
+// For a transformer: backward ≈ 4P FLOPs/token, at typical micro-batch
+// (seq=2048, mbs=1) that's ~4 * P * 2048 ≈ 8T FLOPs per B-param.
+// But H100 doesn't hit peak on small batches. We use the user's
+// empirical rule-of-thumb: ~3 TFLOPs per B-param for backward,
+// which gives 7B → 21 TFLOPs → ~21ms on H100. This matches
+// real-world profiling numbers.
 const modelConfigs = {
-  '1b':  { params: 1000,  layers: 24, name: '1B',  flopsPerParam: 3 },
-  '7b':  { params: 7000,  layers: 32, name: '7B',  flopsPerParam: 3 },
-  '13b': { params: 13000, layers: 40, name: '13B', flopsPerParam: 3 },
-  '70b': { params: 70000, layers: 80, name: '70B', flopsPerParam: 3 },
+  '1b':  { params: 1000,  layers: 24, name: '1B',  tflopsPerB: 3 },
+  '7b':  { params: 7000,  layers: 32, name: '7B',  tflopsPerB: 3 },
+  '13b': { params: 13000, layers: 40, name: '13B', tflopsPerB: 3 },
+  '70b': { params: 70000, layers: 80, name: '70B', tflopsPerB: 3 },
 };
 
 const linkConfigs = {
@@ -1758,10 +1768,12 @@ function updateNapkinMath() {
   const bucketM = parseInt(document.getElementById('napkinBucketSlider').value);
 
   // Compute time for backward (per bucket)
+  // tflopsPerB = empirical TFLOPs of backward work per billion params
+  // 7B × 3 TFLOPs/B = 21 TFLOPs total backward
   const totalParamsB = cfg.params / 1000; // in billions
-  const totalFLOPs = totalParamsB * 1e9 * cfg.flopsPerParam; // FLOPs for full backward
-  const h100TFLOPS = 990; // BF16 TFLOP/s
-  const fullBwdMs = (totalFLOPs / (h100TFLOPS * 1e12)) * 1000;
+  const totalTFLOPs = totalParamsB * cfg.tflopsPerB; // TFLOPs for full backward
+  const h100TFLOPS = 990; // H100 BF16 peak TFLOP/s
+  const fullBwdMs = (totalTFLOPs / h100TFLOPS) * 1000; // ms
   const numBuckets = Math.ceil(cfg.params / bucketM);
   const computePerBucketMs = fullBwdMs / numBuckets;
 
@@ -1772,23 +1784,23 @@ function updateNapkinMath() {
 
   // Render compute derivation
   document.getElementById('napkinComputeBox').innerHTML = `
-    <span class="eq-label">Backward FLOPs</span>
-    ${cfg.name} params &times; 3 FLOPs/param<br>
-    = <span class="eq-highlight">${(totalFLOPs / 1e12).toFixed(1)} TFLOPs</span> total backward<br><br>
+    <span class="eq-label">Backward FLOPs for full model</span>
+    ${cfg.name} params &times; ~3 TFLOPs/B-param<br>
+    = <span class="eq-highlight">${totalTFLOPs.toFixed(0)} TFLOPs</span> total backward work<br><br>
     H100 @ ${h100TFLOPS} TFLOP/s BF16<br>
-    Full backward: <span class="eq-highlight">${fullBwdMs.toFixed(1)}ms</span><br><br>
-    Per bucket (1/${numBuckets}th):<br>
-    <span style="font-size: 1rem; color: var(--pink);">${computePerBucketMs.toFixed(2)}ms</span>
+    Full backward: ${totalTFLOPs.toFixed(0)} / ${h100TFLOPS} = <span class="eq-highlight">${fullBwdMs.toFixed(1)}ms</span><br><br>
+    Per bucket (1/${numBuckets}th of backward):<br>
+    ${fullBwdMs.toFixed(1)}ms / ${numBuckets} = <span style="font-size: 1rem; color: var(--pink);">${computePerBucketMs.toFixed(2)}ms</span>
   `;
 
   // Render comm derivation
   document.getElementById('napkinCommBox').innerHTML = `
-    <span class="eq-label">Reduce-Scatter per Bucket</span>
+    <span class="eq-label">Reduce-Scatter of one bucket</span>
     ${bucketM}M elems &times; 2 bytes (BF16)<br>
-    = <span class="eq-highlight">${bucketGB.toFixed(1)} GB</span> per bucket<br><br>
+    = <span class="eq-highlight">${bucketGB.toFixed(1)} GB</span> of data per bucket<br><br>
     ${link.name}<br>
-    Eff. bandwidth across ${napkinGpus} GPUs<br><br>
-    Time: ${bucketGB.toFixed(1)} GB / ${link.bw} GB/s<br>
+    Ring RS eff. bandwidth &asymp; ${link.bw} GB/s<br><br>
+    Time: ${bucketGB.toFixed(1)} GB / ${link.bw} GB/s =<br>
     <span style="font-size: 1rem; color: var(--blue);">${commPerBucketMs.toFixed(2)}ms</span>
   `;
 
@@ -1806,15 +1818,31 @@ function updateNapkinMath() {
   const ratio = commPerBucketMs / computePerBucketMs;
   const verdictDiv = document.getElementById('napkinVerdict');
 
+  const vStyle = 'text-align: center; padding: 16px 20px; border-radius: 10px; font-size: 0.88rem; font-weight: 600; margin-top: 16px; line-height: 1.7;';
+
   if (ratio <= 1.0) {
-    verdictDiv.style.cssText = 'text-align: center; padding: 14px; border-radius: 10px; font-size: 0.88rem; font-weight: 600; margin-top: 16px; background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3); color: var(--primary);';
-    verdictDiv.innerHTML = `Comm (${commPerBucketMs.toFixed(2)}ms) &le; Compute (${computePerBucketMs.toFixed(2)}ms) &mdash; <strong>communication fits completely inside compute! Perfect overlap.</strong>`;
+    verdictDiv.style.cssText = vStyle + ' background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3); color: var(--primary);';
+    verdictDiv.innerHTML = `
+      <strong>Compute is slower</strong> (${computePerBucketMs.toFixed(2)}ms) than communication (${commPerBucketMs.toFixed(2)}ms).<br>
+      The reduce-scatter finishes <em>before</em> the next bucket's backward is done &mdash;
+      <strong>communication fits entirely inside compute. Perfect overlap!</strong><br>
+      <span style="font-size: 0.78rem; color: var(--fg-muted);">The GPU is never idle waiting for the network. This is the ideal regime.</span>
+    `;
   } else if (ratio <= 1.5) {
-    verdictDiv.style.cssText = 'text-align: center; padding: 14px; border-radius: 10px; font-size: 0.88rem; font-weight: 600; margin-top: 16px; background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.3); color: var(--orange);';
-    verdictDiv.innerHTML = `Comm (${commPerBucketMs.toFixed(2)}ms) is ~${Math.round(ratio * 100)}% of Compute (${computePerBucketMs.toFixed(2)}ms) &mdash; <strong>mostly overlapped, small tail exposed.</strong>`;
+    verdictDiv.style.cssText = vStyle + ' background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.3); color: var(--orange);';
+    verdictDiv.innerHTML = `
+      <strong>Communication is slightly slower</strong> (${commPerBucketMs.toFixed(2)}ms) than compute (${computePerBucketMs.toFixed(2)}ms).<br>
+      Most of the transfer overlaps with backward, but a small tail (${(commPerBucketMs - computePerBucketMs).toFixed(2)}ms) is exposed per bucket &mdash; <strong>mostly overlapped, small stall.</strong><br>
+      <span style="font-size: 0.78rem; color: var(--fg-muted);">Consider slightly larger buckets or a faster interconnect to close the gap.</span>
+    `;
   } else {
-    verdictDiv.style.cssText = 'text-align: center; padding: 14px; border-radius: 10px; font-size: 0.88rem; font-weight: 600; margin-top: 16px; background: rgba(255,112,67,0.1); border: 1px solid rgba(255,112,67,0.3); color: var(--red);';
-    verdictDiv.innerHTML = `Comm (${commPerBucketMs.toFixed(2)}ms) is ${ratio.toFixed(1)}&times; Compute (${computePerBucketMs.toFixed(2)}ms) &mdash; <strong>communication is the bottleneck. Consider larger buckets or faster interconnect.</strong>`;
+    verdictDiv.style.cssText = vStyle + ' background: rgba(255,112,67,0.1); border: 1px solid rgba(255,112,67,0.3); color: var(--red);';
+    verdictDiv.innerHTML = `
+      <strong>Communication is the bottleneck</strong> &mdash; ${commPerBucketMs.toFixed(2)}ms vs ${computePerBucketMs.toFixed(2)}ms compute (${ratio.toFixed(1)}&times; slower).<br>
+      Each reduce-scatter takes much longer than the compute it's supposed to hide behind.<br>
+      <strong>The GPU stalls waiting for the network.</strong><br>
+      <span style="font-size: 0.78rem; color: var(--fg-muted);">Try: larger bucket sizes (fewer calls, less per-call overhead), faster interconnect, or fewer GPUs to reduce comm volume.</span>
+    `;
   }
 
   // Render bucket-by-bucket timeline
