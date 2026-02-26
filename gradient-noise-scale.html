@@ -1,0 +1,1540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gradient Noise Scale — Choosing the Right Batch Size</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* ========================================
+   CSS Variables — Design System
+   ======================================== */
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #121212;
+  --bg-card-hover: #1a1a1a;
+  --bg-section-alt: #0f0f0f;
+  --fg: #f2f2f2;
+  --fg-muted: #a3a3a3;
+  --border: #262626;
+  --border-light: #333;
+  --primary: #00d46a;
+  --primary-dim: #00a854;
+  --secondary: #00c8e6;
+  --accent: #a78bfa;
+  --red: #FF7043;
+  --orange: #FF9800;
+  --yellow: #FFCA28;
+  --blue: #42A5F5;
+  --green: #66BB6A;
+  --pink: #F06292;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --max-w: 1280px;
+  --glow-opacity: 0.15;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: var(--font-mono); }
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ========================================
+   NAVBAR
+   ======================================== */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,10,0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.1rem; }
+.brand-icon { font-size: 1.3rem; }
+.brand-tag {
+  font-size: 0.7rem; background: var(--primary); color: #000;
+  padding: 2px 8px; border-radius: 9999px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+/* ========================================
+   HERO
+   ======================================== */
+.hero {
+  position: relative; min-height: 100vh; display: flex;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 120px 24px 80px; overflow: hidden;
+}
+.hero-bg-orbs { position: absolute; inset: 0; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.12; }
+.orb-green { width: 500px; height: 500px; background: var(--primary); top: 10%; left: 10%; animation: float-slow 20s ease-in-out infinite; }
+.orb-cyan { width: 400px; height: 400px; background: var(--secondary); top: 40%; right: 5%; animation: float-slow 25s ease-in-out infinite reverse; }
+.orb-purple { width: 350px; height: 350px; background: var(--accent); bottom: 10%; left: 30%; animation: float-slow 22s ease-in-out infinite; }
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(30px, -20px); }
+  50% { transform: translate(-20px, 30px); }
+  75% { transform: translate(20px, 20px); }
+}
+.hero-content { position: relative; z-index: 1; max-width: 860px; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3);
+  border-radius: 9999px; padding: 6px 18px; font-size: 0.82rem;
+  font-weight: 500; color: var(--primary); margin-bottom: 24px;
+}
+.pulse-dot { width: 8px; height: 8px; background: var(--primary); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }
+.hero h1 { font-family: var(--font-serif); font-style: italic; font-size: clamp(2.5rem, 7vw, 4.5rem); font-weight: 400; line-height: 1.1; margin-bottom: 20px; }
+.hero-subtitle { font-size: 1.15rem; color: var(--fg-muted); line-height: 1.7; max-width: 640px; margin: 0 auto 40px; }
+.hero-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.hero-stat-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 12px; transition: border-color 0.3s, transform 0.2s;
+}
+.hero-stat-card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-2px); }
+.stat-number {
+  font-size: 1.8rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.stat-label { font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* ========================================
+   SECTIONS
+   ======================================== */
+.section { padding: 100px 0; position: relative; }
+.section-dark { background: var(--bg-section-alt); }
+.section-heading { text-align: center; margin-bottom: 60px; }
+.section-label {
+  display: inline-block; font-size: 0.78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.5px; color: var(--primary); margin-bottom: 12px;
+}
+.section-heading h2 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; line-height: 1.2; margin-bottom: 16px;
+}
+.section-subtitle { color: var(--fg-muted); font-size: 1.05rem; max-width: 650px; margin: 0 auto; }
+
+/* ========================================
+   CARDS
+   ======================================== */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; transition: border-color 0.3s, transform 0.2s;
+}
+.card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-3px); }
+.card h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; }
+.card p, .card li { font-size: 0.88rem; color: var(--fg-muted); line-height: 1.6; }
+.card code {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-size: 0.82rem; color: var(--secondary);
+}
+.card-icon { font-size: 2rem; margin-bottom: 12px; }
+
+/* ========================================
+   GRIDS
+   ======================================== */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+/* ========================================
+   EQUATION BOX
+   ======================================== */
+.equation-box {
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 24px; margin: 16px 0; text-align: center;
+  font-family: var(--font-mono); font-size: 0.92rem; color: var(--secondary);
+  line-height: 2;
+}
+.equation-box .eq-label {
+  display: block; font-family: var(--font-sans); font-size: 0.72rem;
+  color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 8px; font-weight: 600;
+}
+.equation-box .eq-highlight { color: var(--primary); font-weight: 600; }
+
+/* ========================================
+   CALLOUTS
+   ======================================== */
+.callout {
+  border-radius: 10px; padding: 16px 20px; font-size: 0.85rem; line-height: 1.6; margin: 16px 0;
+}
+.callout-info { background: rgba(66,165,245,0.08); border: 1px solid rgba(66,165,245,0.2); color: var(--fg-muted); }
+.callout-green { background: rgba(0,212,106,0.08); border: 1px solid rgba(0,212,106,0.2); color: var(--fg-muted); }
+.callout-warn { background: rgba(255,112,67,0.08); border: 1px solid rgba(255,112,67,0.2); color: var(--fg-muted); }
+.callout-purple { background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); color: var(--fg-muted); }
+.callout strong { color: var(--fg); }
+.callout code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; color: var(--secondary); }
+
+/* ========================================
+   CONTOUR PLOT
+   ======================================== */
+.contour-container {
+  position: relative; width: 100%; max-width: 560px; margin: 0 auto;
+  aspect-ratio: 1; background: rgba(0,0,0,0.25); border-radius: 16px;
+  border: 1px solid var(--border); overflow: hidden;
+}
+.contour-canvas { width: 100%; height: 100%; display: block; }
+.contour-legend {
+  position: absolute; top: 16px; left: 16px;
+  display: flex; flex-direction: column; gap: 8px;
+  background: rgba(0,0,0,0.6); border-radius: 10px; padding: 12px 16px;
+  backdrop-filter: blur(8px);
+}
+.legend-entry { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; }
+.legend-swatch { width: 20px; height: 4px; border-radius: 2px; }
+
+/* ========================================
+   INTERACTIVE CONTROLS
+   ======================================== */
+.slider-control {
+  display: flex; flex-direction: column; gap: 8px; margin: 20px 0;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px;
+}
+.slider-label {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.85rem; font-weight: 500;
+}
+.slider-value { font-family: var(--font-mono); color: var(--primary); font-weight: 600; font-size: 1rem; }
+input[type="range"] {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 6px;
+  border-radius: 3px; background: var(--border); outline: none;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--primary); cursor: pointer;
+  border: 2px solid #000; box-shadow: 0 0 10px rgba(0,212,106,0.4);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 20px; height: 20px; border-radius: 50%; background: var(--primary);
+  cursor: pointer; border: 2px solid #000;
+}
+
+/* ========================================
+   SVG CHART
+   ======================================== */
+.chart-container {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 24px 0;
+}
+.chart-container h4 { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.chart-container .chart-subtitle { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+.svg-chart { width: 100%; height: 360px; }
+
+/* ========================================
+   COMPARISON CARDS
+   ======================================== */
+.vs-container {
+  display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; align-items: stretch;
+  margin: 32px 0;
+}
+.vs-divider {
+  display: flex; align-items: center; font-size: 1.5rem; font-weight: 700;
+  color: var(--fg-muted); padding: 0 8px;
+}
+.vs-card {
+  background: var(--bg-card); border-radius: 16px; padding: 28px 24px;
+  border: 2px solid var(--border); transition: border-color 0.3s, transform 0.2s;
+}
+.vs-card:hover { transform: translateY(-3px); }
+.vs-card.small-batch { border-color: rgba(255,112,67,0.4); }
+.vs-card.small-batch:hover { border-color: rgba(255,112,67,0.7); }
+.vs-card.large-batch { border-color: rgba(66,165,245,0.4); }
+.vs-card.large-batch:hover { border-color: rgba(66,165,245,0.7); }
+.vs-card h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.vs-card ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.vs-card li { font-size: 0.85rem; color: var(--fg-muted); line-height: 1.5; padding-left: 20px; position: relative; }
+.vs-card li::before { content: ''; position: absolute; left: 0; top: 8px; width: 8px; height: 8px; border-radius: 50%; }
+.vs-card.small-batch li::before { background: var(--red); }
+.vs-card.large-batch li::before { background: var(--blue); }
+
+/* ========================================
+   REGIME INDICATOR
+   ======================================== */
+.regime-indicator {
+  display: flex; align-items: center; gap: 0; margin: 32px 0;
+  background: var(--bg-card); border-radius: 16px; overflow: hidden;
+  border: 1px solid var(--border);
+}
+.regime-zone {
+  flex: 1; padding: 20px 24px; text-align: center;
+  transition: all 0.3s ease;
+}
+.regime-zone h4 { font-size: 0.92rem; font-weight: 600; margin-bottom: 6px; }
+.regime-zone p { font-size: 0.78rem; color: var(--fg-muted); }
+.regime-perfect { background: rgba(0,212,106,0.06); border-right: 1px solid var(--border); }
+.regime-transition { background: rgba(0,200,230,0.06); border-right: 1px solid var(--border); }
+.regime-wasteful { background: rgba(255,112,67,0.06); }
+.regime-zone.active { }
+.regime-perfect.active { background: rgba(0,212,106,0.15); }
+.regime-perfect.active h4 { color: var(--primary); }
+.regime-transition.active { background: rgba(0,200,230,0.15); }
+.regime-transition.active h4 { color: var(--secondary); }
+.regime-wasteful.active { background: rgba(255,112,67,0.15); }
+.regime-wasteful.active h4 { color: var(--red); }
+
+/* ========================================
+   CALCULATOR
+   ======================================== */
+.calc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.calc-input-group { display: flex; flex-direction: column; gap: 8px; }
+.calc-label { font-size: 0.82rem; font-weight: 600; color: var(--fg-muted); }
+.calc-input {
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 16px; color: var(--fg); font-family: var(--font-mono); font-size: 1rem;
+  outline: none; transition: border-color 0.2s;
+}
+.calc-input:focus { border-color: var(--primary); }
+.calc-result {
+  background: rgba(0,212,106,0.06); border: 1px solid rgba(0,212,106,0.2);
+  border-radius: 12px; padding: 20px 24px; text-align: center;
+}
+.calc-result-number {
+  font-family: var(--font-mono); font-size: 2.5rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.calc-result-label { font-size: 0.82rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* ========================================
+   METRICS ROW
+   ======================================== */
+.metrics-row {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 20px 0;
+}
+.metric-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px 20px; text-align: center;
+}
+.metric-value { font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700; }
+.metric-label { font-size: 0.72rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* ========================================
+   TRADEOFF CHART
+   ======================================== */
+.tradeoff-chart-wrap {
+  position: relative; background: rgba(0,0,0,0.25); border-radius: 14px;
+  border: 1px solid var(--border); padding: 24px;
+}
+.tradeoff-svg { width: 100%; height: 400px; }
+
+/* ========================================
+   KEY TAKEAWAYS
+   ======================================== */
+.takeaway-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.takeaway-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; position: relative; overflow: hidden;
+}
+.takeaway-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+}
+.takeaway-num {
+  font-family: var(--font-mono); font-size: 2rem; font-weight: 700;
+  color: rgba(0,212,106,0.2); margin-bottom: 8px;
+}
+.takeaway-card h4 { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+.takeaway-card p { font-size: 0.85rem; color: var(--fg-muted); line-height: 1.5; }
+
+/* ========================================
+   NUMBER HIGHLIGHTS
+   ======================================== */
+.num-green { color: var(--primary); font-weight: 700; font-family: var(--font-mono); }
+.num-blue { color: var(--blue); font-weight: 700; font-family: var(--font-mono); }
+.num-orange { color: var(--orange); font-weight: 700; font-family: var(--font-mono); }
+.num-red { color: var(--red); font-weight: 700; font-family: var(--font-mono); }
+.num-cyan { color: var(--secondary); font-weight: 700; font-family: var(--font-mono); }
+
+/* ========================================
+   FOOTER
+   ======================================== */
+.footer {
+  border-top: 1px solid var(--border); padding: 40px 0; text-align: center;
+}
+.footer-inner { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.footer-brand { font-size: 1.1rem; font-weight: 600; }
+.footer p { font-size: 0.85rem; color: var(--fg-muted); }
+.footer-muted { font-size: 0.78rem !important; color: rgba(163,163,163,0.5) !important; }
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+.fade-in {
+  opacity: 0; transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+.stagger-1 { transition-delay: 0.1s; }
+.stagger-2 { transition-delay: 0.2s; }
+.stagger-3 { transition-delay: 0.3s; }
+.stagger-4 { transition-delay: 0.4s; }
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+@media (max-width: 900px) {
+  .grid-2, .grid-3, .grid-4, .takeaway-grid, .calc-grid, .metrics-row { grid-template-columns: 1fr; }
+  .hero-cards { grid-template-columns: repeat(2, 1fr); }
+  .vs-container { grid-template-columns: 1fr; }
+  .vs-divider { justify-content: center; padding: 8px 0; }
+  .regime-indicator { flex-direction: column; }
+}
+@media (max-width: 768px) {
+  .nav-links { display: none; }
+  .hero h1 { font-size: 2.2rem; }
+  .section { padding: 60px 0; }
+  .hero-cards { grid-template-columns: 1fr 1fr; }
+}
+
+::selection { background: rgba(0,212,106,0.3); color: #fff; }
+
+/* Step animation for contour */
+@keyframes step-pulse {
+  0%, 100% { r: 4; }
+  50% { r: 6; }
+}
+
+/* Batch size marker */
+.batch-marker {
+  position: absolute; padding: 6px 12px; border-radius: 8px;
+  font-size: 0.72rem; font-weight: 600; font-family: var(--font-mono);
+  pointer-events: none; white-space: nowrap;
+  background: rgba(0,0,0,0.7); border: 1px solid var(--border);
+  backdrop-filter: blur(8px); color: var(--fg);
+}
+
+/* Strategy buttons */
+.strategy-selector {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; justify-content: center;
+}
+.strategy-btn {
+  padding: 8px 18px; border-radius: 9999px; font-size: 0.82rem; font-weight: 500;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--fg-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.strategy-btn:hover { border-color: rgba(0,212,106,0.3); color: var(--fg); }
+.strategy-btn.active {
+  background: rgba(0,212,106,0.1); border-color: var(--primary); color: var(--primary); font-weight: 600;
+}
+</style>
+</head>
+<body>
+
+<!-- ==========================================
+     NAVBAR
+     ========================================== -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <span class="brand-icon">&#x26A1;</span> ShallowSpeed
+      <span class="brand-tag">Noise Scale</span>
+    </div>
+    <div class="nav-links">
+      <a href="#intuition">Intuition</a>
+      <a href="#contour">Visualization</a>
+      <a href="#math">The Math</a>
+      <a href="#training-speed">Training Speed</a>
+      <a href="#tradeoff">Tradeoff</a>
+      <a href="#calculator">Calculator</a>
+      <a href="#takeaways">Takeaways</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ==========================================
+     HERO
+     ========================================== -->
+<section class="hero">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-green"></div>
+    <div class="orb orb-cyan"></div>
+    <div class="orb orb-purple"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge fade-in">
+      <span class="pulse-dot"></span>
+      Batch Size Selection
+    </div>
+    <h1 class="fade-in stagger-1">The <span class="gradient-text">Gradient Noise Scale</span></h1>
+    <p class="hero-subtitle fade-in stagger-2">
+      How large should your batch size be? Too small and you waste sequential steps. Too large and you waste compute.
+      The gradient noise scale tells you exactly where the sweet spot is.
+    </p>
+    <div class="hero-cards fade-in stagger-3">
+      <div class="hero-stat-card">
+        <div class="stat-number">B<sub style="font-size:0.5em">noise</sub></div>
+        <div class="stat-label">The Critical Batch Size</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">50%</div>
+        <div class="stat-label">Speed at B = B<sub>noise</sub></div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">1/B</div>
+        <div class="stat-label">Variance Scaling</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">&infin;</div>
+        <div class="stat-label">Domains It Works For</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     SECTION 1: INTUITION
+     ========================================== -->
+<section class="section" id="intuition">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">The Intuition</span>
+      <h2>Small Batch vs <span class="gradient-text">Large Batch</span></h2>
+      <p class="section-subtitle">Understanding the two extremes helps us find the sweet spot in between</p>
+    </div>
+
+    <div class="vs-container fade-in stagger-1">
+      <div class="vs-card small-batch">
+        <h3><span style="color: var(--red);">&#9632;</span> Small Batch</h3>
+        <ul>
+          <li>Gradient estimate has <strong style="color: var(--red)">very high variance</strong> &mdash; mostly noise</li>
+          <li>Each update is nearly random; you must do many steps to make progress</li>
+          <li>These noisy steps could be <strong>aggregated in parallel</strong> for the same effect</li>
+          <li>Doubling B gives <strong style="color: var(--primary)">~2&times; speedup</strong> with almost no extra compute</li>
+        </ul>
+      </div>
+      <div class="vs-divider">vs</div>
+      <div class="vs-card large-batch">
+        <h3><span style="color: var(--blue);">&#9632;</span> Large Batch</h3>
+        <ul>
+          <li>Gradient estimate is <strong style="color: var(--blue)">nearly exact</strong> &mdash; almost matches true gradient</li>
+          <li>Two random batches give nearly the <strong>same gradient</strong></li>
+          <li>Doubling B barely improves the update &mdash; <strong style="color: var(--red)">2&times; compute for little gain</strong></li>
+          <li>You're in the regime of <strong>diminishing returns</strong></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout callout-green fade-in stagger-2" style="max-width: 700px; margin: 0 auto;">
+      <strong>The Key Insight:</strong> The transition between "free speedup" and "wasted compute" occurs where the
+      <strong>noise and signal of the gradient are balanced</strong> &mdash; where the variance of the gradient
+      is at the same scale as the gradient itself. This is the <strong style="color: var(--primary)">gradient noise scale B<sub>noise</sub></strong>.
+    </div>
+
+    <div class="regime-indicator fade-in stagger-3" style="margin-top: 40px;">
+      <div class="regime-zone regime-perfect active" id="regime-perfect">
+        <h4>&#9889; Perfect Scaling</h4>
+        <p>B &laquo; B<sub>noise</sub><br>~Linear speedup, free parallelism</p>
+      </div>
+      <div class="regime-zone regime-transition" id="regime-transition">
+        <h4>&#9878; Sweet Spot</h4>
+        <p>B &asymp; B<sub>noise</sub><br>Balanced noise &amp; signal</p>
+      </div>
+      <div class="regime-zone regime-wasteful" id="regime-wasteful">
+        <h4>&#9888; Diminishing Returns</h4>
+        <p>B &raquo; B<sub>noise</sub><br>Wasted computation</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     SECTION 2: CONTOUR PLOT VISUALIZATION
+     ========================================== -->
+<section class="section section-dark" id="contour">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Visualization</span>
+      <h2>Watching SGD <span class="gradient-text">Navigate</span> a Loss Landscape</h2>
+      <p class="section-subtitle">Small batches take noisy, zigzag paths. Large batches move smoothly toward the minimum.</p>
+    </div>
+
+    <div class="fade-in stagger-1">
+      <div class="strategy-selector" id="contour-controls">
+        <button class="strategy-btn active" onclick="setContourBatch('small')">Small Batch (B=8)</button>
+        <button class="strategy-btn" onclick="setContourBatch('medium')">Medium Batch (B=256)</button>
+        <button class="strategy-btn" onclick="setContourBatch('large')">Large Batch (B=4096)</button>
+        <button class="strategy-btn" onclick="setContourBatch('both')">Compare Both</button>
+      </div>
+      <div class="contour-container" id="contour-plot">
+        <canvas class="contour-canvas" id="contourCanvas"></canvas>
+        <div class="contour-legend">
+          <div class="legend-entry" id="legend-small" style="display:flex;">
+            <div class="legend-swatch" style="background: var(--red);"></div>
+            <span style="color: var(--red);">Small batch — noisy path</span>
+          </div>
+          <div class="legend-entry" id="legend-large" style="display:none;">
+            <div class="legend-swatch" style="background: var(--blue);"></div>
+            <span style="color: var(--blue);">Large batch — smooth path</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-info fade-in stagger-2" style="max-width: 700px; margin: 24px auto 0;">
+      <strong>What you see:</strong> The contour lines show the loss surface (a 2D quadratic bowl).
+      Small batches (red) take erratic, noisy steps that often overshoot. Large batches (blue) move
+      in a nearly straight line toward the minimum. The <strong>optimal batch size</strong> is large enough to smooth the noise
+      but not so large that you waste compute per step.
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     SECTION 3: THE MATH
+     ========================================== -->
+<section class="section" id="math">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">The Math</span>
+      <h2>Formalizing the <span class="gradient-text">Noise Scale</span></h2>
+      <p class="section-subtitle">From gradient estimation to the critical batch size formula</p>
+    </div>
+
+    <div class="grid-2 fade-in stagger-1">
+      <div class="card">
+        <h3>Step 1: The Gradient Estimate</h3>
+        <p>We approximate the true gradient <code>G(&#952;)</code> by averaging over a batch of <code>B</code> samples:</p>
+        <div class="equation-box">
+          <span class="eq-label">Mini-batch Gradient</span>
+          G<sub>est</sub> = <span class="eq-highlight">1/B</span> &middot; &Sigma;<sub>i=1..B</sub> &nabla;L<sub>x<sub>i</sub></sub>(&#952;)
+        </div>
+        <p>The expected value equals the true gradient, and the covariance scales as <code>1/B</code>:</p>
+        <div class="equation-box">
+          <span class="eq-label">Covariance of Estimate</span>
+          Cov(G<sub>est</sub>) = <span class="eq-highlight">(1/B)</span> &middot; &Sigma;(&#952;)
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Step 2: Optimal Step Size</h3>
+        <p>With a noisy gradient, the optimal learning rate depends on the batch size:</p>
+        <div class="equation-box">
+          <span class="eq-label">Optimal Learning Rate</span>
+          &epsilon;<sub>opt</sub>(B) = &epsilon;<sub>max</sub> / (1 + <span class="eq-highlight">B<sub>noise</sub>/B</span>)
+        </div>
+        <p>And the best possible loss improvement from one step:</p>
+        <div class="equation-box">
+          <span class="eq-label">Optimal Loss Improvement</span>
+          &Delta;L<sub>opt</sub>(B) = &Delta;L<sub>max</sub> / (1 + <span class="eq-highlight">B<sub>noise</sub>/B</span>)
+        </div>
+      </div>
+    </div>
+
+    <div class="fade-in stagger-2" style="max-width: 700px; margin: 32px auto 0;">
+      <div class="card" style="border-color: rgba(0,212,106,0.3);">
+        <h3 style="text-align: center;">Step 3: The Gradient Noise Scale</h3>
+        <p style="text-align: center; margin-bottom: 12px;">The critical batch size where noise and signal balance:</p>
+        <div class="equation-box" style="border-color: rgba(0,212,106,0.3); font-size: 1.1rem;">
+          <span class="eq-label">Gradient Noise Scale</span>
+          B<sub>noise</sub> = <span class="eq-highlight">tr(H&Sigma;)</span> / <span class="eq-highlight">G<sup>T</sup>HG</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+          <div style="font-size: 0.82rem; color: var(--fg-muted);">
+            <strong style="color: var(--secondary)">Numerator:</strong> tr(H&Sigma;) measures the total gradient noise weighted by the curvature of the loss landscape
+          </div>
+          <div style="font-size: 0.82rem; color: var(--fg-muted);">
+            <strong style="color: var(--primary)">Denominator:</strong> G<sup>T</sup>HG measures the signal &mdash; how much the true gradient aligns with the direction of steepest curvature
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-purple fade-in stagger-3" style="max-width: 700px; margin: 20px auto 0;">
+      <strong>Simplified Approximation:</strong> In practice, the noise scale can be approximated without computing the Hessian:
+      <div class="equation-box" style="margin-top: 8px; margin-bottom: 0; border-color: rgba(167,139,250,0.3);">
+        B<sub>simple</sub> = <span style="color: var(--accent); font-weight: 600;">tr(&Sigma;) / |G|&sup2;</span>
+      </div>
+      <div style="margin-top: 8px;">This is just the <strong>ratio of gradient variance to gradient magnitude squared</strong> &mdash; measure the variance of per-example gradients and divide by the squared norm of the mean gradient.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     SECTION 4: TRAINING SPEED CURVE
+     ========================================== -->
+<section class="section section-dark" id="training-speed">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Predicted Training Speed</span>
+      <h2>The <span class="gradient-text">S-Curve</span> of Batch Size Efficiency</h2>
+      <p class="section-subtitle">Training speed as a function of batch size, with the turning point at B<sub>noise</sub></p>
+    </div>
+
+    <div class="fade-in stagger-1">
+      <div class="chart-container">
+        <h4>Training Speed vs Batch Size</h4>
+        <p class="chart-subtitle">&epsilon;<sub>opt</sub>(B) / &epsilon;<sub>max</sub> as a function of B / B<sub>noise</sub> (log-log scale)</p>
+        <svg class="svg-chart" id="speedChart" viewBox="0 0 800 360"></svg>
+        <div class="slider-control" style="margin-top: 16px;">
+          <div class="slider-label">
+            <span>Batch Size (B / B<sub>noise</sub>)</span>
+            <span class="slider-value" id="batchRatioValue">1.00</span>
+          </div>
+          <input type="range" id="batchRatioSlider" min="-2" max="2" step="0.01" value="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="metrics-row fade-in stagger-2" id="speedMetrics">
+      <div class="metric-card">
+        <div class="metric-value" id="metricSpeed" style="color: var(--primary);">50%</div>
+        <div class="metric-label">Training Speed (% of max)</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-value" id="metricEfficiency" style="color: var(--secondary);">50%</div>
+        <div class="metric-label">Compute Efficiency</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-value" id="metricRegime" style="color: var(--accent);">Sweet Spot</div>
+        <div class="metric-label">Current Regime</div>
+      </div>
+    </div>
+
+    <div class="callout callout-green fade-in stagger-3" style="max-width: 700px; margin: 0 auto;">
+      <strong>Reading the curve:</strong> When B/B<sub>noise</sub> &laquo; 1, training speed scales linearly with batch size (perfect scaling).
+      At B = B<sub>noise</sub>, you reach <strong style="color: var(--primary)">50%</strong> of maximum training speed.
+      Beyond B<sub>noise</sub>, additional compute yields diminishing returns.
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     SECTION 5: COMPUTE vs TIME TRADEOFF
+     ========================================== -->
+<section class="section" id="tradeoff">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">The Tradeoff</span>
+      <h2>Compute vs <span class="gradient-text">Wall-Clock Time</span></h2>
+      <p class="section-subtitle">Every batch size choice places you on a Pareto frontier between training time and total compute</p>
+    </div>
+
+    <div class="fade-in stagger-1">
+      <div class="chart-container">
+        <h4>Compute-Time Tradeoff Curve</h4>
+        <p class="chart-subtitle">How total compute and training steps change as batch size increases</p>
+        <svg class="svg-chart" id="tradeoffChart" viewBox="0 0 800 400"></svg>
+        <div class="slider-control" style="margin-top: 16px;">
+          <div class="slider-label">
+            <span>Batch Size (B / B<sub>noise</sub>)</span>
+            <span class="slider-value" id="tradeoffRatioValue">1.00</span>
+          </div>
+          <input type="range" id="tradeoffSlider" min="-2" max="2" step="0.01" value="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-3 fade-in stagger-2" style="margin-top: 24px;">
+      <div class="card">
+        <div class="card-icon">&#128994;</div>
+        <h3>Small B Region</h3>
+        <p>Increasing batch size cuts training time with <strong style="color: var(--primary)">virtually no extra compute</strong>. Each step does more useful work because variance is the bottleneck.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">&#128993;</div>
+        <h3>The Turning Point</h3>
+        <p>Around <code>B &asymp; B<sub>noise</sub></code>, you enter the tradeoff zone. More compute buys less time savings. This is the <strong style="color: var(--secondary)">optimal operating point</strong> for most practitioners.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">&#128308;</div>
+        <h3>Large B Region</h3>
+        <p>Diminishing returns dominate. You're spending <strong style="color: var(--red)">2&times; compute for &lt;10% speedup</strong>. The gradient estimate is already nearly perfect.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     SECTION 6: INTERACTIVE CALCULATOR
+     ========================================== -->
+<section class="section section-dark" id="calculator">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Interactive Calculator</span>
+      <h2>Find Your <span class="gradient-text">Optimal Batch Size</span></h2>
+      <p class="section-subtitle">Enter your estimated noise scale and explore the efficiency of different batch sizes</p>
+    </div>
+
+    <div class="fade-in stagger-1" style="max-width: 800px; margin: 0 auto;">
+      <div class="card" style="padding: 32px;">
+        <div class="calc-grid">
+          <div class="calc-input-group">
+            <label class="calc-label">Estimated B<sub>noise</sub></label>
+            <input type="number" class="calc-input" id="calcBnoise" value="4096" min="1" max="1000000">
+            <span style="font-size: 0.72rem; color: var(--fg-muted);">Typical range: 10&sup2; &ndash; 10&sup6; depending on model &amp; task</span>
+          </div>
+          <div class="calc-input-group">
+            <label class="calc-label">Your Current Batch Size</label>
+            <input type="number" class="calc-input" id="calcBatch" value="256" min="1" max="10000000">
+          </div>
+        </div>
+
+        <div style="margin-top: 24px;">
+          <div class="slider-control" style="background: rgba(0,0,0,0.2);">
+            <div class="slider-label">
+              <span>Explore Batch Size</span>
+              <span class="slider-value" id="calcSliderValue">256</span>
+            </div>
+            <input type="range" id="calcSlider" min="1" max="100000" value="256">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 20px;">
+          <div class="calc-result" id="calcSpeedResult">
+            <div class="calc-result-number" id="calcSpeedNum">5.9%</div>
+            <div class="calc-result-label">Training Speed</div>
+          </div>
+          <div class="calc-result" style="background: rgba(0,200,230,0.06); border-color: rgba(0,200,230,0.2);">
+            <div class="calc-result-number" id="calcEffNum" style="background: linear-gradient(135deg, var(--secondary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">94%</div>
+            <div class="calc-result-label">Compute Efficiency</div>
+          </div>
+          <div class="calc-result" style="background: rgba(167,139,250,0.06); border-color: rgba(167,139,250,0.2);">
+            <div class="calc-result-number" id="calcOptLR" style="background: linear-gradient(135deg, var(--accent), var(--pink)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">5.9%</div>
+            <div class="calc-result-label">&epsilon;<sub>opt</sub> / &epsilon;<sub>max</sub></div>
+          </div>
+          <div class="calc-result" style="background: rgba(255,152,0,0.06); border-color: rgba(255,152,0,0.2);">
+            <div class="calc-result-number" id="calcRatio" style="background: linear-gradient(135deg, var(--orange), var(--yellow)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">0.06&times;</div>
+            <div class="calc-result-label">B / B<sub>noise</sub></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-info fade-in stagger-2" style="max-width: 700px; margin: 24px auto 0;">
+      <strong>How to estimate B<sub>noise</sub> in practice:</strong>
+      <ol style="margin-top: 8px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px;">
+        <li>Run training with a small batch size for a few hundred steps</li>
+        <li>Compute the gradient on many small batches &mdash; record per-example gradients</li>
+        <li>Calculate: <code>B<sub>simple</sub> = tr(&Sigma;) / |G|&sup2;</code> = (variance of gradients) / (squared mean gradient)</li>
+        <li>The noise scale <strong>grows during training</strong> as the model approaches convergence, so re-estimate periodically</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     SECTION 7: PRACTICAL INSIGHTS
+     ========================================== -->
+<section class="section" id="practical">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Practical Insights</span>
+      <h2>How B<sub>noise</sub> <span class="gradient-text">Changes</span> During Training</h2>
+      <p class="section-subtitle">The noise scale is not static &mdash; it evolves as training progresses</p>
+    </div>
+
+    <div class="fade-in stagger-1">
+      <div class="chart-container">
+        <h4>Noise Scale Evolution During Training</h4>
+        <p class="chart-subtitle">B<sub>noise</sub> typically grows as the loss decreases, suggesting batch size should increase over time</p>
+        <svg class="svg-chart" id="evolutionChart" viewBox="0 0 800 300"></svg>
+      </div>
+    </div>
+
+    <div class="grid-2 fade-in stagger-2" style="margin-top: 24px;">
+      <div class="card">
+        <h3>&#128200; Why B<sub>noise</sub> Grows</h3>
+        <p>Early in training, the gradient signal is strong (large |G|) because the model is far from optimal.
+        As training progresses and the loss decreases, the gradient magnitude shrinks while per-example variance stays relatively high.
+        The ratio <code>tr(&Sigma;)/|G|&sup2;</code> therefore <strong>increases</strong>.</p>
+      </div>
+      <div class="card">
+        <h3>&#128161; The Practical Recipe</h3>
+        <p>Start training with a <strong style="color: var(--primary)">smaller batch size</strong> (within the linear scaling regime).
+        As training progresses and B<sub>noise</sub> grows, <strong style="color: var(--secondary)">increase the batch size</strong> to maintain efficiency.
+        This is exactly what <strong>adaptive batch size schedules</strong> do, and the noise scale tells you when.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     SECTION 8: KEY TAKEAWAYS
+     ========================================== -->
+<section class="section section-dark" id="takeaways">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Summary</span>
+      <h2>Key <span class="gradient-text">Takeaways</span></h2>
+    </div>
+
+    <div class="takeaway-grid fade-in stagger-1">
+      <div class="takeaway-card">
+        <div class="takeaway-num">01</div>
+        <h4>B<sub>noise</sub> Is the Critical Batch Size</h4>
+        <p>The gradient noise scale marks the transition from "free parallelism" to "wasted compute." At B = B<sub>noise</sub>, training speed is 50% of maximum.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">02</div>
+        <h4>It's Easy to Measure</h4>
+        <p>Estimate B<sub>noise</sub> &asymp; tr(&Sigma;)/|G|&sup2; by computing gradient variance across mini-batches. No Hessian computation needed.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">03</div>
+        <h4>B<sub>noise</sub> Grows During Training</h4>
+        <p>As the model converges, gradient signal shrinks while noise stays high. Re-estimate periodically and increase batch size accordingly.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">04</div>
+        <h4>Works Across Domains</h4>
+        <p>The noise scale predicts batch size efficiency for image classification, reinforcement learning, generative models, and language models.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">05</div>
+        <h4>Optimizer-Agnostic</h4>
+        <p>Despite being derived for vanilla SGD, the noise scale accurately predicts behavior for momentum, Adam, RMSProp, and other optimizers.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">06</div>
+        <h4>Compute vs Time Tradeoff</h4>
+        <p>Below B<sub>noise</sub>: near-perfect parallelism. Above B<sub>noise</sub>: pay in compute for diminishing time savings. Choose based on your budget.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==========================================
+     FOOTER
+     ========================================== -->
+<footer class="footer">
+  <div class="container footer-inner">
+    <div class="footer-brand">&#x26A1; ShallowSpeed</div>
+    <p>Gradient Noise Scale &mdash; Choosing the Right Batch Size</p>
+    <p class="footer-muted">Based on "An Empirical Model of Large-Batch Training" (McCandlish et al., 2018)</p>
+  </div>
+</footer>
+
+<!-- ==========================================
+     JAVASCRIPT
+     ========================================== -->
+<script>
+// ============================
+// Scroll reveal
+// ============================
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1 });
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// ============================
+// CONTOUR PLOT
+// ============================
+const contourCanvas = document.getElementById('contourCanvas');
+const ctx = contourCanvas.getContext('2d');
+let contourMode = 'small';
+let animFrame;
+
+function resizeContour() {
+  const rect = contourCanvas.parentElement.getBoundingClientRect();
+  contourCanvas.width = rect.width * 2;
+  contourCanvas.height = rect.height * 2;
+  contourCanvas.style.width = rect.width + 'px';
+  contourCanvas.style.height = rect.height + 'px';
+  ctx.scale(2, 2);
+}
+resizeContour();
+window.addEventListener('resize', () => {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  resizeContour();
+  drawContourStatic();
+});
+
+// Quadratic loss: L(x,y) = 0.5*(x^2/a^2 + y^2/b^2)
+const a = 3, b = 1;
+const cx_center = 0, cy_center = 0;
+
+function lossAt(x, y) {
+  return 0.5 * ((x*x)/(a*a) + (y*y)/(b*b));
+}
+
+function toCanvas(x, y) {
+  const w = contourCanvas.width / 2;
+  const h = contourCanvas.height / 2;
+  const scale = Math.min(w, h) * 0.22;
+  return [w/2 + x * scale, h/2 + y * scale];
+}
+
+function drawContourLines() {
+  const w = contourCanvas.width / 2;
+  const h = contourCanvas.height / 2;
+  ctx.clearRect(0, 0, w, h);
+
+  // Draw contour ellipses
+  const levels = [0.02, 0.05, 0.1, 0.2, 0.4, 0.7, 1.0, 1.5];
+  ctx.strokeStyle = 'rgba(242, 242, 242, 0.12)';
+  ctx.lineWidth = 1;
+  levels.forEach(L => {
+    const rx = a * Math.sqrt(2 * L);
+    const ry = b * Math.sqrt(2 * L);
+    const [px, py] = toCanvas(0, 0);
+    const scale = Math.min(w, h) * 0.22;
+    ctx.beginPath();
+    ctx.ellipse(px, py, rx * scale, ry * scale, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+
+  // Draw minimum marker
+  const [mx, my] = toCanvas(0, 0);
+  ctx.fillStyle = 'rgba(0, 212, 106, 0.6)';
+  ctx.beginPath();
+  ctx.arc(mx, my, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(0, 212, 106, 0.3)';
+  ctx.beginPath();
+  ctx.arc(mx, my, 10, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Axis labels
+  ctx.fillStyle = 'rgba(163, 163, 163, 0.5)';
+  ctx.font = '11px Inter';
+  ctx.textAlign = 'center';
+  ctx.fillText('minimum', mx, my + 22);
+}
+
+// Generate SGD path with noise
+function generatePath(startX, startY, batchSize, nSteps, lr) {
+  const path = [[startX, startY]];
+  let x = startX, y = startY;
+  const noiseScale = 1.0 / Math.sqrt(batchSize);
+
+  for (let i = 0; i < nSteps; i++) {
+    // True gradient
+    const gx = x / (a * a);
+    const gy = y / (b * b);
+
+    // Add noise inversely proportional to sqrt(batch size)
+    const nx = gx + noiseScale * (Math.random() - 0.5) * 2.0;
+    const ny = gy + noiseScale * (Math.random() - 0.5) * 2.0;
+
+    x -= lr * nx;
+    y -= lr * ny;
+    path.push([x, y]);
+  }
+  return path;
+}
+
+function drawPath(path, color, lineWidth) {
+  if (path.length < 2) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+
+  const [sx, sy] = toCanvas(path[0][0], path[0][1]);
+  ctx.moveTo(sx, sy);
+  for (let i = 1; i < path.length; i++) {
+    const [px, py] = toCanvas(path[i][0], path[i][1]);
+    ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+
+  // Draw dots at each step
+  path.forEach((p, i) => {
+    const [px, py] = toCanvas(p[0], p[1]);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(px, py, i === 0 ? 5 : 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Start marker (X)
+  const [startX, startY] = toCanvas(path[0][0], path[0][1]);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5;
+  const s = 6;
+  ctx.beginPath(); ctx.moveTo(startX - s, startY - s); ctx.lineTo(startX + s, startY + s); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(startX + s, startY - s); ctx.lineTo(startX - s, startY + s); ctx.stroke();
+}
+
+// Seeded random for reproducibility
+let seed = 42;
+function seededRandom() {
+  seed = (seed * 16807 + 0) % 2147483647;
+  return (seed - 1) / 2147483646;
+}
+
+function generateSeededPath(startX, startY, batchSize, nSteps, lr, s) {
+  seed = s;
+  const path = [[startX, startY]];
+  let x = startX, y = startY;
+  const noiseScale = 1.0 / Math.sqrt(batchSize);
+
+  for (let i = 0; i < nSteps; i++) {
+    const gx = x / (a * a);
+    const gy = y / (b * b);
+    const nx = gx + noiseScale * (seededRandom() - 0.5) * 2.5;
+    const ny = gy + noiseScale * (seededRandom() - 0.5) * 2.5;
+    x -= lr * nx;
+    y -= lr * ny;
+    path.push([x, y]);
+  }
+  return path;
+}
+
+const startX = 3.5, startY = -1.2;
+
+function drawContourStatic() {
+  drawContourLines();
+
+  const legendSmall = document.getElementById('legend-small');
+  const legendLarge = document.getElementById('legend-large');
+
+  if (contourMode === 'small') {
+    const path = generateSeededPath(startX, startY, 8, 40, 0.45, 42);
+    drawPath(path, 'rgba(255, 112, 67, 0.8)', 1.5);
+    legendSmall.style.display = 'flex';
+    legendLarge.style.display = 'none';
+  } else if (contourMode === 'medium') {
+    const path = generateSeededPath(startX, startY, 256, 25, 0.7, 77);
+    drawPath(path, 'rgba(167, 139, 250, 0.8)', 1.8);
+    legendSmall.style.display = 'none';
+    legendLarge.style.display = 'none';
+    legendSmall.style.display = 'flex';
+    legendSmall.querySelector('span').textContent = 'Medium batch — moderate noise';
+    legendSmall.querySelector('.legend-swatch').style.background = 'var(--accent)';
+  } else if (contourMode === 'large') {
+    const path = generateSeededPath(startX, startY, 4096, 15, 0.9, 99);
+    drawPath(path, 'rgba(66, 165, 245, 0.8)', 2);
+    legendSmall.style.display = 'none';
+    legendLarge.style.display = 'flex';
+  } else if (contourMode === 'both') {
+    const smallPath = generateSeededPath(startX, startY, 8, 40, 0.45, 42);
+    const largePath = generateSeededPath(startX, startY, 4096, 15, 0.9, 99);
+    drawPath(smallPath, 'rgba(255, 112, 67, 0.7)', 1.5);
+    drawPath(largePath, 'rgba(66, 165, 245, 0.8)', 2);
+    legendSmall.style.display = 'flex';
+    legendSmall.querySelector('span').textContent = 'Small batch — noisy path';
+    legendSmall.querySelector('.legend-swatch').style.background = 'var(--red)';
+    legendLarge.style.display = 'flex';
+  }
+}
+
+function setContourBatch(mode) {
+  contourMode = mode;
+  document.querySelectorAll('#contour-controls .strategy-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  drawContourStatic();
+}
+
+drawContourStatic();
+
+// ============================
+// TRAINING SPEED CHART
+// ============================
+function drawSpeedChart(highlightRatio) {
+  const svg = document.getElementById('speedChart');
+  const w = 800, h = 360;
+  const pad = { top: 30, right: 40, bottom: 50, left: 70 };
+  const pw = w - pad.left - pad.right;
+  const ph = h - pad.top - pad.bottom;
+
+  // Log-log: x from 10^-2 to 10^2, y from 10^-2 to 10^0
+  const xMin = -2, xMax = 2;
+  const yMin = -2, yMax = 0;
+
+  function xToSvg(logX) { return pad.left + (logX - xMin) / (xMax - xMin) * pw; }
+  function yToSvg(logY) { return pad.top + (yMax - logY) / (yMax - yMin) * ph; }
+
+  // Training speed: speed(B) = (B/Bn) / (1 + B/Bn)
+  // which equals 1/(1 + Bn/B) ... same as epsilon_opt/epsilon_max
+  function speed(logRatio) {
+    const r = Math.pow(10, logRatio);
+    return r / (1 + r);
+  }
+
+  let html = '';
+
+  // Grid lines
+  for (let x = xMin; x <= xMax; x++) {
+    const sx = xToSvg(x);
+    html += `<line x1="${sx}" y1="${pad.top}" x2="${sx}" y2="${h - pad.bottom}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`;
+    html += `<text x="${sx}" y="${h - pad.bottom + 30}" fill="#a3a3a3" font-size="11" font-family="JetBrains Mono" text-anchor="middle">10<tspan baseline-shift="super" font-size="8">${x}</tspan></text>`;
+  }
+  for (let y = yMin; y <= yMax; y++) {
+    const sy = yToSvg(y);
+    html += `<line x1="${pad.left}" y1="${sy}" x2="${w - pad.right}" y2="${sy}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`;
+    const label = y === 0 ? '10⁰' : y === -1 ? '10⁻¹' : '10⁻²';
+    html += `<text x="${pad.left - 12}" y="${sy + 4}" fill="#a3a3a3" font-size="11" font-family="JetBrains Mono" text-anchor="end">${label}</text>`;
+  }
+
+  // Axis labels
+  html += `<text x="${pad.left + pw/2}" y="${h - 5}" fill="#a3a3a3" font-size="12" font-family="Inter" text-anchor="middle">Batch Size / Noise Scale  (B / B_noise)</text>`;
+  html += `<text x="16" y="${pad.top + ph/2}" fill="#a3a3a3" font-size="12" font-family="Inter" text-anchor="middle" transform="rotate(-90, 16, ${pad.top + ph/2})">Training Speed (ε_opt / ε_max)</text>`;
+
+  // Perfect scaling region (shaded)
+  const perfX1 = xToSvg(-2), perfX2 = xToSvg(-0.3);
+  html += `<rect x="${perfX1}" y="${pad.top}" width="${perfX2 - perfX1}" height="${ph}" fill="rgba(0,212,106,0.04)"/>`;
+  html += `<text x="${(perfX1 + perfX2)/2}" y="${pad.top + 20}" fill="rgba(0,212,106,0.4)" font-size="11" font-family="Inter" font-weight="600" text-anchor="middle">Perfect Scaling</text>`;
+
+  // Ineffective region (shaded)
+  const ineffX1 = xToSvg(0.3), ineffX2 = xToSvg(2);
+  html += `<rect x="${ineffX1}" y="${pad.top}" width="${ineffX2 - ineffX1}" height="${ph}" fill="rgba(255,112,67,0.04)"/>`;
+  html += `<text x="${(ineffX1 + ineffX2)/2}" y="${pad.top + 20}" fill="rgba(255,112,67,0.4)" font-size="11" font-family="Inter" font-weight="600" text-anchor="middle">Ineffective Scaling</text>`;
+
+  // The curve
+  let pathD = '';
+  const nPoints = 200;
+  for (let i = 0; i <= nPoints; i++) {
+    const logR = xMin + (xMax - xMin) * i / nPoints;
+    const s = speed(logR);
+    const logS = Math.log10(Math.max(s, 1e-10));
+    const clampedLogS = Math.max(yMin, Math.min(yMax, logS));
+    const sx = xToSvg(logR);
+    const sy = yToSvg(clampedLogS);
+    pathD += (i === 0 ? 'M' : 'L') + `${sx},${sy}`;
+  }
+  html += `<path d="${pathD}" fill="none" stroke="url(#speedGrad)" stroke-width="3" stroke-linecap="round"/>`;
+
+  // Gradient definition
+  html += `<defs><linearGradient id="speedGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%" stop-color="#00d46a"/>
+    <stop offset="50%" stop-color="#00c8e6"/>
+    <stop offset="100%" stop-color="#FF7043"/>
+  </linearGradient></defs>`;
+
+  // B_noise marker (B/Bnoise = 1, speed = 0.5)
+  const bnoiseX = xToSvg(0);
+  const bnoiseY = yToSvg(Math.log10(0.5));
+  html += `<line x1="${bnoiseX}" y1="${pad.top}" x2="${bnoiseX}" y2="${h - pad.bottom}" stroke="rgba(0,200,230,0.3)" stroke-width="1" stroke-dasharray="6,4"/>`;
+  html += `<circle cx="${bnoiseX}" cy="${bnoiseY}" r="5" fill="#00c8e6"/>`;
+  html += `<text x="${bnoiseX + 8}" y="${bnoiseY - 10}" fill="#00c8e6" font-size="11" font-family="JetBrains Mono" font-weight="600">B = B_noise (50%)</text>`;
+
+  // Highlight current position
+  if (highlightRatio !== undefined) {
+    const logR = highlightRatio;
+    const s = speed(logR);
+    const logS = Math.log10(Math.max(s, 1e-10));
+    const clampedLogS = Math.max(yMin, Math.min(yMax, logS));
+    const hx = xToSvg(logR);
+    const hy = yToSvg(clampedLogS);
+    html += `<line x1="${hx}" y1="${pad.top}" x2="${hx}" y2="${h - pad.bottom}" stroke="rgba(167,139,250,0.3)" stroke-width="1" stroke-dasharray="4,4"/>`;
+    html += `<circle cx="${hx}" cy="${hy}" r="7" fill="none" stroke="#a78bfa" stroke-width="2"/>`;
+    html += `<circle cx="${hx}" cy="${hy}" r="3" fill="#a78bfa"/>`;
+  }
+
+  svg.innerHTML = html;
+}
+
+const batchRatioSlider = document.getElementById('batchRatioSlider');
+const batchRatioValue = document.getElementById('batchRatioValue');
+
+function updateSpeedChart() {
+  const logR = parseFloat(batchRatioSlider.value);
+  const ratio = Math.pow(10, logR);
+  batchRatioValue.textContent = ratio.toFixed(ratio < 1 ? 2 : (ratio < 10 ? 1 : 0));
+
+  drawSpeedChart(logR);
+
+  // Update metrics
+  const speed = ratio / (1 + ratio);
+  const efficiency = 1 / (1 + ratio); // compute efficiency = Bn / (B + Bn) = 1/(1 + B/Bn)
+
+  document.getElementById('metricSpeed').textContent = (speed * 100).toFixed(1) + '%';
+  document.getElementById('metricSpeed').style.color = speed > 0.5 ? 'var(--primary)' : (speed > 0.1 ? 'var(--secondary)' : 'var(--red)');
+
+  document.getElementById('metricEfficiency').textContent = (efficiency * 100).toFixed(1) + '%';
+  document.getElementById('metricEfficiency').style.color = efficiency > 0.5 ? 'var(--primary)' : (efficiency > 0.1 ? 'var(--secondary)' : 'var(--red)');
+
+  const regime = ratio < 0.3 ? 'Perfect Scaling' : (ratio < 3 ? 'Sweet Spot' : 'Diminishing Returns');
+  document.getElementById('metricRegime').textContent = regime;
+  document.getElementById('metricRegime').style.color = ratio < 0.3 ? 'var(--primary)' : (ratio < 3 ? 'var(--secondary)' : 'var(--red)');
+
+  // Update regime indicator
+  document.querySelectorAll('.regime-zone').forEach(z => z.classList.remove('active'));
+  if (ratio < 0.3) document.getElementById('regime-perfect').classList.add('active');
+  else if (ratio < 3) document.getElementById('regime-transition').classList.add('active');
+  else document.getElementById('regime-wasteful').classList.add('active');
+}
+
+batchRatioSlider.addEventListener('input', updateSpeedChart);
+drawSpeedChart(0);
+updateSpeedChart();
+
+// ============================
+// TRADEOFF CHART
+// ============================
+function drawTradeoffChart(highlightLogR) {
+  const svg = document.getElementById('tradeoffChart');
+  const w = 800, h = 400;
+  const pad = { top: 30, right: 40, bottom: 55, left: 80 };
+  const pw = w - pad.left - pad.right;
+  const ph = h - pad.top - pad.bottom;
+
+  // X: number of steps S (proportional to training time) = S_min * (1 + Bn/B)
+  // Y: total compute C = B * S = S_min * (B + Bn)
+  // Parametrically: for each B, S(B) = S_min * (1 + Bn/B), C(B) = S_min * (B + Bn)
+  // Normalize: S/S_min = 1 + Bn/B, C/(S_min * Bn) = 1 + B/Bn
+
+  // Plot normalized: x = S/S_min (training time), y = C/C_min (compute)
+  // S/S_min ranges from 1 (B->inf) to large (B->0)
+  // C/C_min (=S_min*Bn): C/(S_min*Bn) = 1 + B/Bn ranges from 1 (B->0) to large (B->inf)
+  // Parametric: x = 1 + 1/r, y = 1 + r where r = B/Bn
+
+  const xMin = 0.8, xMax = 12;
+  const yMin = 0.8, yMax = 12;
+
+  function xToSvg(val) { return pad.left + (val - xMin) / (xMax - xMin) * pw; }
+  function yToSvg(val) { return pad.top + (yMax - val) / (yMax - yMin) * ph; }
+
+  let html = '';
+
+  // Grid lines
+  for (let x = 1; x <= 12; x += 1) {
+    const sx = xToSvg(x);
+    if (sx >= pad.left && sx <= w - pad.right) {
+      html += `<line x1="${sx}" y1="${pad.top}" x2="${sx}" y2="${h - pad.bottom}" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>`;
+      if (x % 2 === 0 || x === 1) {
+        html += `<text x="${sx}" y="${h - pad.bottom + 24}" fill="#a3a3a3" font-size="11" font-family="JetBrains Mono" text-anchor="middle">${x}×</text>`;
+      }
+    }
+  }
+  for (let y = 1; y <= 12; y += 1) {
+    const sy = yToSvg(y);
+    if (sy >= pad.top && sy <= h - pad.bottom) {
+      html += `<line x1="${pad.left}" y1="${sy}" x2="${w - pad.right}" y2="${sy}" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>`;
+      if (y % 2 === 0 || y === 1) {
+        html += `<text x="${pad.left - 12}" y="${sy + 4}" fill="#a3a3a3" font-size="11" font-family="JetBrains Mono" text-anchor="end">${y}×</text>`;
+      }
+    }
+  }
+
+  // Axis labels
+  html += `<text x="${pad.left + pw/2}" y="${h - 8}" fill="#a3a3a3" font-size="12" font-family="Inter" text-anchor="middle">Training Steps (S / S_min)  →  fewer is better</text>`;
+  html += `<text x="18" y="${pad.top + ph/2}" fill="#a3a3a3" font-size="12" font-family="Inter" text-anchor="middle" transform="rotate(-90, 18, ${pad.top + ph/2})">Total Compute (C / C_min)  →  less is better</text>`;
+
+  // Draw the Pareto frontier curve
+  // r goes from 0.01 to 100
+  let curvePath = '';
+  for (let i = 0; i <= 300; i++) {
+    const logR = -2 + 4 * i / 300;
+    const r = Math.pow(10, logR);
+    const xVal = 1 + 1/r; // S/Smin
+    const yVal = 1 + r;   // C/Cmin
+    if (xVal > xMax || yVal > yMax) continue;
+    if (xVal < xMin || yVal < yMin) continue;
+    const sx = xToSvg(xVal);
+    const sy = yToSvg(yVal);
+    curvePath += (curvePath === '' ? 'M' : 'L') + `${sx},${sy}`;
+  }
+  html += `<path d="${curvePath}" fill="none" stroke="url(#tradeGrad)" stroke-width="3" stroke-linecap="round"/>`;
+  html += `<defs><linearGradient id="tradeGrad" x1="100%" y1="100%" x2="0%" y2="0%">
+    <stop offset="0%" stop-color="#00d46a"/>
+    <stop offset="50%" stop-color="#00c8e6"/>
+    <stop offset="100%" stop-color="#FF7043"/>
+  </linearGradient></defs>`;
+
+  // B = B_noise point (r=1): x=2, y=2
+  const bx = xToSvg(2);
+  const by = yToSvg(2);
+  html += `<circle cx="${bx}" cy="${by}" r="6" fill="none" stroke="#00c8e6" stroke-width="2"/>`;
+  html += `<circle cx="${bx}" cy="${by}" r="3" fill="#00c8e6"/>`;
+  html += `<text x="${bx + 10}" y="${by - 10}" fill="#00c8e6" font-size="11" font-family="JetBrains Mono" font-weight="600">B = B_noise</text>`;
+
+  // Arrow annotations
+  // Small batch region label
+  const smallX = xToSvg(8), smallY = yToSvg(1.3);
+  html += `<text x="${smallX}" y="${smallY}" fill="rgba(0,212,106,0.5)" font-size="10" font-family="Inter" font-weight="600" text-anchor="middle">Small B: low compute,</text>`;
+  html += `<text x="${smallX}" y="${smallY + 14}" fill="rgba(0,212,106,0.5)" font-size="10" font-family="Inter" font-weight="600" text-anchor="middle">many steps</text>`;
+
+  // Large batch region label
+  const largeX = xToSvg(1.5), largeY = yToSvg(9);
+  html += `<text x="${largeX}" y="${largeY}" fill="rgba(255,112,67,0.5)" font-size="10" font-family="Inter" font-weight="600" text-anchor="middle">Large B: few steps,</text>`;
+  html += `<text x="${largeX}" y="${largeY + 14}" fill="rgba(255,112,67,0.5)" font-size="10" font-family="Inter" font-weight="600" text-anchor="middle">high compute</text>`;
+
+  // Ideal corner
+  const idealX = xToSvg(1), idealY = yToSvg(1);
+  html += `<text x="${idealX + 10}" y="${idealY + 5}" fill="rgba(167,139,250,0.4)" font-size="10" font-family="JetBrains Mono">ideal (impossible)</text>`;
+
+  // Highlight current position
+  if (highlightLogR !== undefined) {
+    const r = Math.pow(10, highlightLogR);
+    const xVal = 1 + 1/r;
+    const yVal = 1 + r;
+    if (xVal <= xMax && yVal <= yMax && xVal >= xMin && yVal >= yMin) {
+      const hx = xToSvg(xVal);
+      const hy = yToSvg(yVal);
+      html += `<circle cx="${hx}" cy="${hy}" r="8" fill="none" stroke="#a78bfa" stroke-width="2"/>`;
+      html += `<circle cx="${hx}" cy="${hy}" r="3" fill="#a78bfa"/>`;
+      html += `<line x1="${hx}" y1="${pad.top}" x2="${hx}" y2="${h - pad.bottom}" stroke="rgba(167,139,250,0.15)" stroke-width="1" stroke-dasharray="4,4"/>`;
+      html += `<line x1="${pad.left}" y1="${hy}" x2="${w - pad.right}" y2="${hy}" stroke="rgba(167,139,250,0.15)" stroke-width="1" stroke-dasharray="4,4"/>`;
+    }
+  }
+
+  svg.innerHTML = html;
+}
+
+const tradeoffSlider = document.getElementById('tradeoffSlider');
+const tradeoffRatioValue = document.getElementById('tradeoffRatioValue');
+
+tradeoffSlider.addEventListener('input', () => {
+  const logR = parseFloat(tradeoffSlider.value);
+  const ratio = Math.pow(10, logR);
+  tradeoffRatioValue.textContent = ratio.toFixed(ratio < 1 ? 2 : (ratio < 10 ? 1 : 0));
+  drawTradeoffChart(logR);
+});
+
+drawTradeoffChart(0);
+
+// ============================
+// CALCULATOR
+// ============================
+const calcBnoise = document.getElementById('calcBnoise');
+const calcBatch = document.getElementById('calcBatch');
+const calcSlider = document.getElementById('calcSlider');
+const calcSliderValue = document.getElementById('calcSliderValue');
+
+function updateCalc() {
+  const Bn = parseFloat(calcBnoise.value) || 4096;
+  const B = parseFloat(calcSlider.value) || 256;
+  const ratio = B / Bn;
+  const speed = ratio / (1 + ratio);
+  const efficiency = 1 / (1 + ratio);
+  const lrRatio = 1 / (1 + Bn / B);
+
+  calcSliderValue.textContent = B.toLocaleString();
+  document.getElementById('calcSpeedNum').textContent = (speed * 100).toFixed(1) + '%';
+  document.getElementById('calcEffNum').textContent = (efficiency * 100).toFixed(1) + '%';
+  document.getElementById('calcOptLR').textContent = (lrRatio * 100).toFixed(1) + '%';
+  document.getElementById('calcRatio').textContent = ratio.toFixed(ratio < 0.01 ? 3 : (ratio < 1 ? 2 : (ratio < 10 ? 1 : 0))) + '×';
+}
+
+calcSlider.addEventListener('input', updateCalc);
+calcBnoise.addEventListener('input', () => {
+  const Bn = parseFloat(calcBnoise.value) || 4096;
+  calcSlider.max = Math.max(Bn * 10, 10000);
+  updateCalc();
+});
+calcBatch.addEventListener('input', () => {
+  calcSlider.value = calcBatch.value;
+  updateCalc();
+});
+updateCalc();
+
+// ============================
+// EVOLUTION CHART
+// ============================
+function drawEvolutionChart() {
+  const svg = document.getElementById('evolutionChart');
+  const w = 800, h = 300;
+  const pad = { top: 30, right: 60, bottom: 45, left: 70 };
+  const pw = w - pad.left - pad.right;
+  const ph = h - pad.top - pad.bottom;
+
+  let html = '';
+
+  // Simulate: loss decreases, Bnoise increases
+  const nPoints = 100;
+  const lossData = [];
+  const bnoiseData = [];
+  for (let i = 0; i <= nPoints; i++) {
+    const t = i / nPoints; // training progress 0 to 1
+    // Loss decays exponentially
+    const loss = 2.5 * Math.exp(-3 * t) + 0.1;
+    // Bnoise grows (inversely related to gradient magnitude squared)
+    const bnoise = 200 * Math.pow(1 + t * 15, 1.3);
+    lossData.push(loss);
+    bnoiseData.push(bnoise);
+  }
+
+  const lossMax = 2.8, lossMin = 0;
+  const bnoiseMax = 30000, bnoiseMin = 0;
+
+  function xToSvg(i) { return pad.left + (i / nPoints) * pw; }
+  function lossToSvg(l) { return pad.top + (lossMax - l) / (lossMax - lossMin) * ph; }
+  function bnoiseToSvg(b) { return pad.top + (bnoiseMax - b) / (bnoiseMax - bnoiseMin) * ph; }
+
+  // Grid
+  for (let i = 0; i <= 4; i++) {
+    const x = pad.left + (i / 4) * pw;
+    html += `<line x1="${x}" y1="${pad.top}" x2="${x}" y2="${h - pad.bottom}" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>`;
+    html += `<text x="${x}" y="${h - pad.bottom + 24}" fill="#a3a3a3" font-size="10" font-family="JetBrains Mono" text-anchor="middle">${(i*25)}%</text>`;
+  }
+
+  html += `<text x="${pad.left + pw/2}" y="${h - 6}" fill="#a3a3a3" font-size="11" font-family="Inter" text-anchor="middle">Training Progress</text>`;
+
+  // Loss curve (left y-axis)
+  let lossPath = '';
+  for (let i = 0; i <= nPoints; i++) {
+    const sx = xToSvg(i);
+    const sy = lossToSvg(lossData[i]);
+    lossPath += (i === 0 ? 'M' : 'L') + `${sx},${sy}`;
+  }
+  html += `<path d="${lossPath}" fill="none" stroke="#FF7043" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>`;
+  html += `<text x="${pad.left - 12}" y="${pad.top - 8}" fill="#FF7043" font-size="10" font-family="Inter" font-weight="600" text-anchor="end">Loss ↓</text>`;
+
+  // Bnoise curve (right y-axis)
+  let bnoisePath = '';
+  for (let i = 0; i <= nPoints; i++) {
+    const sx = xToSvg(i);
+    const sy = bnoiseToSvg(bnoiseData[i]);
+    bnoisePath += (i === 0 ? 'M' : 'L') + `${sx},${sy}`;
+  }
+  html += `<path d="${bnoisePath}" fill="none" stroke="#00d46a" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>`;
+  html += `<text x="${w - pad.right + 12}" y="${pad.top - 8}" fill="#00d46a" font-size="10" font-family="Inter" font-weight="600">B_noise ↑</text>`;
+
+  // Y-axis ticks (loss - left)
+  for (let l = 0; l <= 2.5; l += 0.5) {
+    const sy = lossToSvg(l);
+    html += `<text x="${pad.left - 8}" y="${sy + 4}" fill="#FF7043" font-size="9" font-family="JetBrains Mono" text-anchor="end" opacity="0.6">${l.toFixed(1)}</text>`;
+  }
+
+  // Y-axis ticks (bnoise - right)
+  for (let b = 0; b <= 30000; b += 10000) {
+    const sy = bnoiseToSvg(b);
+    html += `<text x="${w - pad.right + 8}" y="${sy + 4}" fill="#00d46a" font-size="9" font-family="JetBrains Mono" opacity="0.6">${(b/1000).toFixed(0)}K</text>`;
+  }
+
+  // Legend
+  html += `<rect x="${pad.left + pw/2 - 120}" y="${pad.top + 5}" width="240" height="28" rx="6" fill="rgba(0,0,0,0.5)"/>`;
+  html += `<line x1="${pad.left + pw/2 - 100}" y1="${pad.top + 19}" x2="${pad.left + pw/2 - 76}" y2="${pad.top + 19}" stroke="#FF7043" stroke-width="2.5"/>`;
+  html += `<text x="${pad.left + pw/2 - 70}" y="${pad.top + 23}" fill="#a3a3a3" font-size="10" font-family="Inter">Training Loss</text>`;
+  html += `<line x1="${pad.left + pw/2 + 30}" y1="${pad.top + 19}" x2="${pad.left + pw/2 + 54}" y2="${pad.top + 19}" stroke="#00d46a" stroke-width="2.5"/>`;
+  html += `<text x="${pad.left + pw/2 + 60}" y="${pad.top + 23}" fill="#a3a3a3" font-size="10" font-family="Inter">B_noise</text>`;
+
+  // Annotation arrow
+  const annotX = xToSvg(60);
+  const annotY = bnoiseToSvg(bnoiseData[60]);
+  html += `<text x="${annotX + 10}" y="${annotY + 20}" fill="#a3a3a3" font-size="10" font-family="Inter" font-style="italic">Increase batch size here</text>`;
+
+  svg.innerHTML = html;
+}
+
+drawEvolutionChart();
+
+</script>
+</body>
+</html>
