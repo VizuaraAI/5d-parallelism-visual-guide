@@ -587,6 +587,100 @@ input[type="range"]::-moz-range-thumb {
   background: rgba(66,165,245,0.08); border-color: rgba(66,165,245,0.3); color: var(--blue);
 }
 .persist-block .param-size { font-family: var(--font-mono); font-size: 0.55rem; margin-top: 2px; }
+
+/* ========================================
+   NAPKIN MATH / CRITICAL INSIGHT
+   ======================================== */
+.napkin-container {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 24px 0;
+}
+.napkin-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
+.napkin-subtitle { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+
+/* Bucket fill animation */
+.bucket-fill-demo {
+  display: flex; flex-direction: column; gap: 16px; margin: 20px 0;
+  background: rgba(0,0,0,0.2); border-radius: 12px; padding: 24px;
+}
+.bfd-row { display: flex; align-items: center; gap: 12px; }
+.bfd-label {
+  width: 100px; font-size: 0.72rem; font-weight: 600; color: var(--fg-muted);
+  font-family: var(--font-mono); flex-shrink: 0; text-align: right;
+}
+.bfd-track {
+  flex: 1; height: 44px; border-radius: 8px; overflow: hidden;
+  background: rgba(255,255,255,0.03); display: flex; position: relative;
+  border: 1px solid var(--border);
+}
+.bfd-segment {
+  height: 100%; display: flex; align-items: center; justify-content: center;
+  font-size: 0.6rem; font-weight: 600; color: #fff;
+  transition: width 0.5s ease; overflow: hidden; white-space: nowrap;
+}
+.bfd-grad { background: #7c5cbf; }
+.bfd-filled { background: rgba(0,212,106,0.2); border: 1px dashed rgba(0,212,106,0.4); color: var(--primary); }
+.bfd-unfilled { background: rgba(255,255,255,0.03); color: var(--fg-muted); font-size: 0.55rem; }
+.bfd-fire {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  font-size: 0.65rem; font-weight: 700; color: var(--primary);
+  opacity: 0; transition: opacity 0.3s;
+}
+.bfd-fire.visible { opacity: 1; }
+
+/* Napkin math comparison bars */
+.napkin-bars {
+  display: flex; flex-direction: column; gap: 16px; margin: 20px 0;
+  max-width: 700px;
+}
+.nb-row { display: flex; align-items: center; gap: 12px; }
+.nb-label { width: 160px; font-size: 0.78rem; font-weight: 600; flex-shrink: 0; text-align: right; }
+.nb-bar-track {
+  flex: 1; height: 40px; border-radius: 8px; overflow: hidden;
+  background: rgba(255,255,255,0.03); position: relative;
+}
+.nb-bar {
+  height: 100%; border-radius: 8px; display: flex; align-items: center;
+  padding: 0 12px; font-size: 0.72rem; font-weight: 600; color: #fff;
+  transition: width 0.6s ease;
+}
+.nb-time {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  font-family: var(--font-mono); font-size: 0.75rem; font-weight: 700;
+}
+.nb-verdict {
+  text-align: center; padding: 14px; border-radius: 10px; font-size: 0.88rem;
+  font-weight: 600; margin-top: 16px;
+}
+
+/* Layer-by-layer bucket fill viz */
+.layer-bucket-viz {
+  display: flex; flex-direction: column; gap: 6px; margin: 20px 0;
+  max-width: 800px;
+}
+.lbv-row {
+  display: flex; align-items: center; gap: 8px; min-height: 32px;
+}
+.lbv-layer-label {
+  width: 80px; font-size: 0.68rem; font-weight: 600; font-family: var(--font-mono);
+  color: var(--fg-muted); text-align: right; flex-shrink: 0;
+}
+.lbv-bucket-track {
+  flex: 1; height: 28px; border-radius: 6px; overflow: hidden;
+  background: rgba(255,255,255,0.03); display: flex; position: relative;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.lbv-fill {
+  height: 100%; display: flex; align-items: center; justify-content: center;
+  font-size: 0.55rem; font-weight: 600; color: #fff;
+  transition: width 0.4s ease;
+}
+.lbv-fill.computing { background: #F06292; }
+.lbv-fill.in-bucket { background: #7c5cbf; }
+.lbv-fill.fired { background: #42A5F5; }
+.lbv-event {
+  font-size: 0.68rem; font-weight: 700; min-width: 120px; flex-shrink: 0;
+}
 </style>
 </head>
 <body>
@@ -601,6 +695,7 @@ input[type="range"]::-moz-range-thumb {
     <div class="nav-links">
       <a href="#mental-model">Mental Model</a>
       <a href="#buckets">Bucket Sizes</a>
+      <a href="#napkin-math">Napkin Math</a>
       <a href="#overlap">Comm Overlap</a>
       <a href="#memory">Memory Layout</a>
       <a href="#zero3">ZeRO-3 Params</a>
@@ -784,8 +879,172 @@ input[type="range"]::-moz-range-thumb {
   </div>
 </section>
 
+<!-- ============ CRITICAL INSIGHT: NAPKIN MATH ============ -->
+<section class="section" id="napkin-math">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Critical Insight</div>
+      <h2><span class="gradient-text">But Wait &mdash; Don't Buckets Kill Overlap?</span></h2>
+      <p class="section-subtitle">If the bucket is 500M elements but a single layer only produces ~220M gradients, doesn't the bucket need <strong>multiple layers</strong> to fill? And doesn't that delay the first communication call?</p>
+    </div>
+
+    <!-- The Question -->
+    <div class="fade-in" style="max-width: 900px; margin: 0 auto;">
+      <div class="callout callout-warn" style="font-size: 0.92rem;">
+        <strong>The worry:</strong> If we accumulate gradients into a big 500M-element buffer before firing the reduce-scatter, and a single layer only produces ~220M gradients, then the first communication won't start until <strong>2-3 layers</strong> of backward have finished. Aren't we losing overlap by waiting?
+      </div>
+    </div>
+
+    <!-- Layer-by-Layer Bucket Fill -->
+    <div class="napkin-container fade-in" style="margin-top: 32px; max-width: 900px; margin-left: auto; margin-right: auto;">
+      <div class="napkin-title">How Buckets Actually Fill During Backward</div>
+      <div class="napkin-subtitle">For a <span class="num-cyan">7B model</span> with <span class="num-orange">32 layers</span> and <span class="num-blue">bucket = 500M</span>, each layer has ~220M params. Watch how buckets fill and fire:</div>
+
+      <div class="controls-bar">
+        <div class="control-group">
+          <span class="control-label">Model Size:</span>
+          <div class="toggle-group">
+            <button class="toggle-btn" data-napkin-model="1b" onclick="setNapkinModel('1b')">1B</button>
+            <button class="toggle-btn active" data-napkin-model="7b" onclick="setNapkinModel('7b')">7B</button>
+            <button class="toggle-btn" data-napkin-model="13b" onclick="setNapkinModel('13b')">13B</button>
+            <button class="toggle-btn" data-napkin-model="70b" onclick="setNapkinModel('70b')">70B</button>
+          </div>
+        </div>
+        <div class="control-group">
+          <span class="control-label">Bucket Size:</span>
+          <input type="range" id="napkinBucketSlider" min="100" max="1000" value="500" step="50">
+          <span class="control-value" id="napkinBucketDisplay">500M</span>
+        </div>
+      </div>
+
+      <div id="layerBucketViz" style="margin: 20px 0;">
+        <!-- Filled by JS -->
+      </div>
+
+      <div class="bucket-legend" style="margin-top: 12px;">
+        <div class="legend-item"><span class="lg-swatch" style="background: #F06292;"></span> Backward (computing gradients)</div>
+        <div class="legend-item"><span class="lg-swatch" style="background: #7c5cbf;"></span> Gradients in bucket (waiting)</div>
+        <div class="legend-item"><span class="lg-swatch" style="background: #42A5F5;"></span> Reduce-scatter FIRED</div>
+      </div>
+
+      <div id="napkinBucketInsight" style="margin-top: 16px; text-align: center;"></div>
+    </div>
+
+    <!-- The Resolution: Napkin Math -->
+    <div class="fade-in" style="max-width: 900px; margin: 40px auto 0;">
+      <div class="section-heading" style="margin-bottom: 32px;">
+        <div class="section-label">Napkin Math</div>
+        <h2 style="font-size: clamp(1.6rem, 3vw, 2.2rem);"><span class="gradient-text">Why 14 Buckets Is Actually Enough</span></h2>
+        <p class="section-subtitle">The key insight: <strong>communication is fast relative to compute</strong> on modern hardware. Let's prove it with numbers.</p>
+      </div>
+
+      <div class="napkin-container">
+        <div class="napkin-title">Compute vs Communication: 7B on 8&times; H100 (NVLink)</div>
+        <div class="napkin-subtitle">We compare the time to compute one bucket's worth of backward vs the time to reduce-scatter that bucket.</div>
+
+        <div class="controls-bar">
+          <div class="control-group">
+            <span class="control-label">GPUs:</span>
+            <div class="toggle-group">
+              <button class="toggle-btn" data-napkin-gpu="4" onclick="setNapkinGpus(4)">4</button>
+              <button class="toggle-btn active" data-napkin-gpu="8" onclick="setNapkinGpus(8)">8</button>
+              <button class="toggle-btn" data-napkin-gpu="16" onclick="setNapkinGpus(16)">16</button>
+              <button class="toggle-btn" data-napkin-gpu="64" onclick="setNapkinGpus(64)">64</button>
+            </div>
+          </div>
+          <div class="control-group">
+            <span class="control-label">Interconnect:</span>
+            <div class="toggle-group">
+              <button class="toggle-btn active" data-napkin-link="nvlink" onclick="setNapkinLink('nvlink')">NVLink</button>
+              <button class="toggle-btn" data-napkin-link="pcie" onclick="setNapkinLink('pcie')">PCIe 5.0</button>
+              <button class="toggle-btn" data-napkin-link="ib" onclick="setNapkinLink('ib')">InfiniBand</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- The math derivation -->
+        <div class="grid-2" style="margin: 24px 0; gap: 20px;">
+          <div class="card" style="border-top: 3px solid var(--pink);">
+            <h3 style="color: var(--pink); font-size: 1rem;">Compute (Backward per Bucket)</h3>
+            <div id="napkinComputeBox" class="equation-box" style="text-align: left; font-size: 0.78rem; line-height: 2.2;">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+          <div class="card" style="border-top: 3px solid var(--blue);">
+            <h3 style="color: var(--blue); font-size: 1rem;">Communication (RS per Bucket)</h3>
+            <div id="napkinCommBox" class="equation-box" style="text-align: left; font-size: 0.78rem; line-height: 2.2;">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Visual comparison bars -->
+        <div style="margin: 28px auto; max-width: 700px;">
+          <p style="font-size: 0.85rem; font-weight: 600; margin-bottom: 16px; text-align: center;">Time per Bucket: Compute vs Communication</p>
+          <div class="napkin-bars" style="margin: 0 auto;">
+            <div class="nb-row">
+              <div class="nb-label" style="color: var(--pink);">Backward compute</div>
+              <div class="nb-bar-track">
+                <div class="nb-bar" id="napkinComputeBar" style="background: #F06292;">
+                </div>
+                <span class="nb-time" id="napkinComputeTime" style="color: var(--pink);">1.5ms</span>
+              </div>
+            </div>
+            <div class="nb-row">
+              <div class="nb-label" style="color: var(--blue);">Reduce-scatter</div>
+              <div class="nb-bar-track">
+                <div class="nb-bar" id="napkinCommBar" style="background: #42A5F5;">
+                </div>
+                <span class="nb-time" id="napkinCommTime" style="color: var(--blue);">1.25ms</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="nb-verdict" id="napkinVerdict">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- The timeline showing bucket-by-bucket overlap -->
+      <div class="napkin-container" style="margin-top: 24px;">
+        <div class="napkin-title">Bucket-by-Bucket Overlap Timeline</div>
+        <div class="napkin-subtitle">Each bucket's reduce-scatter runs while the next bucket's backward computes. Since they're in the same ballpark (~1.5ms compute vs ~1.25ms comm), the communication fits neatly behind compute.</div>
+
+        <div id="napkinTimeline" style="overflow-x: auto; margin: 20px 0;">
+          <!-- Filled by JS -->
+        </div>
+
+        <div class="callout callout-green" style="margin-top: 16px;">
+          <strong>The punchline:</strong> You don't need hundreds of tiny overlapping calls. Each 500M-element bucket is already <strong>1 GB of data</strong> &mdash; large enough to fully saturate the NVLink. And while that 1 GB is flying across NVLink, the GPU is busy computing the next bucket's backward. The compute and communication times are in the <strong>same ballpark</strong>, so they tile perfectly.
+        </div>
+      </div>
+
+      <!-- Warning: Small Models -->
+      <div class="callout callout-warn fade-in" style="margin-top: 24px;">
+        <strong>The edge case to watch:</strong> This works beautifully for large models (7B+) where total params &gt;&gt; bucket size, giving you many buckets and lots of overlap. But for a <strong>small model (300M params)</strong> with a 500M bucket, all gradients fit in a single bucket that never fills during backward. The reduce-scatter only fires after the entire backward pass &mdash; <strong>zero overlap</strong>, identical to <code>overlap_comm = false</code>. For small models, reduce your bucket size to ~100M.
+      </div>
+
+      <!-- Rule of Thumb -->
+      <div class="card fade-in" style="margin-top: 24px; border-top: 3px solid var(--primary);">
+        <h3 style="color: var(--primary);">Rule of Thumb for Bucket Sizing</h3>
+        <p style="margin-top: 8px;">Set <code>reduce_bucket_size</code> to roughly <strong>2-3 layers' worth of parameters</strong>. This ensures:</p>
+        <ul style="padding-left: 18px; margin-top: 8px;">
+          <li>The first bucket fires within 2-3 layers of backward &mdash; early enough for good overlap</li>
+          <li>Each bucket is large enough to saturate the network link</li>
+          <li>You get at least <span class="num-green">10+</span> buckets for a large model &mdash; plenty of overlap opportunities</li>
+        </ul>
+        <div class="equation-box" style="margin-top: 16px; font-size: 0.82rem;">
+          <span class="eq-label">Guideline</span>
+          bucket_size &asymp; params_per_layer &times; <span class="eq-highlight">2&ndash;3</span> &asymp; (total_params / num_layers) &times; 2
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ============ COMMUNICATION OVERLAP ============ -->
-<section class="section" id="overlap">
+<section class="section section-dark" id="overlap">
   <div class="container">
     <div class="section-heading fade-in">
       <div class="section-label">Lever 2</div>
@@ -1347,6 +1606,274 @@ function updateBucketVis() {
 
 document.getElementById('bucketSlider').addEventListener('input', updateBucketVis);
 updateBucketVis();
+
+// ============================================
+// NAPKIN MATH: BUCKET FILL + COMPUTE vs COMM
+// ============================================
+const modelConfigs = {
+  '1b':  { params: 1000,  layers: 24, name: '1B',  flopsPerParam: 3 },
+  '7b':  { params: 7000,  layers: 32, name: '7B',  flopsPerParam: 3 },
+  '13b': { params: 13000, layers: 40, name: '13B', flopsPerParam: 3 },
+  '70b': { params: 70000, layers: 80, name: '70B', flopsPerParam: 3 },
+};
+
+const linkConfigs = {
+  nvlink: { bw: 800, name: 'NVLink (~900 GB/s, eff ~800)' },
+  pcie:   { bw: 50,  name: 'PCIe 5.0 (~64 GB/s, eff ~50)' },
+  ib:     { bw: 300, name: 'InfiniBand HDR (~400 GB/s, eff ~300)' },
+};
+
+let napkinModel = '7b';
+let napkinGpus = 8;
+let napkinLink = 'nvlink';
+
+function setNapkinModel(model) {
+  napkinModel = model;
+  document.querySelectorAll('[data-napkin-model]').forEach(b => {
+    b.classList.toggle('active', b.dataset.napkinModel === model);
+  });
+  updateLayerBucketViz();
+  updateNapkinMath();
+}
+
+function setNapkinGpus(n) {
+  napkinGpus = n;
+  document.querySelectorAll('[data-napkin-gpu]').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.napkinGpu) === n);
+  });
+  updateNapkinMath();
+}
+
+function setNapkinLink(link) {
+  napkinLink = link;
+  document.querySelectorAll('[data-napkin-link]').forEach(b => {
+    b.classList.toggle('active', b.dataset.napkinLink === link);
+  });
+  updateNapkinMath();
+}
+
+// Layer-by-layer bucket fill visualization
+function updateLayerBucketViz() {
+  const cfg = modelConfigs[napkinModel];
+  const bucketM = parseInt(document.getElementById('napkinBucketSlider').value);
+  document.getElementById('napkinBucketDisplay').textContent = bucketM + 'M';
+
+  const paramsPerLayerM = cfg.params / cfg.layers;
+  const numBuckets = Math.ceil(cfg.params / bucketM);
+  const layersPerBucket = bucketM / paramsPerLayerM;
+
+  const container = document.getElementById('layerBucketViz');
+  container.innerHTML = '';
+
+  // Show backward direction: last layer first
+  const maxLayersToShow = Math.min(cfg.layers, 16);
+  let currentBucketFill = 0;
+  let bucketNum = 1;
+
+  const vizDiv = document.createElement('div');
+  vizDiv.className = 'layer-bucket-viz';
+
+  for (let i = 0; i < maxLayersToShow; i++) {
+    const layerIdx = cfg.layers - i;
+    currentBucketFill += paramsPerLayerM;
+
+    const row = document.createElement('div');
+    row.className = 'lbv-row';
+
+    const label = document.createElement('div');
+    label.className = 'lbv-layer-label';
+    label.textContent = 'Layer ' + layerIdx;
+
+    const track = document.createElement('div');
+    track.className = 'lbv-bucket-track';
+
+    const fillPct = Math.min(100, (currentBucketFill / bucketM) * 100);
+    const fill = document.createElement('div');
+    fill.className = 'lbv-fill in-bucket';
+    fill.style.width = fillPct + '%';
+    fill.textContent = Math.round(currentBucketFill) + 'M / ' + bucketM + 'M';
+    track.appendChild(fill);
+
+    const event = document.createElement('div');
+    event.className = 'lbv-event';
+
+    if (currentBucketFill >= bucketM) {
+      fill.className = 'lbv-fill fired';
+      fill.style.width = '100%';
+      fill.textContent = 'Bucket ' + bucketNum + ' FULL';
+      event.innerHTML = '<span style="color: var(--primary);">&#x1F4E1; RS fires for Bucket ' + bucketNum + '!</span>';
+      currentBucketFill = currentBucketFill - bucketM;
+      bucketNum++;
+    } else {
+      event.innerHTML = '<span style="color: var(--fg-muted);">filling... (' + Math.round(fillPct) + '%)</span>';
+    }
+
+    row.appendChild(label);
+    row.appendChild(track);
+    row.appendChild(event);
+    vizDiv.appendChild(row);
+  }
+
+  if (cfg.layers > maxLayersToShow) {
+    const moreRow = document.createElement('div');
+    moreRow.style.cssText = 'text-align: center; font-size: 0.78rem; color: var(--fg-muted); padding: 8px 0;';
+    moreRow.textContent = '... ' + (cfg.layers - maxLayersToShow) + ' more layers ...';
+    vizDiv.appendChild(moreRow);
+  }
+
+  container.appendChild(vizDiv);
+
+  // Insight
+  const insightDiv = document.getElementById('napkinBucketInsight');
+  const layersUntilFirstFire = Math.ceil(layersPerBucket);
+  const overlapLayers = cfg.layers - layersUntilFirstFire;
+  const overlapPct = Math.round((overlapLayers / cfg.layers) * 100);
+
+  if (numBuckets <= 1) {
+    insightDiv.innerHTML = `
+      <div class="nb-verdict" style="background: rgba(255,112,67,0.1); border: 1px solid rgba(255,112,67,0.3); color: var(--red);">
+        Only <strong>1 bucket</strong> for the entire model! The reduce-scatter fires only after the FULL backward pass. <strong>Zero overlap.</strong><br>
+        <span style="font-size: 0.78rem; color: var(--fg-muted);">Reduce bucket_size to get overlap.</span>
+      </div>`;
+  } else if (numBuckets <= 3) {
+    insightDiv.innerHTML = `
+      <div class="nb-verdict" style="background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.3); color: var(--orange);">
+        <strong>${numBuckets} buckets</strong> &mdash; first fires after ~${layersUntilFirstFire} layers. Only <strong>~${overlapPct}%</strong> of backward can overlap with communication. Consider reducing bucket size.
+      </div>`;
+  } else {
+    insightDiv.innerHTML = `
+      <div class="nb-verdict" style="background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3); color: var(--primary);">
+        <strong>${numBuckets} buckets</strong> &mdash; first fires after just ~${layersUntilFirstFire} layers. <strong>~${overlapPct}%</strong> of backward overlaps with communication. Excellent!
+      </div>`;
+  }
+}
+
+document.getElementById('napkinBucketSlider').addEventListener('input', updateLayerBucketViz);
+updateLayerBucketViz();
+
+// Napkin math: compute vs communication time
+function updateNapkinMath() {
+  const cfg = modelConfigs[napkinModel];
+  const link = linkConfigs[napkinLink];
+  const bucketM = parseInt(document.getElementById('napkinBucketSlider').value);
+
+  // Compute time for backward (per bucket)
+  const totalParamsB = cfg.params / 1000; // in billions
+  const totalFLOPs = totalParamsB * 1e9 * cfg.flopsPerParam; // FLOPs for full backward
+  const h100TFLOPS = 990; // BF16 TFLOP/s
+  const fullBwdMs = (totalFLOPs / (h100TFLOPS * 1e12)) * 1000;
+  const numBuckets = Math.ceil(cfg.params / bucketM);
+  const computePerBucketMs = fullBwdMs / numBuckets;
+
+  // Communication time per bucket
+  const bucketBytes = bucketM * 1e6 * 2; // BF16
+  const bucketGB = bucketBytes / 1e9;
+  const commPerBucketMs = (bucketGB / link.bw) * 1000;
+
+  // Render compute derivation
+  document.getElementById('napkinComputeBox').innerHTML = `
+    <span class="eq-label">Backward FLOPs</span>
+    ${cfg.name} params &times; 3 FLOPs/param<br>
+    = <span class="eq-highlight">${(totalFLOPs / 1e12).toFixed(1)} TFLOPs</span> total backward<br><br>
+    H100 @ ${h100TFLOPS} TFLOP/s BF16<br>
+    Full backward: <span class="eq-highlight">${fullBwdMs.toFixed(1)}ms</span><br><br>
+    Per bucket (1/${numBuckets}th):<br>
+    <span style="font-size: 1rem; color: var(--pink);">${computePerBucketMs.toFixed(2)}ms</span>
+  `;
+
+  // Render comm derivation
+  document.getElementById('napkinCommBox').innerHTML = `
+    <span class="eq-label">Reduce-Scatter per Bucket</span>
+    ${bucketM}M elems &times; 2 bytes (BF16)<br>
+    = <span class="eq-highlight">${bucketGB.toFixed(1)} GB</span> per bucket<br><br>
+    ${link.name}<br>
+    Eff. bandwidth across ${napkinGpus} GPUs<br><br>
+    Time: ${bucketGB.toFixed(1)} GB / ${link.bw} GB/s<br>
+    <span style="font-size: 1rem; color: var(--blue);">${commPerBucketMs.toFixed(2)}ms</span>
+  `;
+
+  // Render comparison bars
+  const maxTime = Math.max(computePerBucketMs, commPerBucketMs);
+  const computePct = (computePerBucketMs / maxTime) * 85;
+  const commPct = (commPerBucketMs / maxTime) * 85;
+
+  document.getElementById('napkinComputeBar').style.width = computePct + '%';
+  document.getElementById('napkinComputeTime').textContent = computePerBucketMs.toFixed(2) + 'ms';
+  document.getElementById('napkinCommBar').style.width = commPct + '%';
+  document.getElementById('napkinCommTime').textContent = commPerBucketMs.toFixed(2) + 'ms';
+
+  // Verdict
+  const ratio = commPerBucketMs / computePerBucketMs;
+  const verdictDiv = document.getElementById('napkinVerdict');
+
+  if (ratio <= 1.0) {
+    verdictDiv.style.cssText = 'text-align: center; padding: 14px; border-radius: 10px; font-size: 0.88rem; font-weight: 600; margin-top: 16px; background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3); color: var(--primary);';
+    verdictDiv.innerHTML = `Comm (${commPerBucketMs.toFixed(2)}ms) &le; Compute (${computePerBucketMs.toFixed(2)}ms) &mdash; <strong>communication fits completely inside compute! Perfect overlap.</strong>`;
+  } else if (ratio <= 1.5) {
+    verdictDiv.style.cssText = 'text-align: center; padding: 14px; border-radius: 10px; font-size: 0.88rem; font-weight: 600; margin-top: 16px; background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.3); color: var(--orange);';
+    verdictDiv.innerHTML = `Comm (${commPerBucketMs.toFixed(2)}ms) is ~${Math.round(ratio * 100)}% of Compute (${computePerBucketMs.toFixed(2)}ms) &mdash; <strong>mostly overlapped, small tail exposed.</strong>`;
+  } else {
+    verdictDiv.style.cssText = 'text-align: center; padding: 14px; border-radius: 10px; font-size: 0.88rem; font-weight: 600; margin-top: 16px; background: rgba(255,112,67,0.1); border: 1px solid rgba(255,112,67,0.3); color: var(--red);';
+    verdictDiv.innerHTML = `Comm (${commPerBucketMs.toFixed(2)}ms) is ${ratio.toFixed(1)}&times; Compute (${computePerBucketMs.toFixed(2)}ms) &mdash; <strong>communication is the bottleneck. Consider larger buckets or faster interconnect.</strong>`;
+  }
+
+  // Render bucket-by-bucket timeline
+  renderNapkinTimeline(numBuckets, computePerBucketMs, commPerBucketMs);
+}
+
+function renderNapkinTimeline(numBuckets, computeMs, commMs) {
+  const container = document.getElementById('napkinTimeline');
+  const showBuckets = Math.min(numBuckets, 8);
+  const unitWidth = 80; // px per bucket width
+
+  // Compute row: continuous backward blocks
+  let computeHTML = '';
+  for (let i = 0; i < showBuckets; i++) {
+    const colors = ['#F06292', '#E91E63', '#F06292', '#E91E63'];
+    computeHTML += `<div class="tl-block" style="width: ${unitWidth}px; background: ${colors[i % colors.length]}; flex-shrink: 0;">BWD B${i + 1}</div>`;
+  }
+  if (numBuckets > showBuckets) {
+    computeHTML += `<div class="tl-block tl-idle" style="width: 60px; flex-shrink: 0;">...+${numBuckets - showBuckets}</div>`;
+  }
+
+  // Comm row: offset by one bucket (first bucket has no comm overlap — it's computing)
+  // Then each RS overlaps with the next bucket's compute
+  const ratio = commMs / computeMs;
+  const commWidth = Math.round(unitWidth * Math.min(ratio, 1.3));
+
+  let commHTML = `<div class="tl-block tl-idle" style="width: ${unitWidth}px; flex-shrink: 0; font-size: 0.55rem;">waiting for B1</div>`;
+  for (let i = 0; i < showBuckets - 1; i++) {
+    commHTML += `<div class="tl-block tl-reduce-scatter" style="width: ${commWidth}px; flex-shrink: 0; font-size: 0.55rem;">RS B${i + 1}</div>`;
+    if (commWidth < unitWidth) {
+      commHTML += `<div class="tl-block tl-idle" style="width: ${unitWidth - commWidth}px; flex-shrink: 0;"></div>`;
+    }
+  }
+  // Last bucket RS fires after backward ends (small tail)
+  commHTML += `<div class="tl-block tl-reduce-scatter" style="width: ${commWidth}px; flex-shrink: 0; font-size: 0.55rem;">RS B${showBuckets}</div>`;
+
+  container.innerHTML = `
+    <div style="min-width: ${(showBuckets + 1) * unitWidth + 200}px;">
+      <div class="tl-row" style="min-width: 0;">
+        <div class="tl-label">Compute</div>
+        <div class="tl-track" style="overflow: visible; background: transparent;">
+          ${computeHTML}
+        </div>
+      </div>
+      <div class="tl-row" style="min-width: 0;">
+        <div class="tl-label">Network</div>
+        <div class="tl-track" style="overflow: visible; background: transparent;">
+          ${commHTML}
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 4px; padding-left: 100px; margin-top: 8px;">
+        <div style="width: ${unitWidth}px; border-top: 2px dashed rgba(255,255,255,0.15); flex-shrink: 0;"></div>
+        <span style="font-size: 0.65rem; color: var(--fg-muted); font-family: var(--font-mono);">&larr; ${computeMs.toFixed(2)}ms per bucket &rarr;</span>
+      </div>
+    </div>
+  `;
+}
+
+updateNapkinMath();
 
 // ============================================
 // OVERLAP TIMELINE
