@@ -1,0 +1,1762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepSpeed ZeRO Config Parameters — Visual Deep Dive</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* ========================================
+   CSS Variables — Design System
+   ======================================== */
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #121212;
+  --bg-card-hover: #1a1a1a;
+  --bg-section-alt: #0f0f0f;
+  --fg: #f2f2f2;
+  --fg-muted: #a3a3a3;
+  --border: #262626;
+  --border-light: #333;
+  --primary: #00d46a;
+  --primary-dim: #00a854;
+  --secondary: #00c8e6;
+  --accent: #a78bfa;
+  --red: #FF7043;
+  --orange: #FF9800;
+  --yellow: #FFCA28;
+  --blue: #42A5F5;
+  --green: #66BB6A;
+  --pink: #F06292;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --max-w: 1280px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-sans);
+  line-height: 1.7; -webkit-font-smoothing: antialiased; overflow-x: hidden;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: var(--font-mono); }
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+
+/* ========================================
+   NAVBAR
+   ======================================== */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,10,0.85); backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.1rem; }
+.brand-tag {
+  font-size: 0.7rem; background: var(--primary); color: #000;
+  padding: 2px 8px; border-radius: 9999px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+/* ========================================
+   HERO
+   ======================================== */
+.hero {
+  position: relative; min-height: 100vh; display: flex;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 120px 24px 80px; overflow: hidden;
+}
+.hero-bg-orbs { position: absolute; inset: 0; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.12; }
+.orb-green { width: 500px; height: 500px; background: var(--primary); top: 10%; left: 10%; animation: float-slow 20s ease-in-out infinite; }
+.orb-cyan { width: 400px; height: 400px; background: var(--secondary); top: 40%; right: 5%; animation: float-slow 25s ease-in-out infinite reverse; }
+.orb-purple { width: 350px; height: 350px; background: var(--accent); bottom: 10%; left: 30%; animation: float-slow 22s ease-in-out infinite; }
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(30px, -20px); }
+  50% { transform: translate(-20px, 30px); }
+  75% { transform: translate(20px, 20px); }
+}
+.hero-content { position: relative; z-index: 1; max-width: 850px; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3);
+  border-radius: 9999px; padding: 6px 18px; font-size: 0.82rem;
+  font-weight: 500; color: var(--primary); margin-bottom: 24px;
+}
+.pulse-dot { width: 8px; height: 8px; background: var(--primary); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }
+.hero h1 { font-family: var(--font-serif); font-style: italic; font-size: clamp(2.5rem, 7vw, 4.5rem); font-weight: 400; line-height: 1.1; margin-bottom: 20px; }
+.hero-subtitle { font-size: 1.1rem; color: var(--fg-muted); line-height: 1.7; max-width: 700px; margin: 0 auto 40px; }
+.hero-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.hero-stat-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 12px; transition: border-color 0.3s, transform 0.2s;
+}
+.hero-stat-card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-2px); }
+.stat-number {
+  font-size: 1.7rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.stat-label { font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* ========================================
+   SECTIONS
+   ======================================== */
+.section { padding: 100px 0; position: relative; }
+.section-dark { background: var(--bg-section-alt); }
+.section-heading { text-align: center; margin-bottom: 60px; }
+.section-label {
+  display: inline-block; font-size: 0.78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.5px; color: var(--primary); margin-bottom: 12px;
+}
+.section-heading h2 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; line-height: 1.2; margin-bottom: 16px;
+}
+.section-subtitle { color: var(--fg-muted); font-size: 1.05rem; max-width: 650px; margin: 0 auto; }
+
+/* ========================================
+   CARDS
+   ======================================== */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; transition: border-color 0.3s, transform 0.2s;
+}
+.card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-3px); }
+.card h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; }
+.card p, .card li { font-size: 0.88rem; color: var(--fg-muted); line-height: 1.6; }
+.card code {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-size: 0.82rem; color: var(--secondary);
+}
+
+/* ========================================
+   GRIDS
+   ======================================== */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 900px) { .grid-2, .grid-3, .grid-4, .hero-cards { grid-template-columns: 1fr; } }
+
+/* ========================================
+   EQUATION BOX
+   ======================================== */
+.equation-box {
+  background: rgba(0,0,0,0.3); border: 1px solid rgba(0,200,230,0.2); border-radius: 10px;
+  padding: 16px 20px; margin: 16px 0; font-family: var(--font-mono);
+  font-size: 0.88rem; color: var(--secondary); text-align: center; line-height: 2;
+}
+.eq-label { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--fg-muted); margin-bottom: 8px; font-family: var(--font-sans); font-weight: 600; }
+.eq-highlight { color: var(--primary); font-weight: 600; }
+
+/* ========================================
+   CALLOUTS
+   ======================================== */
+.callout { border-radius: 12px; padding: 20px 24px; margin: 20px 0; font-size: 0.88rem; line-height: 1.6; }
+.callout-info { background: rgba(66,165,245,0.06); border: 1px solid rgba(66,165,245,0.2); color: var(--fg-muted); }
+.callout-green { background: rgba(0,212,106,0.06); border: 1px solid rgba(0,212,106,0.2); color: var(--fg-muted); }
+.callout-warn { background: rgba(255,112,67,0.06); border: 1px solid rgba(255,112,67,0.2); color: var(--fg-muted); }
+.callout-purple { background: rgba(167,139,250,0.06); border: 1px solid rgba(167,139,250,0.2); color: var(--fg-muted); }
+.callout strong { color: var(--fg); }
+.callout code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; color: var(--secondary); }
+
+/* ========================================
+   INTERACTIVE CONTROLS
+   ======================================== */
+.controls-bar {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  margin-bottom: 24px; justify-content: center;
+}
+.control-group { display: flex; align-items: center; gap: 8px; }
+.control-label { font-size: 0.78rem; font-weight: 600; color: var(--fg-muted); }
+.control-value {
+  font-family: var(--font-mono); font-size: 0.82rem; font-weight: 600;
+  color: var(--secondary); min-width: 60px; text-align: right;
+}
+input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  width: 200px; height: 6px; border-radius: 3px;
+  background: var(--border); outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--primary); cursor: pointer; border: 2px solid var(--bg);
+  box-shadow: 0 0 8px rgba(0,212,106,0.4);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--primary); cursor: pointer; border: 2px solid var(--bg);
+}
+
+/* Toggle buttons */
+.toggle-group {
+  display: flex; gap: 0; border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--border); width: fit-content;
+}
+.toggle-btn {
+  padding: 8px 20px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  background: var(--bg); color: var(--fg-muted); border: none;
+  transition: all 0.2s; font-family: var(--font-sans);
+}
+.toggle-btn:hover { color: var(--fg); }
+.toggle-btn.active { background: rgba(0,212,106,0.15); color: var(--primary); }
+
+/* Selector pills */
+.pill-selector { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 20px; }
+.pill-btn {
+  padding: 8px 18px; border-radius: 9999px; font-size: 0.82rem; font-weight: 500;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--fg-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.pill-btn:hover { border-color: rgba(0,212,106,0.3); color: var(--fg); }
+.pill-btn.active { background: rgba(0,212,106,0.1); border-color: var(--primary); color: var(--primary); font-weight: 600; }
+
+/* ========================================
+   BUCKET VISUALIZATION
+   ======================================== */
+.bucket-container {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 24px 0;
+}
+.bucket-title { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.bucket-subtitle { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+
+.bucket-stream {
+  display: flex; gap: 3px; align-items: center; margin: 12px 0;
+  min-height: 60px; position: relative;
+}
+.bucket-stream-label {
+  width: 120px; font-size: 0.75rem; font-weight: 600; color: var(--fg-muted);
+  font-family: var(--font-mono); flex-shrink: 0; text-align: right; padding-right: 12px;
+}
+.bucket-track {
+  flex: 1; display: flex; gap: 2px; align-items: center;
+  background: rgba(255,255,255,0.02); border-radius: 8px; padding: 6px;
+  min-height: 48px; overflow: hidden;
+}
+.bucket-block {
+  height: 40px; border-radius: 6px; display: flex; align-items: center;
+  justify-content: center; font-size: 0.65rem; font-weight: 600; color: #fff;
+  transition: all 0.4s ease; cursor: default; position: relative;
+  overflow: hidden; white-space: nowrap;
+}
+.bucket-block:hover { filter: brightness(1.2); transform: scaleY(1.05); }
+.bucket-grad { background: #7c5cbf; }
+.bucket-comm { background: #42A5F5; }
+.bucket-prefetch { background: var(--secondary); }
+.bucket-allgather { background: #66BB6A; }
+.bucket-idle { background: rgba(255,255,255,0.04); border: 1px dashed rgba(255,255,255,0.1); color: var(--fg-muted); }
+
+.bucket-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; justify-content: center; }
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted); }
+.lg-swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+/* ========================================
+   MEMORY BAR
+   ======================================== */
+.mem-bar-container {
+  margin: 24px 0; padding: 20px 24px;
+  background: rgba(0,0,0,0.25); border-radius: 14px; border: 1px solid var(--border);
+}
+.mem-bar-label { font-size: 0.82rem; font-weight: 600; margin-bottom: 12px; }
+.mem-bar-label code { color: var(--secondary); font-size: 0.78rem; }
+.mem-bar-row {
+  display: flex; border-radius: 8px; overflow: hidden; height: 44px;
+}
+.mem-seg {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.65rem; font-weight: 600; color: #fff; transition: flex 0.5s ease;
+  white-space: nowrap; overflow: hidden; min-width: 0;
+}
+.mem-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; justify-content: center; }
+.mem-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted); }
+.mem-swatch { width: 12px; height: 12px; border-radius: 3px; }
+
+/* ========================================
+   PARAMETER CARDS (config params)
+   ======================================== */
+.param-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 24px; transition: all 0.3s; cursor: default;
+}
+.param-card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-2px); }
+.param-name {
+  font-family: var(--font-mono); font-size: 0.88rem; font-weight: 600;
+  color: var(--secondary); margin-bottom: 4px;
+}
+.param-default {
+  display: inline-block; font-family: var(--font-mono); font-size: 0.72rem;
+  background: rgba(0,212,106,0.08); color: var(--primary); padding: 2px 8px;
+  border-radius: 6px; margin-bottom: 10px;
+}
+.param-card p { font-size: 0.85rem; color: var(--fg-muted); line-height: 1.6; }
+.param-category-badge {
+  display: inline-block; font-size: 0.65rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1px; padding: 2px 8px;
+  border-radius: 4px; margin-bottom: 8px;
+}
+.cat-bucket { background: rgba(66,165,245,0.12); color: var(--blue); }
+.cat-overlap { background: rgba(167,139,250,0.12); color: var(--accent); }
+.cat-memory { background: rgba(0,212,106,0.12); color: var(--primary); }
+.cat-zero3 { background: rgba(255,152,0,0.12); color: var(--orange); }
+
+/* ========================================
+   TIMELINE DIAGRAM
+   ======================================== */
+.timeline-container {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 24px 0; overflow-x: auto;
+}
+.timeline-title { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.timeline-sub { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+.tl-row { display: flex; align-items: center; margin-bottom: 8px; min-width: 700px; }
+.tl-label { width: 100px; font-size: 0.72rem; font-weight: 600; color: var(--fg-muted); font-family: var(--font-mono); flex-shrink: 0; text-align: right; padding-right: 10px; }
+.tl-track { flex: 1; display: flex; height: 36px; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,0.02); }
+.tl-block {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.62rem; font-weight: 600; color: #fff; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; padding: 0 4px; transition: opacity 0.3s;
+}
+.tl-block:hover { opacity: 0.85; }
+.tl-fwd { background: #66BB6A; }
+.tl-bwd { background: #F06292; }
+.tl-allreduce { background: #42A5F5; }
+.tl-optim { background: #FF9800; }
+.tl-reduce-scatter { background: #7c5cbf; }
+.tl-allgather { background: #00c8e6; }
+.tl-idle { background: rgba(255,255,255,0.04); color: var(--fg-muted); }
+.tl-prefetch { background: rgba(0,200,230,0.3); border: 1px dashed var(--secondary); color: var(--secondary); }
+
+/* ========================================
+   COMPARISON TABLE
+   ======================================== */
+.comp-table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); margin: 20px 0; }
+.comp-table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  background: var(--bg-card); overflow: hidden;
+}
+.comp-table th {
+  padding: 14px 16px; font-size: 0.75rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  background: rgba(0,212,106,0.06); color: var(--primary); text-align: left;
+}
+.comp-table td {
+  padding: 12px 16px; font-size: 0.82rem; border-top: 1px solid var(--border); color: var(--fg-muted);
+}
+.comp-table tr:hover td { background: rgba(255,255,255,0.02); }
+.comp-table td code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; color: var(--secondary); }
+.val-good { color: var(--green) !important; font-weight: 600; }
+.val-bad { color: var(--red) !important; font-weight: 600; }
+.val-neutral { color: var(--yellow) !important; font-weight: 600; }
+
+/* Number highlights */
+.num-green { color: var(--primary); font-weight: 700; font-family: var(--font-mono); }
+.num-blue { color: var(--blue); font-weight: 700; font-family: var(--font-mono); }
+.num-orange { color: var(--orange); font-weight: 700; font-family: var(--font-mono); }
+.num-red { color: var(--red); font-weight: 700; font-family: var(--font-mono); }
+.num-cyan { color: var(--secondary); font-weight: 700; font-family: var(--font-mono); }
+
+/* ========================================
+   ZeRO-3 LIFECYCLE ANIMATION
+   ======================================== */
+.lifecycle-container {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 24px 0;
+}
+.lifecycle-gpus {
+  display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin: 20px 0;
+}
+.gpu-card {
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px; width: 200px; text-align: center;
+}
+.gpu-card h4 { font-size: 0.82rem; font-weight: 600; margin-bottom: 10px; }
+.gpu-mem-bar {
+  height: 32px; border-radius: 6px; overflow: hidden; display: flex;
+  background: rgba(255,255,255,0.03); margin: 6px 0;
+}
+.gpu-mem-seg {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.58rem; font-weight: 600; color: #fff;
+  transition: all 0.5s ease;
+}
+.gpu-status {
+  font-size: 0.72rem; font-weight: 500; margin-top: 8px; padding: 4px 10px;
+  border-radius: 6px; display: inline-block;
+}
+
+/* Phase indicator */
+.phase-indicator {
+  text-align: center; margin: 16px 0;
+}
+.phase-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 24px; border-radius: 10px; font-size: 0.88rem;
+  font-weight: 600; border: 1px solid;
+}
+.phase-desc {
+  font-size: 0.82rem; color: var(--fg-muted); margin-top: 8px; max-width: 600px;
+  margin-left: auto; margin-right: auto;
+}
+
+/* ========================================
+   INTERACTIVE BUCKET SIZE EXPLORER
+   ======================================== */
+.bucket-explorer {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 24px 0;
+}
+.bucket-vis-area {
+  display: flex; gap: 6px; align-items: flex-end; justify-content: center;
+  height: 180px; padding: 12px 0; margin: 16px 0;
+}
+.bkt-bar {
+  border-radius: 4px 4px 0 0; transition: all 0.4s ease;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  font-size: 0.6rem; font-weight: 600; color: #fff; padding-bottom: 4px;
+  cursor: default; position: relative;
+}
+.bkt-bar:hover { filter: brightness(1.2); }
+.bkt-bar-label {
+  position: absolute; bottom: -20px; font-size: 0.58rem; color: var(--fg-muted);
+  white-space: nowrap; font-family: var(--font-mono);
+}
+.metrics-row {
+  display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-top: 20px;
+}
+.metric-box {
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 20px; text-align: center; min-width: 140px;
+}
+.metric-val { font-family: var(--font-mono); font-size: 1.4rem; font-weight: 700; }
+.metric-label { font-size: 0.72rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* ========================================
+   CODE BLOCK
+   ======================================== */
+.code-block {
+  background: #0d0d1a; border: 1px solid rgba(167,139,250,0.15); border-radius: 10px;
+  padding: 16px 20px; margin: 16px 0; overflow-x: auto; font-size: 0.78rem; line-height: 1.7;
+}
+.code-block .kw { color: var(--accent); }
+.code-block .fn { color: var(--secondary); }
+.code-block .cm { color: #6a6a8a; }
+.code-block .st { color: var(--green); }
+.code-block .num { color: var(--orange); }
+.code-block .key { color: var(--blue); }
+
+/* ========================================
+   MENTAL MODEL / THREE LEVERS
+   ======================================== */
+.lever-container {
+  display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin: 24px 0;
+}
+.lever-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 24px; flex: 1; min-width: 260px; max-width: 380px;
+  transition: all 0.3s; position: relative; overflow: hidden;
+}
+.lever-card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-2px); }
+.lever-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+}
+.lever-1::before { background: var(--blue); }
+.lever-2::before { background: var(--accent); }
+.lever-3::before { background: var(--orange); }
+.lever-icon { font-size: 2rem; margin-bottom: 10px; }
+.lever-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+.lever-card p { font-size: 0.85rem; color: var(--fg-muted); line-height: 1.6; }
+.lever-params {
+  margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px;
+}
+.lever-param-tag {
+  font-family: var(--font-mono); font-size: 0.68rem; font-weight: 500;
+  padding: 3px 8px; border-radius: 6px; background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+}
+
+/* ========================================
+   TAKEAWAY CARDS
+   ======================================== */
+.takeaway-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 24px; position: relative; overflow: hidden;
+}
+.takeaway-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+}
+.takeaway-num {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(0,212,106,0.12); color: var(--primary); font-weight: 700;
+  font-size: 0.8rem; display: flex; align-items: center; justify-content: center;
+  margin-bottom: 12px; font-family: var(--font-mono);
+}
+.takeaway-card h4 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
+.takeaway-card p { font-size: 0.85rem; color: var(--fg-muted); line-height: 1.6; }
+
+/* ========================================
+   FOOTER
+   ======================================== */
+.footer { padding: 60px 0 40px; border-top: 1px solid var(--border); text-align: center; }
+.footer-brand { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
+.footer p { font-size: 0.82rem; color: var(--fg-muted); }
+.footer-muted { font-size: 0.78rem !important; color: rgba(163,163,163,0.5) !important; }
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+.fade-in { opacity: 0; transform: translateY(20px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+.stagger-1 { transition-delay: 0.1s; }
+.stagger-2 { transition-delay: 0.2s; }
+.stagger-3 { transition-delay: 0.3s; }
+.stagger-4 { transition-delay: 0.4s; }
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+@media (max-width: 768px) {
+  .hero-cards { grid-template-columns: repeat(2, 1fr); }
+  .nav-links { display: none; }
+  .hero h1 { font-size: 2.2rem; }
+  .section { padding: 60px 0; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .tl-row { min-width: 500px; }
+  .gpu-card { width: 100%; }
+  .lever-container { flex-direction: column; align-items: center; }
+  input[type="range"] { width: 150px; }
+  .controls-bar { gap: 10px; }
+}
+
+::selection { background: rgba(0,212,106,0.3); color: #fff; }
+
+/* Tradeoff spectrum */
+.tradeoff-spectrum {
+  display: flex; align-items: center; gap: 8px; margin: 12px 0;
+}
+.spectrum-bar {
+  flex: 1; height: 8px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--blue), var(--primary), var(--red));
+}
+.spectrum-left { font-size: 0.72rem; color: var(--blue); font-weight: 600; min-width: 100px; text-align: right; }
+.spectrum-right { font-size: 0.72rem; color: var(--red); font-weight: 600; min-width: 100px; }
+.spectrum-marker {
+  position: relative; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--fg); border: 2px solid var(--bg);
+  box-shadow: 0 0 6px rgba(255,255,255,0.5);
+  margin-left: -6px;
+}
+
+/* Tab content */
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Persistence demo */
+.persist-demo {
+  display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
+  margin: 20px 0;
+}
+.persist-block {
+  width: 60px; height: 60px; border-radius: 10px; display: flex;
+  flex-direction: column; align-items: center; justify-content: center;
+  font-size: 0.6rem; font-weight: 600; border: 2px solid;
+  transition: all 0.4s; cursor: default;
+}
+.persist-block.small {
+  background: rgba(0,212,106,0.08); border-color: rgba(0,212,106,0.3); color: var(--primary);
+}
+.persist-block.large {
+  background: rgba(66,165,245,0.08); border-color: rgba(66,165,245,0.3); color: var(--blue);
+}
+.persist-block .param-size { font-family: var(--font-mono); font-size: 0.55rem; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <span>ShallowSpeed</span>
+      <span class="brand-tag">ZeRO Config</span>
+    </div>
+    <div class="nav-links">
+      <a href="#mental-model">Mental Model</a>
+      <a href="#buckets">Bucket Sizes</a>
+      <a href="#overlap">Comm Overlap</a>
+      <a href="#memory">Memory Layout</a>
+      <a href="#zero3">ZeRO-3 Params</a>
+      <a href="#explorer">Explorer</a>
+      <a href="#config">Full Config</a>
+      <a href="#takeaways">Takeaways</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-green"></div>
+    <div class="orb orb-cyan"></div>
+    <div class="orb orb-purple"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge"><span class="pulse-dot"></span> DeepSpeed ZeRO &mdash; Configuration Deep Dive</div>
+    <h1><span class="gradient-text">ZeRO Config Parameters</span></h1>
+    <p class="hero-subtitle">DeepSpeed's ZeRO optimizer has over a dozen tuning parameters that control communication granularity, memory layout, and prefetching. Instead of memorizing defaults, let's build intuition for <strong>what each parameter does and why</strong>.</p>
+    <div class="hero-cards">
+      <div class="hero-stat-card">
+        <div class="stat-number">3 Levers</div>
+        <div class="stat-label">Buckets, Overlap, Persistence</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">500M</div>
+        <div class="stat-label">Default bucket size (elements)</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">~1 GB</div>
+        <div class="stat-label">Buffer per bucket (BF16)</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">12+</div>
+        <div class="stat-label">Tunable parameters</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ THE MENTAL MODEL ============ -->
+<section class="section" id="mental-model">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">The Big Picture</div>
+      <h2><span class="gradient-text">Three Levers of ZeRO Config</span></h2>
+      <p class="section-subtitle">Every ZeRO config parameter falls into one of three categories. Master these three levers and the rest follows naturally.</p>
+    </div>
+
+    <div class="lever-container fade-in">
+      <div class="lever-card lever-1">
+        <div class="lever-icon">&#x1F4E6;</div>
+        <h3 style="color: var(--blue);">Communication Granularity</h3>
+        <p>How many parameter elements get batched together into a "bucket" before a collective communication call fires. Larger buckets = fewer calls, more latency before the first one.</p>
+        <div class="lever-params">
+          <span class="lever-param-tag" style="color: var(--blue);">reduce_bucket_size</span>
+          <span class="lever-param-tag" style="color: var(--blue);">allgather_bucket_size</span>
+          <span class="lever-param-tag" style="color: var(--blue);">stage3_prefetch_bucket_size</span>
+        </div>
+      </div>
+      <div class="lever-card lever-2">
+        <div class="lever-icon">&#x1F504;</div>
+        <h3 style="color: var(--accent);">Compute-Comm Overlap</h3>
+        <p>How much communication hides behind computation. When overlap is enabled, communication runs concurrently with backward passes, making the transfer time "invisible".</p>
+        <div class="lever-params">
+          <span class="lever-param-tag" style="color: var(--accent);">overlap_comm</span>
+          <span class="lever-param-tag" style="color: var(--accent);">reduce_scatter</span>
+        </div>
+      </div>
+      <div class="lever-card lever-3">
+        <div class="lever-icon">&#x1F4BE;</div>
+        <h3 style="color: var(--orange);">Persistence &amp; Caching</h3>
+        <p>Which parameters are worth sharding vs. keeping replicated. Tiny params cost negligible memory to replicate but incur real latency to gather every time.</p>
+        <div class="lever-params">
+          <span class="lever-param-tag" style="color: var(--orange);">stage3_param_persistence_threshold</span>
+          <span class="lever-param-tag" style="color: var(--orange);">stage3_max_live_parameters</span>
+          <span class="lever-param-tag" style="color: var(--orange);">stage3_max_reuse_distance</span>
+          <span class="lever-param-tag" style="color: var(--orange);">contiguous_gradients</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-green fade-in" style="max-width: 800px; margin: 24px auto;">
+      <strong>The core tradeoff:</strong> Communication one parameter at a time gives maximum overlap but maximum overhead per message. Communicating everything at once gives minimum overhead but zero overlap. Buckets are the middle ground &mdash; batch <em>enough</em> before firing, but not so much that you waste overlap opportunity.
+    </div>
+  </div>
+</section>
+
+<!-- ============ BUCKET SIZES ============ -->
+<section class="section section-dark" id="buckets">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Lever 1</div>
+      <h2><span class="gradient-text">Bucket Sizes</span></h2>
+      <p class="section-subtitle">Buckets control <strong>communication granularity</strong> &mdash; how many elements accumulate before a collective fires.</p>
+    </div>
+
+    <!-- The three bucket params -->
+    <div class="grid-3 fade-in">
+      <div class="param-card">
+        <div class="param-category-badge cat-bucket">Bucket</div>
+        <div class="param-name">reduce_bucket_size</div>
+        <div class="param-default">500,000,000</div>
+        <p>Gradients accumulate into a buffer of this size before the <strong>reduce-scatter</strong> fires. Used in both Stage 2 and Stage 3.</p>
+        <div class="equation-box" style="margin-top: 12px; font-size: 0.78rem;">
+          <span class="eq-label">Memory per buffer (BF16)</span>
+          500M &times; 2 bytes = <span class="eq-highlight">~1 GB</span>
+        </div>
+      </div>
+      <div class="param-card">
+        <div class="param-category-badge cat-bucket">Bucket</div>
+        <div class="param-name">allgather_bucket_size</div>
+        <div class="param-default">500,000,000</div>
+        <p>Same idea but for the <strong>all-gather</strong> step: when broadcasting updated parameters back. Controls how many elements are gathered per call.</p>
+        <div class="equation-box" style="margin-top: 12px; font-size: 0.78rem;">
+          <span class="eq-label">Memory per buffer (BF16)</span>
+          500M &times; 2 bytes = <span class="eq-highlight">~1 GB</span>
+        </div>
+      </div>
+      <div class="param-card">
+        <div class="param-category-badge cat-bucket">Bucket</div>
+        <div class="param-name">stage3_prefetch_bucket_size</div>
+        <div class="param-default">200,000,000</div>
+        <p>ZeRO-3 only. How many parameters to <strong>prefetch</strong> (all-gather in advance) for the next layer while the current layer computes. Intentionally smaller &mdash; you want prefetching to <strong>start early</strong>.</p>
+        <div class="equation-box" style="margin-top: 12px; font-size: 0.78rem;">
+          <span class="eq-label">Memory per buffer (BF16)</span>
+          200M &times; 2 bytes = <span class="eq-highlight">~400 MB</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactive: Bucket Size Tradeoff -->
+    <div class="bucket-explorer fade-in" style="margin-top: 40px;">
+      <h4 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Interactive: Bucket Size Tradeoff</h4>
+      <p style="font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px;">Drag the slider to see how bucket size affects the number of communication calls and buffer memory for a <span class="num-cyan">1B parameter</span> model.</p>
+
+      <div class="controls-bar">
+        <div class="control-group">
+          <span class="control-label">Bucket Size:</span>
+          <input type="range" id="bucketSlider" min="50" max="1000" value="500" step="50">
+          <span class="control-value" id="bucketSizeDisplay">500M</span>
+        </div>
+        <div class="control-group">
+          <span class="control-label">Dtype:</span>
+          <div class="toggle-group">
+            <button class="toggle-btn active" data-dtype="bf16" onclick="setDtype('bf16')">BF16</button>
+            <button class="toggle-btn" data-dtype="fp32" onclick="setDtype('fp32')">FP32</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="bucket-vis-area" id="bucketVisArea"></div>
+
+      <div class="metrics-row">
+        <div class="metric-box">
+          <div class="metric-val num-blue" id="metricCalls">2</div>
+          <div class="metric-label">Communication Calls</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-val num-green" id="metricBuffer">1.0 GB</div>
+          <div class="metric-label">Buffer Memory</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-val num-orange" id="metricLatency">Medium</div>
+          <div class="metric-label">First-Call Latency</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-val num-cyan" id="metricOverlap">Good</div>
+          <div class="metric-label">Overlap Potential</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Why prefetch bucket is smaller -->
+    <div class="callout callout-info fade-in" style="max-width: 800px; margin: 24px auto;">
+      <strong>Why is <code>stage3_prefetch_bucket_size</code> smaller (200M vs 500M)?</strong><br>
+      Prefetching should start <em>early</em> to maximize overlap with compute. A smaller bucket fills faster, so the first all-gather fires sooner. If the prefetch bucket were 500M, you'd wait longer before any prefetching begins &mdash; defeating the purpose.
+    </div>
+  </div>
+</section>
+
+<!-- ============ COMMUNICATION OVERLAP ============ -->
+<section class="section" id="overlap">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Lever 2</div>
+      <h2><span class="gradient-text">Communication Overlap</span></h2>
+      <p class="section-subtitle">The magic that makes distributed training fast: <strong>hide communication behind computation</strong>.</p>
+    </div>
+
+    <!-- overlap_comm and reduce_scatter -->
+    <div class="grid-2 fade-in">
+      <div class="param-card">
+        <div class="param-category-badge cat-overlap">Overlap</div>
+        <div class="param-name">overlap_comm</div>
+        <div class="param-default">true</div>
+        <p>When enabled, gradient communication (reduce-scatter) runs <strong>concurrently</strong> with the backward pass. While one layer's gradients are being communicated, the next layer's backward is already computing.</p>
+        <div style="margin-top: 12px; font-family: var(--font-mono); font-size: 0.75rem; background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 8px; color: var(--fg-muted);">
+          <span style="color: var(--pink);">bwd(layer N)</span> + <span style="color: var(--blue);">reduce-scatter(layer N+1)</span> <span style="color: var(--primary);">// concurrent!</span>
+        </div>
+      </div>
+      <div class="param-card">
+        <div class="param-category-badge cat-overlap">Overlap</div>
+        <div class="param-name">reduce_scatter</div>
+        <div class="param-default">true (Stage 2)</div>
+        <p>Use <strong>reduce-scatter</strong> instead of all-reduce for gradients. In reduce-scatter, each GPU only receives <em>its own slice</em> of the averaged gradients &mdash; exactly what ZeRO needs for gradient partitioning.</p>
+        <div class="equation-box" style="margin-top: 12px; font-size: 0.78rem;">
+          <span class="eq-label">Communication Volume</span>
+          All-Reduce: <span class="eq-highlight">2P</span> &nbsp;|&nbsp; Reduce-Scatter: <span class="eq-highlight">P</span> (each GPU gets 1/N)
+        </div>
+      </div>
+    </div>
+
+    <!-- Animated Timeline: Overlap vs No Overlap -->
+    <div class="timeline-container fade-in" style="margin-top: 32px;">
+      <div class="timeline-title">Overlap OFF vs ON</div>
+      <div class="timeline-sub">Toggle to see how <code>overlap_comm</code> transforms the timeline. When ON, communication is hidden behind backward compute.</div>
+
+      <div class="controls-bar" style="justify-content: flex-start; margin-bottom: 16px;">
+        <div class="toggle-group" id="overlapToggle">
+          <button class="toggle-btn" data-overlap="off" onclick="setOverlap('off')">overlap_comm = false</button>
+          <button class="toggle-btn active" data-overlap="on" onclick="setOverlap('on')">overlap_comm = true</button>
+        </div>
+      </div>
+
+      <div id="overlapTimeline">
+        <!-- Filled by JS -->
+      </div>
+
+      <div class="bucket-legend" style="margin-top: 16px;">
+        <div class="legend-item"><span class="lg-swatch" style="background: #66BB6A;"></span> Forward</div>
+        <div class="legend-item"><span class="lg-swatch" style="background: #F06292;"></span> Backward</div>
+        <div class="legend-item"><span class="lg-swatch" style="background: #7c5cbf;"></span> Reduce-Scatter</div>
+        <div class="legend-item"><span class="lg-swatch" style="background: #00c8e6;"></span> All-Gather</div>
+        <div class="legend-item"><span class="lg-swatch" style="background: #FF9800;"></span> Optimizer</div>
+        <div class="legend-item"><span class="lg-swatch" style="background: rgba(255,255,255,0.06);"></span> Idle</div>
+      </div>
+
+      <div id="overlapSavings" style="text-align: center; margin-top: 16px;"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MEMORY LAYOUT ============ -->
+<section class="section section-dark" id="memory">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Memory Optimization</div>
+      <h2><span class="gradient-text">Memory Layout &amp; Contiguous Gradients</span></h2>
+      <p class="section-subtitle">How DeepSpeed arranges memory to make communication faster and reduce fragmentation.</p>
+    </div>
+
+    <div class="grid-2 fade-in">
+      <div class="card">
+        <div class="param-category-badge cat-memory">Memory</div>
+        <div class="param-name" style="margin-bottom: 12px;">contiguous_gradients = true</div>
+        <h3>Contiguous Gradient Buffer</h3>
+        <p>Pre-allocate <strong>one big contiguous block</strong> of memory for all gradients instead of letting them scatter across the heap.</p>
+        <p style="margin-top: 10px;"><strong>Benefits:</strong></p>
+        <ul style="padding-left: 18px; margin-top: 6px;">
+          <li>No memory fragmentation from scattered allocations</li>
+          <li>Faster network transfers (DMA prefers contiguous memory)</li>
+          <li>Predictable memory usage</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Scattered vs Contiguous</h3>
+        <p style="margin-bottom: 16px;">Visualizing how gradients are laid out in GPU memory:</p>
+
+        <!-- Scattered memory -->
+        <div class="mem-bar-container" style="padding: 14px 18px;">
+          <div class="mem-bar-label">Scattered <code>contiguous_gradients = false</code></div>
+          <div class="mem-bar-row" id="scatteredMem">
+            <div class="mem-seg" style="flex: 2; background: #7c5cbf;">g<sub>1</sub></div>
+            <div class="mem-seg" style="flex: 1; background: rgba(255,255,255,0.05);"></div>
+            <div class="mem-seg" style="flex: 1.5; background: #7c5cbf;">g<sub>2</sub></div>
+            <div class="mem-seg" style="flex: 0.5; background: rgba(255,255,255,0.05);"></div>
+            <div class="mem-seg" style="flex: 2.5; background: #7c5cbf;">g<sub>3</sub></div>
+            <div class="mem-seg" style="flex: 1; background: rgba(255,255,255,0.05);"></div>
+            <div class="mem-seg" style="flex: 1.5; background: #7c5cbf;">g<sub>4</sub></div>
+          </div>
+          <div style="font-size: 0.72rem; color: var(--red); margin-top: 6px;">Gaps = fragmentation. Each send requires separate DMA.</div>
+        </div>
+
+        <!-- Contiguous memory -->
+        <div class="mem-bar-container" style="padding: 14px 18px;">
+          <div class="mem-bar-label">Contiguous <code>contiguous_gradients = true</code></div>
+          <div class="mem-bar-row">
+            <div class="mem-seg" style="flex: 2; background: #7c5cbf;">g<sub>1</sub></div>
+            <div class="mem-seg" style="flex: 1.5; background: #5b3a9e;">g<sub>2</sub></div>
+            <div class="mem-seg" style="flex: 2.5; background: #7c5cbf;">g<sub>3</sub></div>
+            <div class="mem-seg" style="flex: 1.5; background: #5b3a9e;">g<sub>4</sub></div>
+            <div class="mem-seg" style="flex: 2.5; background: rgba(255,255,255,0.05);"></div>
+          </div>
+          <div style="font-size: 0.72rem; color: var(--primary); margin-top: 6px;">One contiguous block. Single DMA transfer for each bucket.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Memory buffer size calculation -->
+    <div class="callout callout-purple fade-in" style="max-width: 800px; margin: 24px auto;">
+      <strong>Memory cost of communication buffers:</strong> With both <code>reduce_bucket_size</code> and <code>allgather_bucket_size</code> at 500M elements in BF16, you're allocating <span class="num-cyan">~2 GB</span> just for communication buffers. On a 40 GB A100, that's 5% of VRAM &mdash; worth it for the communication efficiency, but be aware on smaller GPUs.
+    </div>
+  </div>
+</section>
+
+<!-- ============ ZeRO-3 SPECIFIC ============ -->
+<section class="section" id="zero3">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">ZeRO Stage 3</div>
+      <h2><span class="gradient-text">Parameter Sharding &amp; Lifecycle</span></h2>
+      <p class="section-subtitle">Stage 3 partitions <strong>parameters</strong> across GPUs, so each layer must be gathered before use and flushed after. These parameters control that lifecycle.</p>
+    </div>
+
+    <!-- Parameter persistence threshold -->
+    <div class="fade-in" style="max-width: 900px; margin: 0 auto;">
+      <div class="bucket-explorer">
+        <h4 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Parameter Persistence Threshold</h4>
+        <p style="font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px;">Parameters smaller than <code>stage3_param_persistence_threshold</code> (<span class="num-orange">100,000</span> elements) are kept on <strong>all GPUs permanently</strong> instead of being gathered/flushed. Drag the threshold to see which layers stay replicated.</p>
+
+        <div class="controls-bar">
+          <div class="control-group">
+            <span class="control-label">Threshold:</span>
+            <input type="range" id="persistSlider" min="0" max="500000" value="100000" step="10000">
+            <span class="control-value" id="persistDisplay">100K</span>
+          </div>
+        </div>
+
+        <div class="persist-demo" id="persistDemo">
+          <!-- Filled by JS -->
+        </div>
+
+        <div class="bucket-legend" style="margin-top: 12px;">
+          <div class="legend-item"><span class="lg-swatch" style="background: rgba(0,212,106,0.3); border: 2px solid var(--primary);"></span> Kept replicated (below threshold)</div>
+          <div class="legend-item"><span class="lg-swatch" style="background: rgba(66,165,245,0.3); border: 2px solid var(--blue);"></span> Sharded (above threshold &mdash; gathered on demand)</div>
+        </div>
+
+        <div class="metrics-row" style="margin-top: 16px;">
+          <div class="metric-box">
+            <div class="metric-val num-green" id="persistReplicated">4</div>
+            <div class="metric-label">Replicated Params</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-val num-blue" id="persistSharded">6</div>
+            <div class="metric-label">Sharded Params</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-val num-orange" id="persistMemCost">0.4 MB</div>
+            <div class="metric-label">Replication Memory Cost</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- The rest of ZeRO-3 params -->
+    <div class="grid-2 fade-in" style="margin-top: 32px;">
+      <div class="param-card">
+        <div class="param-category-badge cat-zero3">ZeRO-3</div>
+        <div class="param-name">stage3_max_live_parameters</div>
+        <div class="param-default">1,000,000,000</div>
+        <p>Maximum number of parameter elements that can be <strong>materialized</strong> (gathered) across all GPUs at once during forward/backward.</p>
+        <p style="margin-top: 8px;">This caps <strong>peak memory from temporary all-gathers</strong>. If a layer needs more than this, it gets broken into smaller chunks and gathered piece by piece.</p>
+        <div class="equation-box" style="margin-top: 12px; font-size: 0.78rem;">
+          <span class="eq-label">Peak memory cap (BF16)</span>
+          1B &times; 2 bytes = <span class="eq-highlight">~2 GB max live</span>
+        </div>
+      </div>
+      <div class="param-card">
+        <div class="param-category-badge cat-zero3">ZeRO-3</div>
+        <div class="param-name">stage3_max_reuse_distance</div>
+        <div class="param-default">1,000,000,000</div>
+        <p>If a parameter will be needed again within this many elements of compute, <strong>keep it around</strong> instead of flushing and re-gathering.</p>
+        <p style="margin-top: 8px;">High value = more aggressive caching. Trades <strong>memory for reduced communication</strong>. Useful when the same parameter appears in multiple operations close together.</p>
+      </div>
+    </div>
+
+    <div class="grid-2 fade-in" style="margin-top: 24px;">
+      <div class="param-card">
+        <div class="param-category-badge cat-zero3">ZeRO-3</div>
+        <div class="param-name">sub_group_size</div>
+        <div class="param-default">1,000,000,000</div>
+        <p>During the <strong>optimizer step</strong>, parameters are processed in sub-groups of this size to control peak memory.</p>
+        <p style="margin-top: 8px;">Smaller = less peak memory during optimizer step, but more overhead from processing many small groups. Default 1B means "process everything at once" for most models.</p>
+      </div>
+      <div class="param-card">
+        <div class="param-category-badge cat-zero3">ZeRO-3</div>
+        <div class="param-name">stage3_gather_16bit_weights_on_model_save</div>
+        <div class="param-default">true</div>
+        <p>When saving a checkpoint, temporarily <strong>all-gather all sharded parameters</strong> into a full model in FP16/BF16.</p>
+        <p style="margin-top: 8px;">This gives you a single complete checkpoint file instead of N shard files. Set to <code>false</code> if you always load with the same number of GPUs and want faster saves.</p>
+      </div>
+    </div>
+
+    <!-- ZeRO-3 Lifecycle Animation -->
+    <div class="lifecycle-container fade-in" style="margin-top: 40px;">
+      <h4 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">ZeRO-3 Parameter Lifecycle (Interactive)</h4>
+      <p style="font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px;">Step through the lifecycle of a parameter in ZeRO-3. See how parameters are gathered, used, and flushed across 4 GPUs.</p>
+
+      <div class="controls-bar" style="margin-bottom: 12px;">
+        <button class="toggle-btn" id="lifecyclePrev" onclick="lifecycleStep(-1)">&#x25C0; Prev</button>
+        <button class="toggle-btn active" id="lifecycleNext" onclick="lifecycleStep(1)">Next &#x25B6;</button>
+        <button class="toggle-btn" onclick="lifecycleReset()">Reset</button>
+      </div>
+
+      <div class="phase-indicator" id="phaseIndicator">
+        <!-- Filled by JS -->
+      </div>
+
+      <div class="lifecycle-gpus" id="lifecycleGpus">
+        <!-- Filled by JS -->
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ INTERACTIVE EXPLORER ============ -->
+<section class="section section-dark" id="explorer">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Interactive Explorer</div>
+      <h2><span class="gradient-text">Communication Timeline Builder</span></h2>
+      <p class="section-subtitle">Configure ZeRO parameters and see how they affect the training timeline for a <strong>7B parameter model on 4 GPUs</strong>.</p>
+    </div>
+
+    <div class="bucket-explorer fade-in">
+      <div class="controls-bar" style="flex-wrap: wrap; gap: 20px;">
+        <div class="control-group">
+          <span class="control-label">reduce_bucket:</span>
+          <input type="range" id="expReduceSlider" min="100" max="1000" value="500" step="100">
+          <span class="control-value" id="expReduceDisplay">500M</span>
+        </div>
+        <div class="control-group">
+          <span class="control-label">allgather_bucket:</span>
+          <input type="range" id="expAllgatherSlider" min="100" max="1000" value="500" step="100">
+          <span class="control-value" id="expAllgatherDisplay">500M</span>
+        </div>
+        <div class="control-group">
+          <span class="control-label">prefetch_bucket:</span>
+          <input type="range" id="expPrefetchSlider" min="50" max="500" value="200" step="50">
+          <span class="control-value" id="expPrefetchDisplay">200M</span>
+        </div>
+      </div>
+
+      <div class="controls-bar" style="margin-top: 12px;">
+        <div class="control-group">
+          <span class="control-label">overlap_comm:</span>
+          <div class="toggle-group">
+            <button class="toggle-btn" data-exp-overlap="off" onclick="setExpOverlap('off')">OFF</button>
+            <button class="toggle-btn active" data-exp-overlap="on" onclick="setExpOverlap('on')">ON</button>
+          </div>
+        </div>
+        <div class="control-group">
+          <span class="control-label">ZeRO Stage:</span>
+          <div class="toggle-group">
+            <button class="toggle-btn" data-exp-stage="2" onclick="setExpStage(2)">Stage 2</button>
+            <button class="toggle-btn active" data-exp-stage="3" onclick="setExpStage(3)">Stage 3</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Explorer timeline -->
+      <div style="overflow-x: auto; margin-top: 24px;" id="explorerTimeline">
+        <!-- Filled by JS -->
+      </div>
+
+      <div class="metrics-row" style="margin-top: 16px;">
+        <div class="metric-box">
+          <div class="metric-val num-blue" id="expCommCalls">14</div>
+          <div class="metric-label">Reduce-Scatter Calls</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-val num-green" id="expBufferMem">2.0 GB</div>
+          <div class="metric-label">Total Buffer Memory</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-val num-orange" id="expStepTime">100%</div>
+          <div class="metric-label">Relative Step Time</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-val num-cyan" id="expEfficiency">85%</div>
+          <div class="metric-label">Compute Efficiency</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FULL CONFIG REFERENCE ============ -->
+<section class="section" id="config">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Reference</div>
+      <h2><span class="gradient-text">Full ZeRO Config</span></h2>
+      <p class="section-subtitle">Here's what all these parameters look like in a DeepSpeed configuration file, with annotations.</p>
+    </div>
+
+    <div class="fade-in" style="max-width: 800px; margin: 0 auto;">
+      <div class="code-block">
+<pre><span class="cm">// DeepSpeed ZeRO Stage 3 config</span>
+{
+  <span class="key">"zero_optimization"</span>: {
+    <span class="key">"stage"</span>: <span class="num">3</span>,
+
+    <span class="cm">// === Bucket Sizes (Communication Granularity) ===</span>
+    <span class="key">"reduce_bucket_size"</span>:          <span class="num">500000000</span>,  <span class="cm">// 500M elements → ~1 GB (BF16)</span>
+    <span class="key">"allgather_bucket_size"</span>:       <span class="num">500000000</span>,  <span class="cm">// 500M elements → ~1 GB (BF16)</span>
+    <span class="key">"stage3_prefetch_bucket_size"</span>: <span class="num">200000000</span>,  <span class="cm">// 200M — smaller for early prefetch</span>
+
+    <span class="cm">// === Communication Overlap ===</span>
+    <span class="key">"overlap_comm"</span>:    <span class="kw">true</span>,   <span class="cm">// Overlap comm with backward compute</span>
+    <span class="key">"reduce_scatter"</span>:  <span class="kw">true</span>,   <span class="cm">// Use reduce-scatter (not all-reduce)</span>
+
+    <span class="cm">// === Memory Layout ===</span>
+    <span class="key">"contiguous_gradients"</span>: <span class="kw">true</span>,  <span class="cm">// One big buffer, less fragmentation</span>
+
+    <span class="cm">// === ZeRO-3: Persistence &amp; Caching ===</span>
+    <span class="key">"stage3_param_persistence_threshold"</span>: <span class="num">100000</span>,      <span class="cm">// &lt;100K → keep replicated</span>
+    <span class="key">"stage3_max_live_parameters"</span>:        <span class="num">1000000000</span>,  <span class="cm">// 1B max gathered at once</span>
+    <span class="key">"stage3_max_reuse_distance"</span>:         <span class="num">1000000000</span>,  <span class="cm">// Cache if reused within 1B elems</span>
+    <span class="key">"sub_group_size"</span>:                    <span class="num">1000000000</span>,  <span class="cm">// Optimizer sub-group size</span>
+
+    <span class="cm">// === Checkpointing ===</span>
+    <span class="key">"stage3_gather_16bit_weights_on_model_save"</span>: <span class="kw">true</span>  <span class="cm">// Full checkpoint</span>
+  }
+}</pre>
+      </div>
+    </div>
+
+    <!-- Comparison Table -->
+    <div class="fade-in" style="margin-top: 40px;">
+      <h4 style="font-size: 1.1rem; font-weight: 600; text-align: center; margin-bottom: 20px;">Parameter Quick Reference</h4>
+      <div class="comp-table-wrap">
+        <table class="comp-table">
+          <thead>
+            <tr>
+              <th>Parameter</th>
+              <th>Default</th>
+              <th>Category</th>
+              <th>Effect of Increasing</th>
+              <th>Effect of Decreasing</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>reduce_bucket_size</code></td>
+              <td><span class="num-cyan">500M</span></td>
+              <td><span class="param-category-badge cat-bucket" style="margin: 0;">Bucket</span></td>
+              <td class="val-good">Fewer comm calls</td>
+              <td class="val-good">Earlier first call, better overlap</td>
+            </tr>
+            <tr>
+              <td><code>allgather_bucket_size</code></td>
+              <td><span class="num-cyan">500M</span></td>
+              <td><span class="param-category-badge cat-bucket" style="margin: 0;">Bucket</span></td>
+              <td class="val-good">Fewer all-gather calls</td>
+              <td class="val-good">More granular parameter broadcast</td>
+            </tr>
+            <tr>
+              <td><code>stage3_prefetch_bucket_size</code></td>
+              <td><span class="num-cyan">200M</span></td>
+              <td><span class="param-category-badge cat-bucket" style="margin: 0;">Bucket</span></td>
+              <td class="val-neutral">Fewer prefetch calls</td>
+              <td class="val-good">Earlier prefetch start</td>
+            </tr>
+            <tr>
+              <td><code>overlap_comm</code></td>
+              <td><span class="num-green">true</span></td>
+              <td><span class="param-category-badge cat-overlap" style="margin: 0;">Overlap</span></td>
+              <td colspan="2" style="text-align: center;" class="val-good">Always keep true unless debugging</td>
+            </tr>
+            <tr>
+              <td><code>reduce_scatter</code></td>
+              <td><span class="num-green">true</span></td>
+              <td><span class="param-category-badge cat-overlap" style="margin: 0;">Overlap</span></td>
+              <td colspan="2" style="text-align: center;" class="val-good">Required for ZeRO gradient partitioning</td>
+            </tr>
+            <tr>
+              <td><code>contiguous_gradients</code></td>
+              <td><span class="num-green">true</span></td>
+              <td><span class="param-category-badge cat-memory" style="margin: 0;">Memory</span></td>
+              <td colspan="2" style="text-align: center;" class="val-good">Always keep true for performance</td>
+            </tr>
+            <tr>
+              <td><code>stage3_param_persistence_threshold</code></td>
+              <td><span class="num-orange">100K</span></td>
+              <td><span class="param-category-badge cat-zero3" style="margin: 0;">ZeRO-3</span></td>
+              <td class="val-neutral">More params replicated (more mem, less comm)</td>
+              <td class="val-neutral">More params sharded (less mem, more comm)</td>
+            </tr>
+            <tr>
+              <td><code>stage3_max_live_parameters</code></td>
+              <td><span class="num-orange">1B</span></td>
+              <td><span class="param-category-badge cat-zero3" style="margin: 0;">ZeRO-3</span></td>
+              <td class="val-bad">Higher peak memory</td>
+              <td class="val-good">Lower peak memory, more chunks</td>
+            </tr>
+            <tr>
+              <td><code>stage3_max_reuse_distance</code></td>
+              <td><span class="num-orange">1B</span></td>
+              <td><span class="param-category-badge cat-zero3" style="margin: 0;">ZeRO-3</span></td>
+              <td class="val-neutral">More caching (mem ↑, comm ↓)</td>
+              <td class="val-neutral">Less caching (mem ↓, comm ↑)</td>
+            </tr>
+            <tr>
+              <td><code>sub_group_size</code></td>
+              <td><span class="num-orange">1B</span></td>
+              <td><span class="param-category-badge cat-zero3" style="margin: 0;">ZeRO-3</span></td>
+              <td class="val-bad">Higher peak optimizer memory</td>
+              <td class="val-good">Lower peak, more overhead</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAKEAWAYS ============ -->
+<section class="section section-dark" id="takeaways">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Key Takeaways</div>
+      <h2><span class="gradient-text">What to Remember</span></h2>
+    </div>
+
+    <div class="grid-3 fade-in">
+      <div class="takeaway-card">
+        <div class="takeaway-num">1</div>
+        <h4>Buckets are the Goldilocks zone</h4>
+        <p>Not too small (overhead from many calls), not too big (delays overlap opportunity). The 500M default is tuned for most multi-GPU setups.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">2</div>
+        <h4>Overlap is the #1 performance lever</h4>
+        <p><code>overlap_comm = true</code> hides communication behind backward compute. This is what makes distributed training practical at scale.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">3</div>
+        <h4>Prefetch starts small on purpose</h4>
+        <p><code>stage3_prefetch_bucket_size</code> is 200M (not 500M) because you want prefetching to start <em>early</em>, overlapping with current-layer compute.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">4</div>
+        <h4>Small params: just replicate them</h4>
+        <p>LayerNorm weights (~1K params) cost nothing to keep on every GPU. Gathering them every forward pass wastes more time than the memory they save.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">5</div>
+        <h4>Contiguous memory = faster transfers</h4>
+        <p>DMA engines and NCCL prefer contiguous buffers. <code>contiguous_gradients = true</code> is a free performance win.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">6</div>
+        <h4>Buffer memory adds up</h4>
+        <p>Two 500M buckets in BF16 = ~2 GB of buffer memory. On smaller GPUs (16 GB), consider reducing bucket sizes to 200M.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-brand">ShallowSpeed</div>
+    <p>DeepSpeed ZeRO Config Parameters &mdash; Visual Guide</p>
+    <p class="footer-muted">Built for GPU Workshop by VizuaraAI</p>
+  </div>
+</footer>
+
+<!-- ============ JAVASCRIPT ============ -->
+<script>
+// ============================================
+// SCROLL REVEAL
+// ============================================
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); } });
+}, { threshold: 0.1 });
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// ============================================
+// BUCKET SIZE EXPLORER
+// ============================================
+let currentDtype = 'bf16';
+const bytesPerElem = { bf16: 2, fp32: 4 };
+const modelParams = 1000; // 1B in millions
+
+function setDtype(dtype) {
+  currentDtype = dtype;
+  document.querySelectorAll('.toggle-group .toggle-btn[data-dtype]').forEach(b => {
+    b.classList.toggle('active', b.dataset.dtype === dtype);
+  });
+  updateBucketVis();
+}
+
+function updateBucketVis() {
+  const bucketM = parseInt(document.getElementById('bucketSlider').value);
+  document.getElementById('bucketSizeDisplay').textContent = bucketM + 'M';
+
+  const totalElems = modelParams; // in millions
+  const numBuckets = Math.ceil(totalElems / bucketM * 1);  // 1B / bucket
+  const bufferGB = (bucketM * 1e6 * bytesPerElem[currentDtype]) / 1e9;
+
+  // Visualize buckets
+  const area = document.getElementById('bucketVisArea');
+  area.innerHTML = '';
+  const maxBuckets = Math.min(numBuckets, 20);
+  const colors = ['#7c5cbf', '#5b3a9e', '#42A5F5', '#1565C0'];
+
+  for (let i = 0; i < maxBuckets; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'bkt-bar';
+    const height = Math.max(30, 160 / Math.max(numBuckets, 1) * 3);
+    const width = Math.max(20, Math.min(60, 500 / maxBuckets));
+    bar.style.height = height + 'px';
+    bar.style.width = width + 'px';
+    bar.style.background = colors[i % colors.length];
+    bar.textContent = 'B' + (i + 1);
+    area.appendChild(bar);
+  }
+  if (numBuckets > 20) {
+    const dots = document.createElement('div');
+    dots.style.cssText = 'color: var(--fg-muted); font-size: 1.2rem; align-self: center; padding: 0 8px;';
+    dots.textContent = '...+' + (numBuckets - 20);
+    area.appendChild(dots);
+  }
+
+  // Metrics
+  document.getElementById('metricCalls').textContent = numBuckets;
+  document.getElementById('metricBuffer').textContent = bufferGB.toFixed(1) + ' GB';
+
+  let latency, overlap;
+  if (bucketM <= 100) { latency = 'Very Low'; overlap = 'Excellent'; }
+  else if (bucketM <= 300) { latency = 'Low'; overlap = 'Very Good'; }
+  else if (bucketM <= 500) { latency = 'Medium'; overlap = 'Good'; }
+  else if (bucketM <= 750) { latency = 'High'; overlap = 'Fair'; }
+  else { latency = 'Very High'; overlap = 'Poor'; }
+
+  document.getElementById('metricLatency').textContent = latency;
+  document.getElementById('metricOverlap').textContent = overlap;
+}
+
+document.getElementById('bucketSlider').addEventListener('input', updateBucketVis);
+updateBucketVis();
+
+// ============================================
+// OVERLAP TIMELINE
+// ============================================
+let overlapMode = 'on';
+
+function setOverlap(mode) {
+  overlapMode = mode;
+  document.querySelectorAll('#overlapToggle .toggle-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.overlap === mode);
+  });
+  renderOverlapTimeline();
+}
+
+function renderOverlapTimeline() {
+  const container = document.getElementById('overlapTimeline');
+  const savingsDiv = document.getElementById('overlapSavings');
+
+  if (overlapMode === 'off') {
+    container.innerHTML = `
+      <div class="tl-row">
+        <div class="tl-label">Compute</div>
+        <div class="tl-track">
+          <div class="tl-block tl-fwd" style="width: 15%;">Forward</div>
+          <div class="tl-block tl-bwd" style="width: 30%;">Backward</div>
+          <div class="tl-block tl-idle" style="width: 35%;">Idle (waiting)</div>
+          <div class="tl-block tl-optim" style="width: 12%;">Optim</div>
+          <div class="tl-block tl-idle" style="width: 8%;"></div>
+        </div>
+      </div>
+      <div class="tl-row">
+        <div class="tl-label">Network</div>
+        <div class="tl-track">
+          <div class="tl-block tl-idle" style="width: 45%;">Idle</div>
+          <div class="tl-block tl-reduce-scatter" style="width: 20%;">Reduce-Scatter</div>
+          <div class="tl-block tl-allgather" style="width: 15%;">All-Gather</div>
+          <div class="tl-block tl-idle" style="width: 20%;"></div>
+        </div>
+      </div>
+    `;
+    savingsDiv.innerHTML = '<span style="color: var(--red); font-size: 0.88rem; font-weight: 600;">Communication adds ~35% to step time. GPU sits idle during transfers.</span>';
+  } else {
+    container.innerHTML = `
+      <div class="tl-row">
+        <div class="tl-label">Compute</div>
+        <div class="tl-track">
+          <div class="tl-block tl-fwd" style="width: 15%;">Forward</div>
+          <div class="tl-block tl-bwd" style="width: 30%;">Backward (layers computed)</div>
+          <div class="tl-block tl-optim" style="width: 12%;">Optim</div>
+          <div class="tl-block tl-idle" style="width: 3%;"></div>
+        </div>
+      </div>
+      <div class="tl-row">
+        <div class="tl-label">Network</div>
+        <div class="tl-track">
+          <div class="tl-block tl-idle" style="width: 15%;"></div>
+          <div class="tl-block tl-reduce-scatter" style="width: 8%;">RS B3</div>
+          <div class="tl-block tl-reduce-scatter" style="width: 8%;">RS B2</div>
+          <div class="tl-block tl-reduce-scatter" style="width: 8%;">RS B1</div>
+          <div class="tl-block tl-allgather" style="width: 6%;">AG</div>
+          <div class="tl-block tl-idle" style="width: 15%;"></div>
+        </div>
+      </div>
+      <div class="tl-row" style="margin-top: 4px;">
+        <div class="tl-label" style="font-size: 0.62rem; color: var(--primary);">Overlap</div>
+        <div class="tl-track" style="height: 6px; background: transparent;">
+          <div style="width: 15%;"></div>
+          <div style="width: 30%; background: rgba(0,212,106,0.15); border-radius: 3px; border: 1px dashed rgba(0,212,106,0.3);"></div>
+        </div>
+      </div>
+    `;
+    savingsDiv.innerHTML = '<span style="color: var(--primary); font-size: 0.88rem; font-weight: 600;">Communication hidden behind backward! Effective overhead ≈ 0%. Bucket reduce-scatters fire as each layer\'s gradients are ready.</span>';
+  }
+}
+renderOverlapTimeline();
+
+// ============================================
+// PERSISTENCE THRESHOLD DEMO
+// ============================================
+const layerParams = [
+  { name: 'LN γ', size: 1024, type: 'LayerNorm' },
+  { name: 'LN β', size: 1024, type: 'LayerNorm' },
+  { name: 'QKV bias', size: 12288, type: 'Attention' },
+  { name: 'Out bias', size: 4096, type: 'Attention' },
+  { name: 'FFN bias', size: 16384, type: 'FFN' },
+  { name: 'QKV', size: 50331648, type: 'Attention' },
+  { name: 'Out proj', size: 16777216, type: 'Attention' },
+  { name: 'FFN up', size: 67108864, type: 'FFN' },
+  { name: 'FFN down', size: 67108864, type: 'FFN' },
+  { name: 'Embed', size: 131072000, type: 'Embedding' },
+];
+
+function updatePersistence() {
+  const threshold = parseInt(document.getElementById('persistSlider').value);
+  document.getElementById('persistDisplay').textContent =
+    threshold >= 1000000 ? (threshold / 1e6).toFixed(0) + 'M' :
+    threshold >= 1000 ? (threshold / 1e3).toFixed(0) + 'K' :
+    threshold.toString();
+
+  const demo = document.getElementById('persistDemo');
+  demo.innerHTML = '';
+
+  let replicated = 0, sharded = 0, replicatedBytes = 0;
+
+  layerParams.forEach(p => {
+    const isSmall = p.size < threshold;
+    if (isSmall) { replicated++; replicatedBytes += p.size * 2; }
+    else { sharded++; }
+
+    const block = document.createElement('div');
+    block.className = 'persist-block ' + (isSmall ? 'small' : 'large');
+    block.innerHTML = `
+      <span>${p.name}</span>
+      <span class="param-size">${formatSize(p.size)}</span>
+    `;
+    block.title = `${p.name}: ${p.size.toLocaleString()} elements (${p.type})`;
+    demo.appendChild(block);
+  });
+
+  document.getElementById('persistReplicated').textContent = replicated;
+  document.getElementById('persistSharded').textContent = sharded;
+  document.getElementById('persistMemCost').textContent = (replicatedBytes / 1e6).toFixed(1) + ' MB';
+}
+
+function formatSize(n) {
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(0) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K';
+  return n.toString();
+}
+
+document.getElementById('persistSlider').addEventListener('input', updatePersistence);
+updatePersistence();
+
+// ============================================
+// ZeRO-3 LIFECYCLE ANIMATION
+// ============================================
+let lifecyclePhase = 0;
+const phases = [
+  {
+    name: 'Idle State',
+    color: 'var(--fg-muted)',
+    bg: 'rgba(255,255,255,0.05)',
+    border: 'var(--border)',
+    desc: 'Each GPU holds only its 1/4 shard of parameters. Other 3/4 are not in memory.',
+    gpus: [
+      { shard: 25, gathered: 0, status: 'Holds shard 1/4', statusColor: 'var(--fg-muted)', statusBg: 'rgba(255,255,255,0.05)' },
+      { shard: 25, gathered: 0, status: 'Holds shard 2/4', statusColor: 'var(--fg-muted)', statusBg: 'rgba(255,255,255,0.05)' },
+      { shard: 25, gathered: 0, status: 'Holds shard 3/4', statusColor: 'var(--fg-muted)', statusBg: 'rgba(255,255,255,0.05)' },
+      { shard: 25, gathered: 0, status: 'Holds shard 4/4', statusColor: 'var(--fg-muted)', statusBg: 'rgba(255,255,255,0.05)' },
+    ]
+  },
+  {
+    name: 'Prefetch (All-Gather)',
+    color: 'var(--secondary)',
+    bg: 'rgba(0,200,230,0.08)',
+    border: 'rgba(0,200,230,0.3)',
+    desc: 'Before layer N computes, stage3_prefetch_bucket_size triggers an all-gather. Each GPU gathers the full parameter from all shards.',
+    gpus: [
+      { shard: 25, gathered: 75, status: 'Gathering...', statusColor: 'var(--secondary)', statusBg: 'rgba(0,200,230,0.1)' },
+      { shard: 25, gathered: 75, status: 'Gathering...', statusColor: 'var(--secondary)', statusBg: 'rgba(0,200,230,0.1)' },
+      { shard: 25, gathered: 75, status: 'Gathering...', statusColor: 'var(--secondary)', statusBg: 'rgba(0,200,230,0.1)' },
+      { shard: 25, gathered: 75, status: 'Gathering...', statusColor: 'var(--secondary)', statusBg: 'rgba(0,200,230,0.1)' },
+    ]
+  },
+  {
+    name: 'Forward Pass',
+    color: 'var(--green)',
+    bg: 'rgba(102,187,106,0.08)',
+    border: 'rgba(102,187,106,0.3)',
+    desc: 'Full parameter is now on every GPU. Forward compute runs. If reuse_distance is high, the parameter is cached for backward.',
+    gpus: [
+      { shard: 25, gathered: 75, status: 'Computing FWD', statusColor: '#66BB6A', statusBg: 'rgba(102,187,106,0.1)' },
+      { shard: 25, gathered: 75, status: 'Computing FWD', statusColor: '#66BB6A', statusBg: 'rgba(102,187,106,0.1)' },
+      { shard: 25, gathered: 75, status: 'Computing FWD', statusColor: '#66BB6A', statusBg: 'rgba(102,187,106,0.1)' },
+      { shard: 25, gathered: 75, status: 'Computing FWD', statusColor: '#66BB6A', statusBg: 'rgba(102,187,106,0.1)' },
+    ]
+  },
+  {
+    name: 'Backward Pass',
+    color: 'var(--pink)',
+    bg: 'rgba(240,98,146,0.08)',
+    border: 'rgba(240,98,146,0.3)',
+    desc: 'Backward pass computes gradients for this layer. The full parameter is still needed for gradient computation.',
+    gpus: [
+      { shard: 25, gathered: 75, status: 'Computing BWD', statusColor: '#F06292', statusBg: 'rgba(240,98,146,0.1)' },
+      { shard: 25, gathered: 75, status: 'Computing BWD', statusColor: '#F06292', statusBg: 'rgba(240,98,146,0.1)' },
+      { shard: 25, gathered: 75, status: 'Computing BWD', statusColor: '#F06292', statusBg: 'rgba(240,98,146,0.1)' },
+      { shard: 25, gathered: 75, status: 'Computing BWD', statusColor: '#F06292', statusBg: 'rgba(240,98,146,0.1)' },
+    ]
+  },
+  {
+    name: 'Reduce-Scatter Gradients',
+    color: 'var(--accent)',
+    bg: 'rgba(167,139,250,0.08)',
+    border: 'rgba(167,139,250,0.3)',
+    desc: 'Gradients are reduce-scattered. Each GPU only keeps its own gradient shard (1/N). The full parameter is flushed — back to shard-only.',
+    gpus: [
+      { shard: 25, gathered: 0, status: 'RS grads → shard 1', statusColor: '#a78bfa', statusBg: 'rgba(167,139,250,0.1)' },
+      { shard: 25, gathered: 0, status: 'RS grads → shard 2', statusColor: '#a78bfa', statusBg: 'rgba(167,139,250,0.1)' },
+      { shard: 25, gathered: 0, status: 'RS grads → shard 3', statusColor: '#a78bfa', statusBg: 'rgba(167,139,250,0.1)' },
+      { shard: 25, gathered: 0, status: 'RS grads → shard 4', statusColor: '#a78bfa', statusBg: 'rgba(167,139,250,0.1)' },
+    ]
+  },
+  {
+    name: 'Optimizer Step',
+    color: 'var(--orange)',
+    bg: 'rgba(255,152,0,0.08)',
+    border: 'rgba(255,152,0,0.3)',
+    desc: 'Each GPU updates only its own parameter shard using its gradient shard. sub_group_size controls how many params are updated at once.',
+    gpus: [
+      { shard: 25, gathered: 0, status: 'Update shard 1', statusColor: '#FF9800', statusBg: 'rgba(255,152,0,0.1)' },
+      { shard: 25, gathered: 0, status: 'Update shard 2', statusColor: '#FF9800', statusBg: 'rgba(255,152,0,0.1)' },
+      { shard: 25, gathered: 0, status: 'Update shard 3', statusColor: '#FF9800', statusBg: 'rgba(255,152,0,0.1)' },
+      { shard: 25, gathered: 0, status: 'Update shard 4', statusColor: '#FF9800', statusBg: 'rgba(255,152,0,0.1)' },
+    ]
+  },
+];
+
+function renderLifecycle() {
+  const phase = phases[lifecyclePhase];
+
+  // Phase indicator
+  const indicator = document.getElementById('phaseIndicator');
+  indicator.innerHTML = `
+    <div class="phase-badge" style="color: ${phase.color}; background: ${phase.bg}; border-color: ${phase.border};">
+      <span style="font-family: var(--font-mono); font-size: 0.78rem;">Step ${lifecyclePhase + 1}/${phases.length}</span>
+      <span>${phase.name}</span>
+    </div>
+    <p class="phase-desc">${phase.desc}</p>
+  `;
+
+  // GPU cards
+  const container = document.getElementById('lifecycleGpus');
+  container.innerHTML = '';
+
+  phase.gpus.forEach((gpu, i) => {
+    const card = document.createElement('div');
+    card.className = 'gpu-card';
+    card.innerHTML = `
+      <h4>GPU ${i}</h4>
+      <div class="gpu-mem-bar">
+        <div class="gpu-mem-seg" style="flex: ${gpu.shard}; background: #42A5F5;">
+          <span style="font-size: 0.55rem;">Shard</span>
+        </div>
+        ${gpu.gathered > 0 ? `<div class="gpu-mem-seg" style="flex: ${gpu.gathered}; background: rgba(0,200,230,0.5); border: 1px dashed var(--secondary);">
+          <span style="font-size: 0.55rem;">Gathered</span>
+        </div>` : ''}
+        <div class="gpu-mem-seg" style="flex: ${100 - gpu.shard - gpu.gathered}; background: rgba(255,255,255,0.03);"></div>
+      </div>
+      <div class="gpu-status" style="color: ${gpu.statusColor}; background: ${gpu.statusBg};">
+        ${gpu.status}
+      </div>
+    `;
+    container.appendChild(card);
+  });
+
+  // Button states
+  document.getElementById('lifecyclePrev').style.opacity = lifecyclePhase === 0 ? '0.3' : '1';
+  document.getElementById('lifecycleNext').style.opacity = lifecyclePhase === phases.length - 1 ? '0.3' : '1';
+}
+
+function lifecycleStep(dir) {
+  lifecyclePhase = Math.max(0, Math.min(phases.length - 1, lifecyclePhase + dir));
+  renderLifecycle();
+}
+
+function lifecycleReset() {
+  lifecyclePhase = 0;
+  renderLifecycle();
+}
+
+renderLifecycle();
+
+// ============================================
+// INTERACTIVE EXPLORER (Communication Timeline Builder)
+// ============================================
+let expOverlap = 'on';
+let expStage = 3;
+
+function setExpOverlap(mode) {
+  expOverlap = mode;
+  document.querySelectorAll('[data-exp-overlap]').forEach(b => {
+    b.classList.toggle('active', b.dataset.expOverlap === mode);
+  });
+  updateExplorer();
+}
+
+function setExpStage(stage) {
+  expStage = stage;
+  document.querySelectorAll('[data-exp-stage]').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.expStage) === stage);
+  });
+  updateExplorer();
+}
+
+function updateExplorer() {
+  const reduceM = parseInt(document.getElementById('expReduceSlider').value);
+  const allgatherM = parseInt(document.getElementById('expAllgatherSlider').value);
+  const prefetchM = parseInt(document.getElementById('expPrefetchSlider').value);
+
+  document.getElementById('expReduceDisplay').textContent = reduceM + 'M';
+  document.getElementById('expAllgatherDisplay').textContent = allgatherM + 'M';
+  document.getElementById('expPrefetchDisplay').textContent = prefetchM + 'M';
+
+  const modelParamsM = 7000; // 7B in millions
+  const numReduceBuckets = Math.ceil(modelParamsM / reduceM);
+  const numAllgatherBuckets = Math.ceil(modelParamsM / allgatherM);
+  const totalBufferGB = ((reduceM + allgatherM + (expStage === 3 ? prefetchM : 0)) * 1e6 * 2) / 1e9;
+
+  // Compute step time and efficiency
+  const fwdTime = 15; // baseline forward %
+  const bwdTime = 30; // baseline backward %
+  const rsTime = numReduceBuckets * 2; // reduce-scatter time
+  const agTime = expStage === 3 ? numAllgatherBuckets * 1.5 : 0;
+  const optimTime = 12;
+
+  let totalTime, commVisible;
+  if (expOverlap === 'on') {
+    commVisible = Math.max(0, (rsTime + agTime) - bwdTime);
+    totalTime = fwdTime + bwdTime + commVisible + optimTime;
+  } else {
+    commVisible = rsTime + agTime;
+    totalTime = fwdTime + bwdTime + commVisible + optimTime;
+  }
+
+  const baselineTime = fwdTime + bwdTime + optimTime; // ideal with no comm
+  const relativeTime = Math.round((totalTime / baselineTime) * 100);
+  const efficiency = Math.round((baselineTime / totalTime) * 100);
+
+  // Render timeline
+  const container = document.getElementById('explorerTimeline');
+  const total = fwdTime + bwdTime + Math.max(rsTime + agTime, expOverlap === 'on' ? bwdTime : 0) + optimTime;
+
+  if (expOverlap === 'on') {
+    const commDuringBwd = Math.min(rsTime + agTime, bwdTime);
+    const commAfterBwd = Math.max(0, (rsTime + agTime) - bwdTime);
+    container.innerHTML = `
+      <div class="tl-row" style="min-width: 700px;">
+        <div class="tl-label">Compute</div>
+        <div class="tl-track">
+          <div class="tl-block tl-fwd" style="width: ${fwdTime / totalTime * 100}%;">FWD</div>
+          <div class="tl-block tl-bwd" style="width: ${bwdTime / totalTime * 100}%;">BWD (${numReduceBuckets} buckets fire during)</div>
+          ${commAfterBwd > 0 ? `<div class="tl-block tl-idle" style="width: ${commAfterBwd / totalTime * 100}%;">wait</div>` : ''}
+          <div class="tl-block tl-optim" style="width: ${optimTime / totalTime * 100}%;">Optim</div>
+        </div>
+      </div>
+      <div class="tl-row" style="min-width: 700px;">
+        <div class="tl-label">Network</div>
+        <div class="tl-track">
+          ${expStage === 3 ? `<div class="tl-block tl-prefetch" style="width: ${(fwdTime * 0.5) / totalTime * 100}%;">Prefetch</div>
+          <div class="tl-block tl-idle" style="width: ${(fwdTime * 0.5) / totalTime * 100}%;"></div>` :
+          `<div class="tl-block tl-idle" style="width: ${fwdTime / totalTime * 100}%;"></div>`}
+          <div class="tl-block tl-reduce-scatter" style="width: ${rsTime / totalTime * 100}%;">RS &times;${numReduceBuckets}</div>
+          ${agTime > 0 ? `<div class="tl-block tl-allgather" style="width: ${agTime / totalTime * 100}%;">AG &times;${numAllgatherBuckets}</div>` : ''}
+          <div class="tl-block tl-idle" style="width: ${optimTime / totalTime * 100}%;"></div>
+        </div>
+      </div>
+    `;
+  } else {
+    container.innerHTML = `
+      <div class="tl-row" style="min-width: 700px;">
+        <div class="tl-label">Compute</div>
+        <div class="tl-track">
+          <div class="tl-block tl-fwd" style="width: ${fwdTime / totalTime * 100}%;">FWD</div>
+          <div class="tl-block tl-bwd" style="width: ${bwdTime / totalTime * 100}%;">BWD</div>
+          <div class="tl-block tl-idle" style="width: ${(rsTime + agTime) / totalTime * 100}%;">Idle (waiting for comm)</div>
+          <div class="tl-block tl-optim" style="width: ${optimTime / totalTime * 100}%;">Optim</div>
+        </div>
+      </div>
+      <div class="tl-row" style="min-width: 700px;">
+        <div class="tl-label">Network</div>
+        <div class="tl-track">
+          <div class="tl-block tl-idle" style="width: ${(fwdTime + bwdTime) / totalTime * 100}%;">Idle</div>
+          <div class="tl-block tl-reduce-scatter" style="width: ${rsTime / totalTime * 100}%;">RS &times;${numReduceBuckets}</div>
+          ${agTime > 0 ? `<div class="tl-block tl-allgather" style="width: ${agTime / totalTime * 100}%;">AG &times;${numAllgatherBuckets}</div>` : ''}
+          <div class="tl-block tl-idle" style="width: ${optimTime / totalTime * 100}%;"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Update metrics
+  document.getElementById('expCommCalls').textContent = numReduceBuckets + (expStage === 3 ? numAllgatherBuckets : 0);
+  document.getElementById('expBufferMem').textContent = totalBufferGB.toFixed(1) + ' GB';
+  document.getElementById('expStepTime').textContent = relativeTime + '%';
+  document.getElementById('expEfficiency').textContent = Math.min(99, efficiency) + '%';
+
+  // Color code step time
+  const stepEl = document.getElementById('expStepTime');
+  if (relativeTime <= 105) stepEl.className = 'metric-val num-green';
+  else if (relativeTime <= 120) stepEl.className = 'metric-val num-orange';
+  else stepEl.className = 'metric-val num-red';
+}
+
+['expReduceSlider', 'expAllgatherSlider', 'expPrefetchSlider'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updateExplorer);
+});
+updateExplorer();
+
+// ============================================
+// SMOOTH SCROLL FOR NAV LINKS
+// ============================================
+document.querySelectorAll('.nav-links a').forEach(link => {
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    const target = document.querySelector(link.getAttribute('href'));
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+</script>
+</body>
+</html>
