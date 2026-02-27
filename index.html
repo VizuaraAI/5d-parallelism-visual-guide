@@ -294,7 +294,9 @@ code { font-family: var(--font-mono); }
       <span class="brand-tag">5D Parallelism</span>
     </div>
     <div class="nav-links">
-      <a href="#guides">All Guides</a>
+      <a href="#data-parallel">Data Parallelism</a>
+      <a href="#memory-efficiency">Memory & Efficiency</a>
+      <a href="#zero-series">ZeRO Series</a>
       <a href="https://github.com/VizuaraAI/shallowspeed-visual-guide" target="_blank">GitHub</a>
     </div>
   </div>
@@ -316,7 +318,7 @@ code { font-family: var(--font-mono); }
 
     <div class="stats-row">
       <div class="stat-item">
-        <div class="stat-value">8</div>
+        <div class="stat-value">11</div>
         <div class="stat-desc">Visual Guides</div>
       </div>
       <div class="stat-item">
@@ -335,13 +337,15 @@ code { font-family: var(--font-mono); }
   </div>
 </section>
 
-<!-- GUIDES GRID -->
-<section class="section" id="guides">
+<!-- ============================================================
+     SECTION 1: DATA PARALLELISM FUNDAMENTALS
+     ============================================================ -->
+<section class="section" id="data-parallel">
   <div class="container">
     <div class="section-heading fade-in">
-      <div class="section-label">Visual Guides</div>
-      <h2><span class="gradient-text-warm">Explore the Collection</span></h2>
-      <p class="section-subtitle">Each guide is a self-contained, interactive HTML page. Click to open any topic.</p>
+      <div class="section-label">Data Parallelism</div>
+      <h2><span class="gradient-text-warm">Data Parallelism Fundamentals</span></h2>
+      <p class="section-subtitle">Understand how multiple GPUs collaborate on the same model &mdash; from naive replication to overlapped gradient synchronization.</p>
     </div>
 
     <div class="guides-grid">
@@ -394,32 +398,8 @@ code { font-family: var(--font-mono); }
         </div>
       </a>
 
-      <!-- 3. Activation Recomputation -->
-      <a href="activation-recomputation.html" class="guide-card fade-in stagger-3">
-        <div class="guide-card-header">
-          <div class="guide-icon icon-act">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#42A5F5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><circle cx="12" cy="12" r="4"/></svg>
-          </div>
-          <div>
-            <h3>Activation Recomputation</h3>
-            <span class="guide-tag tag-memory">Memory</span>
-          </div>
-        </div>
-        <div class="guide-card-body">
-          <p>The classic memory-compute tradeoff. Visualize how selective and full recomputation slash activation memory, with transformer layer diagrams and memory bar charts.</p>
-          <div class="guide-features">
-            <span class="feature-chip">Memory Charts</span>
-            <span class="feature-chip">Layer Diagrams</span>
-            <span class="feature-chip">Strategy Selector</span>
-          </div>
-        </div>
-        <div class="guide-card-footer">
-          <span class="guide-arrow">Explore guide <span>&rarr;</span></span>
-        </div>
-      </a>
-
-      <!-- 4. Gradient Accumulation -->
-      <a href="gradient-accumulation.html" class="guide-card fade-in stagger-4">
+      <!-- 3. Gradient Accumulation -->
+      <a href="gradient-accumulation.html" class="guide-card fade-in stagger-3">
         <div class="guide-card-header">
           <div class="guide-icon icon-grad">
             <svg viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><rect x="4" y="12" width="4" height="8" rx="1"/><rect x="10" y="8" width="4" height="12" rx="1"/><rect x="16" y="4" width="4" height="16" rx="1"/></svg>
@@ -442,8 +422,49 @@ code { font-family: var(--font-mono); }
         </div>
       </a>
 
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 2: MEMORY & EFFICIENCY
+     ============================================================ -->
+<section class="section section-dark" id="memory-efficiency">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Memory & Efficiency</div>
+      <h2><span class="gradient-text">Memory, Batching & GPU Performance</span></h2>
+      <p class="section-subtitle">Master the practical knobs of distributed training &mdash; memory budgets, batch size selection, and hardware utilization.</p>
+    </div>
+
+    <div class="guides-grid">
+
+      <!-- 4. Activation Recomputation -->
+      <a href="activation-recomputation.html" class="guide-card fade-in stagger-1">
+        <div class="guide-card-header">
+          <div class="guide-icon icon-act">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#42A5F5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><circle cx="12" cy="12" r="4"/></svg>
+          </div>
+          <div>
+            <h3>Activation Recomputation</h3>
+            <span class="guide-tag tag-memory">Memory</span>
+          </div>
+        </div>
+        <div class="guide-card-body">
+          <p>The classic memory-compute tradeoff. Visualize how selective and full recomputation slash activation memory, with transformer layer diagrams and memory bar charts.</p>
+          <div class="guide-features">
+            <span class="feature-chip">Memory Charts</span>
+            <span class="feature-chip">Layer Diagrams</span>
+            <span class="feature-chip">Strategy Selector</span>
+          </div>
+        </div>
+        <div class="guide-card-footer">
+          <span class="guide-arrow">Explore guide <span>&rarr;</span></span>
+        </div>
+      </a>
+
       <!-- 5. Max Local Batch Size -->
-      <a href="max-local-batch-size.html" class="guide-card fade-in stagger-5">
+      <a href="max-local-batch-size.html" class="guide-card fade-in stagger-2">
         <div class="guide-card-header">
           <div class="guide-icon icon-batch">
             <svg viewBox="0 0 24 24" fill="none" stroke="#FF9800" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"/><path d="M5 20V8.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5V20"/><path d="M10 20V4.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5V20"/><path d="M15 20v-8.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5V20"/></svg>
@@ -467,7 +488,7 @@ code { font-family: var(--font-mono); }
       </a>
 
       <!-- 6. GPU Efficiency -->
-      <a href="gpu-efficiency.html" class="guide-card fade-in stagger-6">
+      <a href="gpu-efficiency.html" class="guide-card fade-in stagger-3">
         <div class="guide-card-header">
           <div class="guide-icon icon-gpu">
             <svg viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/><path d="M2 9h2"/><path d="M2 15h2"/><path d="M20 9h2"/><path d="M20 15h2"/><path d="M9 2v2"/><path d="M15 2v2"/><path d="M9 20v2"/><path d="M15 20v2"/></svg>
@@ -491,7 +512,7 @@ code { font-family: var(--font-mono); }
       </a>
 
       <!-- 7. Gradient Noise Scale -->
-      <a href="gradient-noise-scale.html" class="guide-card fade-in stagger-7">
+      <a href="gradient-noise-scale.html" class="guide-card fade-in stagger-4">
         <div class="guide-card-header">
           <div class="guide-icon icon-noise">
             <svg viewBox="0 0 24 24" fill="none" stroke="#FFCA28" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -514,8 +535,25 @@ code { font-family: var(--font-mono); }
         </div>
       </a>
 
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 3: ZeRO OPTIMIZER SERIES
+     ============================================================ -->
+<section class="section" id="zero-series">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">ZeRO Optimizer</div>
+      <h2><span class="gradient-text-warm">ZeRO Deep Dive Series</span></h2>
+      <p class="section-subtitle">A progressive walkthrough of the ZeRO optimizer &mdash; from config parameters to full FSDP, each with concrete numbers on a tiny transformer.</p>
+    </div>
+
+    <div class="guides-grid">
+
       <!-- 8. ZeRO Config Parameters -->
-      <a href="zero-config-parameters.html" class="guide-card fade-in stagger-8">
+      <a href="zero-config-parameters.html" class="guide-card fade-in stagger-1">
         <div class="guide-card-header">
           <div class="guide-icon icon-zero">
             <svg viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>
@@ -531,6 +569,78 @@ code { font-family: var(--font-mono); }
             <span class="feature-chip">Napkin Math</span>
             <span class="feature-chip">Timeline Builder</span>
             <span class="feature-chip">Lifecycle Animation</span>
+          </div>
+        </div>
+        <div class="guide-card-footer">
+          <span class="guide-arrow">Explore guide <span>&rarr;</span></span>
+        </div>
+      </a>
+
+      <!-- 9. ZeRO-1 Walkthrough -->
+      <a href="zero-1-walkthrough.html" class="guide-card fade-in stagger-2">
+        <div class="guide-card-header">
+          <div class="guide-icon" style="background: linear-gradient(135deg, rgba(66,165,245,0.15), rgba(102,187,106,0.05));">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#42A5F5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M8 7v10"/><path d="M12 7v10"/><path d="M16 7v10"/></svg>
+          </div>
+          <div>
+            <h3>ZeRO-1: Optimizer State Sharding</h3>
+            <span class="guide-tag tag-zero">ZeRO Stage 1</span>
+          </div>
+        </div>
+        <div class="guide-card-body">
+          <p>A concrete walkthrough with actual numbers. See how sharding Adam optimizer states across GPUs cuts memory by 37.5% with zero extra communication cost.</p>
+          <div class="guide-features">
+            <span class="feature-chip">260 Parameters</span>
+            <span class="feature-chip">Adam Step-by-Step</span>
+            <span class="feature-chip">Memory Charts</span>
+          </div>
+        </div>
+        <div class="guide-card-footer">
+          <span class="guide-arrow">Explore guide <span>&rarr;</span></span>
+        </div>
+      </a>
+
+      <!-- 10. ZeRO-2 Walkthrough -->
+      <a href="zero-2-walkthrough.html" class="guide-card fade-in stagger-3">
+        <div class="guide-card-header">
+          <div class="guide-icon" style="background: linear-gradient(135deg, rgba(0,212,106,0.15), rgba(0,200,230,0.05));">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#00d46a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M8 7v10"/><path d="M16 7v10"/><path d="M8 12h8"/></svg>
+          </div>
+          <div>
+            <h3>ZeRO-2: Gradient Sharding</h3>
+            <span class="guide-tag tag-zero">ZeRO Stage 2</span>
+          </div>
+        </div>
+        <div class="guide-card-body">
+          <p>Building on ZeRO-1, now gradients are sharded too via reduce-scatter. Walk through every step with concrete numbers &mdash; 43.8% memory savings, same communication.</p>
+          <div class="guide-features">
+            <span class="feature-chip">Reduce-Scatter</span>
+            <span class="feature-chip">Gradient Sharding</span>
+            <span class="feature-chip">Concrete Numbers</span>
+          </div>
+        </div>
+        <div class="guide-card-footer">
+          <span class="guide-arrow">Explore guide <span>&rarr;</span></span>
+        </div>
+      </a>
+
+      <!-- 11. ZeRO-3 / FSDP Walkthrough -->
+      <a href="zero-3-fsdp.html" class="guide-card fade-in stagger-4">
+        <div class="guide-card-header">
+          <div class="guide-icon" style="background: linear-gradient(135deg, rgba(167,139,250,0.15), rgba(244,114,182,0.05));">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M7 7l5 5-5 5"/><path d="M13 7h4"/><path d="M13 12h4"/><path d="M13 17h4"/></svg>
+          </div>
+          <div>
+            <h3>ZeRO-3 / FSDP: Full Sharding</h3>
+            <span class="guide-tag" style="background: linear-gradient(135deg, rgba(167,139,250,0.1), rgba(244,114,182,0.1)); color: #a78bfa;">ZeRO Stage 3</span>
+          </div>
+        </div>
+        <div class="guide-card-body">
+          <p>The final frontier &mdash; parameters themselves are sharded. No full replica anywhere. Walk through gather-compute-flush, prefetching, and 50% memory savings at 1.5&times; communication cost.</p>
+          <div class="guide-features">
+            <span class="feature-chip">Gather-Compute-Flush</span>
+            <span class="feature-chip">Prefetching</span>
+            <span class="feature-chip">16P/N Scaling</span>
             <span class="feature-chip">NEW</span>
           </div>
         </div>
