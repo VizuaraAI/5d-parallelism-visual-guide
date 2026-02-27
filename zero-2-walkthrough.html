@@ -1,0 +1,1825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZeRO-2: A Concrete Walkthrough with Actual Numbers</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* ========================================
+   CSS Variables — Design System
+   ======================================== */
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #121212;
+  --bg-card-hover: #1a1a1a;
+  --bg-section-alt: #0f0f0f;
+  --fg: #f2f2f2;
+  --fg-muted: #a3a3a3;
+  --border: #262626;
+  --border-light: #333;
+  --primary: #00d46a;
+  --primary-dim: #00a854;
+  --secondary: #00c8e6;
+  --accent: #a78bfa;
+  --red: #FF7043;
+  --orange: #FF9800;
+  --yellow: #FFCA28;
+  --blue: #42A5F5;
+  --green: #66BB6A;
+  --pink: #F06292;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --max-w: 1280px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-sans);
+  line-height: 1.7; -webkit-font-smoothing: antialiased; overflow-x: hidden;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: var(--font-mono); }
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+
+/* ========================================
+   NAVBAR
+   ======================================== */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,10,0.85); backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.1rem; }
+.brand-tag {
+  font-size: 0.7rem; background: var(--primary); color: #000;
+  padding: 2px 8px; border-radius: 9999px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+/* ========================================
+   HERO
+   ======================================== */
+.hero {
+  position: relative; min-height: 100vh; display: flex;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 120px 24px 80px; overflow: hidden;
+}
+.hero-bg-orbs { position: absolute; inset: 0; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.12; }
+.orb-green { width: 500px; height: 500px; background: var(--primary); top: 10%; left: 10%; animation: float-slow 20s ease-in-out infinite; }
+.orb-cyan { width: 400px; height: 400px; background: var(--secondary); top: 40%; right: 5%; animation: float-slow 25s ease-in-out infinite reverse; }
+.orb-purple { width: 350px; height: 350px; background: var(--accent); bottom: 10%; left: 30%; animation: float-slow 22s ease-in-out infinite; }
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(30px, -20px); }
+  50% { transform: translate(-20px, 30px); }
+  75% { transform: translate(20px, 20px); }
+}
+.hero-content { position: relative; z-index: 1; max-width: 850px; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3);
+  border-radius: 9999px; padding: 6px 18px; font-size: 0.82rem;
+  font-weight: 500; color: var(--primary); margin-bottom: 24px;
+}
+.pulse-dot { width: 8px; height: 8px; background: var(--primary); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }
+.hero h1 { font-family: var(--font-serif); font-style: italic; font-size: clamp(2.5rem, 7vw, 4.5rem); font-weight: 400; line-height: 1.1; margin-bottom: 20px; }
+.hero-subtitle { font-size: 1.1rem; color: var(--fg-muted); line-height: 1.7; max-width: 700px; margin: 0 auto 40px; }
+.hero-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.hero-stat-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 12px; transition: border-color 0.3s, transform 0.2s;
+}
+.hero-stat-card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-2px); }
+.stat-number {
+  font-size: 1.7rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.stat-label { font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* ========================================
+   SECTIONS
+   ======================================== */
+.section { padding: 100px 0; position: relative; }
+.section-dark { background: var(--bg-section-alt); }
+.section-heading { text-align: center; margin-bottom: 60px; }
+.section-label {
+  display: inline-block; font-size: 0.78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.5px; color: var(--primary); margin-bottom: 12px;
+}
+.section-heading h2 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; line-height: 1.2; margin-bottom: 16px;
+}
+.section-subtitle { color: var(--fg-muted); font-size: 1.05rem; max-width: 650px; margin: 0 auto; }
+
+/* ========================================
+   CARDS
+   ======================================== */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; transition: border-color 0.3s, transform 0.2s;
+}
+.card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-3px); }
+.card h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; }
+.card p, .card li { font-size: 0.88rem; color: var(--fg-muted); line-height: 1.6; }
+.card code {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-size: 0.82rem; color: var(--secondary);
+}
+
+/* ========================================
+   GRIDS
+   ======================================== */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 900px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+
+/* ========================================
+   EQUATION BOX
+   ======================================== */
+.equation-box {
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 24px; margin: 16px 0; text-align: center;
+  font-family: var(--font-mono); font-size: 0.92rem; color: var(--secondary);
+  line-height: 2;
+}
+.equation-box .eq-label {
+  display: block; font-family: var(--font-sans); font-size: 0.72rem;
+  color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 8px; font-weight: 600;
+}
+.equation-box .eq-highlight { color: var(--primary); font-weight: 600; }
+
+/* ========================================
+   CALLOUTS
+   ======================================== */
+.callout {
+  border-radius: 10px; padding: 16px 20px; font-size: 0.85rem; line-height: 1.6; margin: 16px 0;
+}
+.callout-info { background: rgba(66,165,245,0.08); border: 1px solid rgba(66,165,245,0.2); color: var(--fg-muted); }
+.callout-green { background: rgba(0,212,106,0.08); border: 1px solid rgba(0,212,106,0.2); color: var(--fg-muted); }
+.callout-warn { background: rgba(255,112,67,0.08); border: 1px solid rgba(255,112,67,0.2); color: var(--fg-muted); }
+.callout-purple { background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); color: var(--fg-muted); }
+.callout strong { color: var(--fg); }
+.callout code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; color: var(--secondary); }
+
+/* ========================================
+   COMPARISON TABLE
+   ======================================== */
+.comp-table-wrap {
+  overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); margin: 20px 0;
+}
+.comp-table {
+  width: 100%; border-collapse: collapse; font-size: 0.85rem;
+}
+.comp-table thead { background: #1a1a2e; }
+.comp-table th {
+  padding: 14px 16px; text-align: left; font-size: 0.75rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px; color: var(--fg-muted);
+  border-bottom: 1px solid var(--border);
+}
+.comp-table td {
+  padding: 12px 16px; border-bottom: 1px solid rgba(38,38,38,0.5);
+  color: var(--fg-muted); font-size: 0.82rem;
+}
+.comp-table td code {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-size: 0.78rem; color: var(--secondary);
+}
+.val-good { color: var(--primary) !important; font-weight: 600; }
+.val-great { color: var(--secondary) !important; font-weight: 600; }
+.val-bad { color: var(--red) !important; font-weight: 600; }
+.val-ok { color: var(--orange) !important; font-weight: 600; }
+
+/* ========================================
+   MEMORY BAR VISUALIZATION
+   ======================================== */
+.mem-bar-container {
+  margin: 24px 0; padding: 20px 24px;
+  background: rgba(0,0,0,0.25); border-radius: 14px; border: 1px solid var(--border);
+}
+.mem-bar-label { font-size: 0.82rem; font-weight: 600; margin-bottom: 12px; }
+.mem-bar-label code { color: var(--secondary); font-size: 0.78rem; }
+.mem-bar-row {
+  display: flex; border-radius: 8px; overflow: hidden; height: 44px; position: relative;
+}
+.mem-seg {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.68rem; font-weight: 600; color: #fff; transition: flex 0.5s ease;
+  white-space: nowrap; overflow: hidden; min-width: 0;
+}
+.mem-seg.params { background: #a78bfa; }
+.mem-seg.grads { background: #7c5cbf; }
+.mem-seg.optim-m { background: #5b3a9e; }
+.mem-seg.optim-v { background: #4a2d80; }
+.mem-seg.optim-p { background: #3a2166; }
+.mem-legend {
+  display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; justify-content: center;
+}
+.mem-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted); }
+.mem-swatch { width: 12px; height: 12px; border-radius: 3px; }
+
+/* ========================================
+   CHART CONTAINERS
+   ======================================== */
+.chart-container {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 24px 0;
+}
+.chart-container h4 { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.chart-container .chart-subtitle { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+.chart-area {
+  display: flex; align-items: flex-end; gap: 16px; height: 320px; padding: 0 0 30px;
+  position: relative;
+}
+.chart-y-axis {
+  position: absolute; left: 0; top: 0; bottom: 30px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  font-size: 0.62rem; color: var(--fg-muted); font-family: var(--font-mono); width: 50px;
+}
+.chart-bar-group {
+  flex: 1; display: flex; flex-direction: column; justify-content: flex-end;
+  height: 100%; position: relative; cursor: pointer;
+}
+.chart-bar-group:hover .chart-bar-stack { filter: brightness(1.15); }
+.chart-bar-stack {
+  display: flex; flex-direction: column; justify-content: flex-end; border-radius: 4px 4px 0 0;
+  overflow: hidden; transition: filter 0.2s;
+}
+.chart-bar-seg {
+  width: 100%; transition: height 0.5s ease; display: flex; align-items: center;
+  justify-content: center; font-size: 0.55rem; font-weight: 600; color: rgba(255,255,255,0.8);
+}
+.chart-bar-seg.params { background: #a78bfa; }
+.chart-bar-seg.grads { background: #7c5cbf; }
+.chart-bar-seg.optim { background: #5b3a9e; }
+.chart-x-label {
+  position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+  font-size: 0.7rem; color: var(--fg-muted); font-family: var(--font-mono); white-space: nowrap;
+}
+.chart-total-label {
+  position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+  font-size: 0.62rem; color: var(--fg); font-family: var(--font-mono); font-weight: 600;
+  white-space: nowrap;
+}
+.chart-legend {
+  display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; padding: 12px 0 0;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted); }
+.lg-swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+/* Strategy selector */
+.strategy-selector {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; justify-content: center;
+}
+.strategy-btn {
+  padding: 8px 18px; border-radius: 9999px; font-size: 0.82rem; font-weight: 500;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--fg-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.strategy-btn:hover { border-color: rgba(0,212,106,0.3); color: var(--fg); }
+.strategy-btn.active {
+  background: rgba(0,212,106,0.1); border-color: var(--primary); color: var(--primary); font-weight: 600;
+}
+
+/* Model tabs */
+.model-tabs {
+  display: flex; gap: 8px; margin-bottom: 16px; justify-content: center;
+}
+.model-tab {
+  padding: 6px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 500;
+  border: 1px solid var(--border); background: transparent; color: var(--fg-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.model-tab:hover { border-color: rgba(0,200,230,0.3); color: var(--fg); }
+.model-tab.active {
+  background: rgba(0,200,230,0.1); border-color: var(--secondary); color: var(--secondary); font-weight: 600;
+}
+
+/* ========================================
+   PARTITION DIAGRAM
+   ======================================== */
+.partition-visual {
+  background: rgba(0,0,0,0.2); border-radius: 14px; padding: 24px;
+  margin: 20px 0; border: 1px solid var(--border);
+}
+.partition-bar {
+  display: flex; border-radius: 8px; overflow: hidden; height: 52px; margin: 12px 0;
+  border: 1px solid var(--border);
+}
+.partition-seg {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.65rem; font-weight: 600; color: #fff;
+  transition: all 0.3s; cursor: default; position: relative;
+  border-right: 1px solid rgba(0,0,0,0.3);
+}
+.partition-seg:last-child { border-right: none; }
+.partition-seg:hover { filter: brightness(1.2); }
+.partition-seg .seg-tooltip {
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  background: #1a1a1a; border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 10px; font-size: 0.68rem; color: var(--fg-muted);
+  white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.2s; z-index: 10;
+}
+.partition-seg:hover .seg-tooltip { opacity: 1; }
+
+.partition-labels {
+  display: flex; justify-content: center; gap: 24px; margin-top: 12px;
+}
+.partition-label-item {
+  display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--fg-muted);
+}
+.partition-color-dot {
+  width: 10px; height: 10px; border-radius: 3px;
+}
+
+/* ========================================
+   BACKWARD PASS TIMELINE
+   ======================================== */
+.timeline-container {
+  background: rgba(0,0,0,0.2); border-radius: 14px; padding: 28px;
+  margin: 20px 0; border: 1px solid var(--border); overflow-x: auto;
+}
+.timeline-header {
+  display: grid; grid-template-columns: 120px 1fr 100px 1fr 100px;
+  gap: 8px; margin-bottom: 8px; font-size: 0.72rem; font-weight: 600; color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 0.5px; text-align: center;
+  min-width: 700px;
+}
+.timeline-header span:first-child { text-align: left; }
+.timeline-row {
+  display: grid; grid-template-columns: 120px 1fr 100px 1fr 100px;
+  gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid rgba(38,38,38,0.4);
+  min-width: 700px; transition: background 0.2s;
+}
+.timeline-row:hover { background: rgba(255,255,255,0.02); }
+.timeline-layer {
+  font-size: 0.78rem; font-weight: 600; font-family: var(--font-mono);
+}
+.timeline-mem-bar {
+  height: 28px; border-radius: 4px; display: flex; align-items: center;
+  padding: 0 8px; font-size: 0.65rem; font-weight: 600; color: #fff;
+  transition: width 0.5s ease; position: relative;
+}
+.timeline-mem-val {
+  font-size: 0.75rem; font-weight: 600; font-family: var(--font-mono); text-align: center;
+}
+
+/* ========================================
+   GPU DIAGRAM
+   ======================================== */
+.gpu-diagram {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 20px 0;
+}
+.gpu-box {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 24px; transition: border-color 0.3s;
+}
+.gpu-box:hover { border-color: rgba(0,212,106,0.3); }
+.gpu-title {
+  font-size: 1rem; font-weight: 700; margin-bottom: 16px;
+  display: flex; align-items: center; gap: 8px;
+}
+.gpu-title .gpu-chip {
+  font-size: 0.68rem; padding: 2px 8px; border-radius: 9999px;
+  font-weight: 600; text-transform: uppercase;
+}
+.gpu-mem-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid rgba(38,38,38,0.4);
+  font-size: 0.82rem;
+}
+.gpu-mem-item:last-child { border-bottom: none; }
+.gpu-mem-item .mem-label { color: var(--fg-muted); }
+.gpu-mem-item .mem-value { font-family: var(--font-mono); font-weight: 600; }
+.gpu-mem-total {
+  margin-top: 12px; padding-top: 12px; border-top: 2px solid var(--border);
+  display: flex; justify-content: space-between; font-weight: 700; font-size: 0.92rem;
+}
+
+/* ========================================
+   STEP BLOCKS
+   ======================================== */
+.step-block {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 32px; margin: 28px 0;
+}
+.step-number {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: #000; font-weight: 700; font-size: 1rem; margin-right: 12px;
+}
+.step-title {
+  font-size: 1.2rem; font-weight: 600; margin-bottom: 16px;
+  display: flex; align-items: center;
+}
+.step-badge {
+  font-size: 0.68rem; padding: 2px 10px; border-radius: 9999px;
+  margin-left: 12px; font-weight: 600;
+}
+.step-badge-new {
+  background: rgba(0,212,106,0.15); border: 1px solid rgba(0,212,106,0.3); color: var(--primary);
+}
+.step-badge-same {
+  background: rgba(66,165,245,0.15); border: 1px solid rgba(66,165,245,0.3); color: var(--blue);
+}
+
+/* ========================================
+   INTERACTIVE SLIDER
+   ======================================== */
+.slider-group {
+  margin: 16px 0; display: flex; flex-direction: column; gap: 12px;
+}
+.slider-row {
+  display: flex; align-items: center; gap: 16px;
+}
+.slider-label {
+  font-size: 0.82rem; font-weight: 500; color: var(--fg-muted); min-width: 120px;
+}
+.slider-value {
+  font-family: var(--font-mono); font-size: 0.88rem; font-weight: 600;
+  color: var(--primary); min-width: 80px; text-align: right;
+}
+input[type="range"] {
+  flex: 1; -webkit-appearance: none; appearance: none;
+  height: 6px; border-radius: 3px; background: var(--border);
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--primary); cursor: pointer;
+  border: 2px solid #000;
+}
+
+/* ========================================
+   ADAM STEP VISUAL
+   ======================================== */
+.adam-step-visual {
+  background: rgba(0,0,0,0.25); border-radius: 12px; padding: 24px;
+  margin: 16px 0; border: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 0.82rem; line-height: 2.2;
+  color: var(--fg-muted);
+}
+.adam-step-visual .adam-var { color: var(--secondary); font-weight: 600; }
+.adam-step-visual .adam-val { color: var(--primary); font-weight: 600; }
+.adam-step-visual .adam-op { color: var(--fg-muted); }
+.adam-step-visual .adam-result { color: var(--yellow); font-weight: 700; }
+
+/* ========================================
+   COMMUNICATION VISUAL
+   ======================================== */
+.comm-visual {
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  margin: 20px 0; flex-wrap: wrap;
+}
+.comm-gpu {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px 24px; text-align: center; min-width: 150px;
+}
+.comm-gpu-name { font-weight: 700; font-size: 0.88rem; margin-bottom: 8px; }
+.comm-gpu-data {
+  font-family: var(--font-mono); font-size: 0.72rem; color: var(--fg-muted);
+  padding: 4px 8px; background: rgba(0,0,0,0.3); border-radius: 6px;
+}
+.comm-arrow {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  font-size: 0.72rem; color: var(--fg-muted);
+}
+.comm-arrow-line {
+  width: 60px; height: 2px; background: var(--primary); position: relative;
+}
+.comm-arrow-line::after {
+  content: ''; position: absolute; right: -4px; top: -4px;
+  border: 5px solid transparent; border-left-color: var(--primary);
+}
+
+/* ========================================
+   TAKEAWAYS
+   ======================================== */
+.takeaway-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.takeaway-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 24px; position: relative; overflow: hidden;
+}
+.takeaway-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+}
+.takeaway-num {
+  font-family: var(--font-mono); font-size: 2.5rem; font-weight: 700;
+  opacity: 0.08; position: absolute; top: 8px; right: 16px;
+}
+.takeaway-card h4 { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+.takeaway-card p { font-size: 0.82rem; color: var(--fg-muted); line-height: 1.6; }
+
+/* Number highlights */
+.num-green { color: var(--primary); font-weight: 700; font-family: var(--font-mono); }
+.num-blue { color: var(--blue); font-weight: 700; font-family: var(--font-mono); }
+.num-cyan { color: var(--secondary); font-weight: 700; font-family: var(--font-mono); }
+.num-orange { color: var(--orange); font-weight: 700; font-family: var(--font-mono); }
+.num-red { color: var(--red); font-weight: 700; font-family: var(--font-mono); }
+.num-purple { color: var(--accent); font-weight: 700; font-family: var(--font-mono); }
+
+/* ========================================
+   FOOTER
+   ======================================== */
+.footer {
+  border-top: 1px solid var(--border); padding: 40px 0; text-align: center;
+}
+.footer-inner { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.footer-brand { font-size: 1.1rem; font-weight: 600; }
+.footer p { font-size: 0.85rem; color: var(--fg-muted); }
+.footer-muted { font-size: 0.78rem !important; color: rgba(163,163,163,0.5) !important; }
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+.fade-in {
+  opacity: 0; transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+.stagger-1 { transition-delay: 0.1s; }
+.stagger-2 { transition-delay: 0.2s; }
+.stagger-3 { transition-delay: 0.3s; }
+.stagger-4 { transition-delay: 0.4s; }
+
+/* ========================================
+   BACKWARD ANIMATION
+   ======================================== */
+.bwd-anim-container {
+  background: rgba(0,0,0,0.2); border-radius: 14px; padding: 28px;
+  margin: 20px 0; border: 1px solid var(--border);
+}
+.bwd-controls {
+  display: flex; gap: 8px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap;
+}
+.bwd-btn {
+  padding: 8px 20px; border-radius: 9999px; font-size: 0.82rem; font-weight: 600;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--fg-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.bwd-btn:hover { border-color: rgba(0,212,106,0.3); color: var(--fg); }
+.bwd-btn.active {
+  background: rgba(0,212,106,0.1); border-color: var(--primary); color: var(--primary);
+}
+.bwd-frame {
+  display: grid; grid-template-columns: 1fr 80px 1fr; gap: 16px; align-items: start;
+  min-height: 180px;
+}
+.bwd-gpu-col { text-align: center; }
+.bwd-gpu-col h5 {
+  font-size: 0.82rem; font-weight: 700; margin-bottom: 12px;
+  padding: 4px 12px; border-radius: 8px; display: inline-block;
+}
+.bwd-vs { display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 700; color: var(--fg-muted); opacity: 0.3; }
+.bwd-mem-blocks { display: flex; flex-direction: column; gap: 4px; }
+.bwd-mem-block {
+  padding: 6px 10px; border-radius: 6px; font-size: 0.68rem; font-weight: 600;
+  color: #fff; text-align: center; transition: all 0.4s ease;
+}
+.bwd-mem-empty {
+  padding: 6px 10px; border-radius: 6px; font-size: 0.68rem; font-weight: 500;
+  color: var(--fg-muted); text-align: center; border: 1px dashed var(--border);
+  background: transparent;
+}
+.bwd-info-text {
+  margin-top: 16px; text-align: center; font-size: 0.82rem; color: var(--fg-muted); line-height: 1.6;
+}
+.bwd-info-text strong { color: var(--fg); }
+.bwd-peak-summary {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;
+}
+.bwd-peak-card {
+  padding: 16px; border-radius: 10px; text-align: center;
+}
+.bwd-peak-card h6 { font-size: 0.75rem; font-weight: 600; margin-bottom: 4px; }
+.bwd-peak-card .peak-val { font-family: var(--font-mono); font-size: 1.3rem; font-weight: 700; }
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+@media (max-width: 768px) {
+  .hero-cards { grid-template-columns: repeat(2, 1fr); }
+  .nav-links { display: none; }
+  .hero h1 { font-size: 2.2rem; }
+  .section { padding: 60px 0; }
+  .grid-2, .grid-3, .grid-4, .gpu-diagram, .takeaway-grid, .bwd-frame, .bwd-peak-summary { grid-template-columns: 1fr; }
+  .chart-area { height: 240px; }
+  .timeline-container { font-size: 0.75rem; }
+  .slider-row { flex-wrap: wrap; }
+}
+
+::selection { background: rgba(0,212,106,0.3); color: #fff; }
+
+/* ========================================
+   WEIGHT MATRIX VISUAL
+   ======================================== */
+.matrix-visual {
+  background: rgba(0,0,0,0.25); border-radius: 12px; padding: 20px;
+  margin: 16px 0; border: 1px solid var(--border); overflow-x: auto;
+}
+.matrix-title {
+  font-size: 0.82rem; font-weight: 600; margin-bottom: 12px;
+  font-family: var(--font-mono); color: var(--secondary);
+}
+.matrix-grid {
+  display: inline-grid; gap: 2px; font-family: var(--font-mono); font-size: 0.72rem;
+}
+.matrix-cell {
+  padding: 6px 10px; text-align: right; border-radius: 4px;
+  transition: background 0.2s;
+}
+.matrix-cell.gpu0 { background: rgba(66,165,245,0.12); color: var(--blue); }
+.matrix-cell.gpu1 { background: rgba(0,212,106,0.12); color: var(--primary); }
+.matrix-cell:hover { filter: brightness(1.3); }
+
+/* Flow arrow styling */
+.flow-step {
+  display: flex; align-items: center; gap: 12px; margin: 12px 0;
+  padding: 12px 16px; border-radius: 10px;
+  background: rgba(0,0,0,0.15); border: 1px solid rgba(38,38,38,0.5);
+}
+.flow-step-num {
+  width: 28px; height: 28px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; font-weight: 700;
+  font-size: 0.78rem; flex-shrink: 0;
+}
+.flow-step-text { font-size: 0.82rem; color: var(--fg-muted); line-height: 1.5; }
+.flow-step-text strong { color: var(--fg); }
+
+/* Inline code in flow text */
+.code-inline {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-family: var(--font-mono); font-size: 0.78rem; color: var(--secondary);
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     NAVBAR
+     ============================================================ -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      VizuaraAI <span class="brand-tag">ZeRO-2</span>
+    </div>
+    <div class="nav-links">
+      <a href="#setup">Setup</a>
+      <a href="#memory">Memory</a>
+      <a href="#partition">Partition</a>
+      <a href="#training">Training Step</a>
+      <a href="#backward">Backward Pass</a>
+      <a href="#optimizer">Optimizer</a>
+      <a href="#scaling">Scaling</a>
+      <a href="#takeaways">Takeaways</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============================================================
+     HERO
+     ============================================================ -->
+<section class="hero">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-green"></div>
+    <div class="orb orb-cyan"></div>
+    <div class="orb orb-purple"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="pulse-dot"></span>
+      ZeRO Optimization &middot; Stage 2
+    </div>
+    <h1><span class="gradient-text">ZeRO-2: A Concrete Walkthrough</span><br>with Actual Numbers</h1>
+    <p class="hero-subtitle">
+      ZeRO-2 partitions both <strong>optimizer states AND gradients</strong> across GPUs.
+      Follow every byte through a complete training step on a tiny transformer with 260 parameters.
+    </p>
+    <div class="hero-cards">
+      <div class="hero-stat-card fade-in stagger-1">
+        <div class="stat-number">260</div>
+        <div class="stat-label">Total Parameters</div>
+      </div>
+      <div class="hero-stat-card fade-in stagger-2">
+        <div class="stat-number">43.8%</div>
+        <div class="stat-label">Memory Saved</div>
+      </div>
+      <div class="hero-stat-card fade-in stagger-3">
+        <div class="stat-number">0</div>
+        <div class="stat-label">Extra Comm. Cost</div>
+      </div>
+      <div class="hero-stat-card fade-in stagger-4">
+        <div class="stat-number">2</div>
+        <div class="stat-label">GPUs</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 1: MODEL SETUP
+     ============================================================ -->
+<section id="setup" class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section 1</span>
+      <h2><span class="gradient-text">Our Tiny Transformer</span></h2>
+      <p class="section-subtitle">Same model as the ZeRO-1 walkthrough &mdash; a single transformer block with concrete, traceable values.</p>
+    </div>
+
+    <div class="grid-4 fade-in">
+      <div class="card">
+        <h3>Hidden dim</h3>
+        <p><code>d = 4</code></p>
+      </div>
+      <div class="card">
+        <h3>Attention heads</h3>
+        <p><code>2 heads, d_k = 2</code></p>
+      </div>
+      <div class="card">
+        <h3>FFN inner dim</h3>
+        <p><code>16 (4x expansion)</code></p>
+      </div>
+      <div class="card">
+        <h3>Vocab &amp; Seq</h3>
+        <p><code>V=8, T=3 tokens</code></p>
+      </div>
+    </div>
+
+    <!-- Parameter Table -->
+    <div class="comp-table-wrap fade-in" style="margin-top: 40px;">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Layer</th>
+            <th>Name</th>
+            <th>Shape</th>
+            <th>#Elements</th>
+            <th>GPU Owner</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>LayerNorm 1</td><td><code>&gamma;&#8321;</code></td><td>(4,)</td><td class="num-blue">4</td><td style="color:var(--blue)">GPU-0</td></tr>
+          <tr><td>LayerNorm 1</td><td><code>&beta;&#8321;</code></td><td>(4,)</td><td class="num-blue">4</td><td style="color:var(--blue)">GPU-0</td></tr>
+          <tr><td>Attention</td><td><code>W_q</code></td><td>(4, 4)</td><td class="num-blue">16</td><td style="color:var(--blue)">GPU-0</td></tr>
+          <tr><td>Attention</td><td><code>W_k</code></td><td>(4, 4)</td><td class="num-blue">16</td><td style="color:var(--blue)">GPU-0</td></tr>
+          <tr><td>Attention</td><td><code>W_v</code></td><td>(4, 4)</td><td class="num-blue">16</td><td style="color:var(--blue)">GPU-0</td></tr>
+          <tr><td>Attention</td><td><code>W_o</code></td><td>(4, 4)</td><td class="num-blue">16</td><td style="color:var(--blue)">GPU-0</td></tr>
+          <tr><td>LayerNorm 2</td><td><code>&gamma;&#8322;</code></td><td>(4,)</td><td class="num-blue">4</td><td style="color:var(--blue)">GPU-0</td></tr>
+          <tr><td>LayerNorm 2</td><td><code>&beta;&#8322;</code></td><td>(4,)</td><td class="num-blue">4</td><td style="color:var(--blue)">GPU-0</td></tr>
+          <tr><td>FFN</td><td><code>W&#8321;</code></td><td>(4, 16)</td><td><span class="num-blue">50</span> + <span class="num-green">14</span></td><td style="color:var(--fg-muted)">Split</td></tr>
+          <tr><td>FFN</td><td><code>b&#8321;</code></td><td>(16,)</td><td class="num-green">16</td><td style="color:var(--primary)">GPU-1</td></tr>
+          <tr><td>FFN</td><td><code>W&#8322;</code></td><td>(16, 4)</td><td class="num-green">64</td><td style="color:var(--primary)">GPU-1</td></tr>
+          <tr><td>FFN</td><td><code>b&#8322;</code></td><td>(4,)</td><td class="num-green">4</td><td style="color:var(--primary)">GPU-1</td></tr>
+          <tr><td>Output</td><td><code>W_vocab</code></td><td>(4, 8)</td><td class="num-green">32</td><td style="color:var(--primary)">GPU-1</td></tr>
+          <tr style="background: rgba(0,212,106,0.05);"><td colspan="3"><strong>Total</strong></td><td class="num-green"><strong>260</strong></td><td style="color:var(--fg-muted)">130 + 130</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-info fade-in" style="margin-top:20px">
+      <strong>Flat vector partition:</strong> We flatten all 260 parameters into a 1D vector. Indices <code>0..129</code> go to GPU-0, indices <code>130..259</code> go to GPU-1. This is identical to ZeRO-1 &mdash; the partition boundary falls in the middle of W&#8321;.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 2: MEMORY ACCOUNTING
+     ============================================================ -->
+<section id="memory" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section 2</span>
+      <h2><span class="gradient-text">Memory Accounting</span></h2>
+      <p class="section-subtitle">The key insight: there is no reason to keep the full gradient vector on every GPU. Each GPU only needs averaged gradients for its own optimizer slice.</p>
+    </div>
+
+    <!-- Precision Table -->
+    <div class="grid-2 fade-in">
+      <div class="card">
+        <h3>Model &amp; Gradient Storage</h3>
+        <div class="gpu-mem-item"><span class="mem-label">Parameters (BF16)</span><span class="mem-value num-purple">2 bytes/elem</span></div>
+        <div class="gpu-mem-item"><span class="mem-label">Gradients (BF16)</span><span class="mem-value num-purple">2 bytes/elem</span></div>
+      </div>
+      <div class="card">
+        <h3>Adam Optimizer States (FP32)</h3>
+        <div class="gpu-mem-item"><span class="mem-label">Master params</span><span class="mem-value num-orange">4 bytes/elem</span></div>
+        <div class="gpu-mem-item"><span class="mem-label">First moment m</span><span class="mem-value num-orange">4 bytes/elem</span></div>
+        <div class="gpu-mem-item"><span class="mem-label">Second moment v</span><span class="mem-value num-orange">4 bytes/elem</span></div>
+      </div>
+    </div>
+
+    <!-- Interactive Memory Comparison Chart -->
+    <div class="chart-container fade-in" style="margin-top: 32px;">
+      <h4>Per-GPU Memory: No ZeRO vs ZeRO-1 vs ZeRO-2</h4>
+      <p class="chart-subtitle">Click a strategy to highlight. All values in bytes for 260 parameters on 2 GPUs.</p>
+      <div class="strategy-selector" id="memStrategySelector">
+        <button class="strategy-btn active" data-strategy="all">All</button>
+        <button class="strategy-btn" data-strategy="baseline">No ZeRO</button>
+        <button class="strategy-btn" data-strategy="zero1">ZeRO-1</button>
+        <button class="strategy-btn" data-strategy="zero2">ZeRO-2</button>
+      </div>
+      <div id="memChart" style="display:flex; align-items: flex-end; gap: 20px; height: 320px; padding: 0 60px 40px; position: relative;">
+        <!-- Rendered by JS -->
+      </div>
+      <div class="chart-legend">
+        <div class="legend-item"><span class="lg-swatch" style="background:#a78bfa"></span> Parameters (BF16)</div>
+        <div class="legend-item"><span class="lg-swatch" style="background:#7c5cbf"></span> Gradients (BF16)</div>
+        <div class="legend-item"><span class="lg-swatch" style="background:#5b3a9e"></span> Optimizer (FP32)</div>
+      </div>
+    </div>
+
+    <!-- Memory Formulas -->
+    <div class="grid-3 fade-in" style="margin-top: 24px;">
+      <div class="equation-box">
+        <span class="eq-label">No ZeRO (per GPU)</span>
+        2P + 2P + 12P<br>
+        = <span class="eq-highlight">16P bytes</span><br>
+        = <span class="eq-highlight">4,160</span>
+      </div>
+      <div class="equation-box">
+        <span class="eq-label">ZeRO-1 (per GPU)</span>
+        2P + 2P + 12P/N<br>
+        = <span class="eq-highlight">4P + 12P/N</span><br>
+        = <span class="eq-highlight">2,600</span>
+      </div>
+      <div class="equation-box">
+        <span class="eq-label">ZeRO-2 (per GPU)</span>
+        2P + 2P/N + 12P/N<br>
+        = <span class="eq-highlight">2P + 14P/N</span><br>
+        = <span class="eq-highlight">2,340</span>
+      </div>
+    </div>
+
+    <div class="callout callout-green fade-in" style="margin-top: 20px;">
+      <strong>The one change from ZeRO-1:</strong> The gradient term goes from <code>2P</code> to <code>2P/N</code>. For our model: 520 bytes &rarr; 260 bytes. The extra saving is <span class="num-green">260 bytes</span> per GPU &mdash; gradient partition!
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 3: PARTITION DIAGRAM
+     ============================================================ -->
+<section id="partition" class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section 3</span>
+      <h2><span class="gradient-text">Who Owns What</span></h2>
+      <p class="section-subtitle">In ZeRO-2, "ownership" means more: each GPU stores optimizer states AND averaged gradients for its slice.</p>
+    </div>
+
+    <!-- Partition Bar -->
+    <div class="partition-visual fade-in">
+      <div style="font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 8px; text-align: center;">
+        Flat parameter vector (260 elements) &mdash; hover over segments for details
+      </div>
+      <div class="partition-bar" id="partitionBar">
+        <!-- Rendered by JS -->
+      </div>
+      <div class="partition-labels">
+        <div class="partition-label-item">
+          <div class="partition-color-dot" style="background: var(--blue);"></div>
+          GPU-0 owns indices 0&ndash;129
+        </div>
+        <div class="partition-label-item">
+          <div class="partition-color-dot" style="background: var(--primary);"></div>
+          GPU-1 owns indices 130&ndash;259
+        </div>
+      </div>
+    </div>
+
+    <!-- What each GPU holds -->
+    <div class="grid-2 fade-in" style="margin-top: 24px;">
+      <div class="card" style="border-color: rgba(66,165,245,0.3);">
+        <h3 style="color: var(--blue);">GPU-0 owns slice [0:130]</h3>
+        <div class="gpu-mem-item"><span class="mem-label">Optimizer: m&#8320;[130]</span><span class="mem-value">FP32</span></div>
+        <div class="gpu-mem-item"><span class="mem-label">Optimizer: v&#8320;[130]</span><span class="mem-value">FP32</span></div>
+        <div class="gpu-mem-item"><span class="mem-label">Master params: p&#8320;[130]</span><span class="mem-value">FP32</span></div>
+        <div class="gpu-mem-item"><span class="mem-label">Averaged gradients: avg_g[0:130]</span><span class="mem-value" style="color: var(--primary);">BF16 &larr; NEW!</span></div>
+      </div>
+      <div class="card" style="border-color: rgba(0,212,106,0.3);">
+        <h3 style="color: var(--primary);">GPU-1 owns slice [130:260]</h3>
+        <div class="gpu-mem-item"><span class="mem-label">Optimizer: m&#8321;[130]</span><span class="mem-value">FP32</span></div>
+        <div class="gpu-mem-item"><span class="mem-label">Optimizer: v&#8321;[130]</span><span class="mem-value">FP32</span></div>
+        <div class="gpu-mem-item"><span class="mem-label">Master params: p&#8321;[130]</span><span class="mem-value">FP32</span></div>
+        <div class="gpu-mem-item"><span class="mem-label">Averaged gradients: avg_g[130:260]</span><span class="mem-value" style="color: var(--primary);">BF16 &larr; NEW!</span></div>
+      </div>
+    </div>
+
+    <div class="callout callout-purple fade-in" style="margin-top: 20px;">
+      <strong>Still replicated on BOTH GPUs:</strong> Full parameters <code>&theta;[260]</code> in BF16 (needed for forward and backward pass). That's it &mdash; nothing else is fully replicated.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 4: TRAINING STEP OVERVIEW
+     ============================================================ -->
+<section id="training" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section 4</span>
+      <h2><span class="gradient-text">Walking Through One Training Step</span></h2>
+      <p class="section-subtitle">The critical difference from ZeRO-1: reduce-scatter is fused INTO the backward pass. Gradients are communicated and discarded immediately.</p>
+    </div>
+
+    <!-- Step 1+2: Forward + Backward (FUSED) -->
+    <div class="step-block fade-in">
+      <div class="step-title">
+        <span class="step-number">1+2</span>
+        Forward &amp; Backward with Fused Reduce-Scatter
+        <span class="step-badge step-badge-new">KEY CHANGE</span>
+      </div>
+
+      <div class="grid-2" style="margin-bottom: 20px;">
+        <div>
+          <h4 style="font-size: 0.92rem; margin-bottom: 12px; color: var(--red);">ZeRO-1 approach:</h4>
+          <div class="flow-step">
+            <div class="flow-step-num" style="background: rgba(255,112,67,0.2); color: var(--red);">1</div>
+            <div class="flow-step-text">Full backward pass &rarr; accumulate <strong>all 260</strong> local gradients</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-step-num" style="background: rgba(255,112,67,0.2); color: var(--red);">2</div>
+            <div class="flow-step-text">Separate reduce-scatter step after backward completes</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-step-num" style="background: rgba(255,112,67,0.2); color: var(--red);">3</div>
+            <div class="flow-step-text">Peak gradient memory: <strong class="num-red">260 values</strong></div>
+          </div>
+        </div>
+        <div>
+          <h4 style="font-size: 0.92rem; margin-bottom: 12px; color: var(--primary);">ZeRO-2 approach:</h4>
+          <div class="flow-step">
+            <div class="flow-step-num" style="background: rgba(0,212,106,0.2); color: var(--primary);">1</div>
+            <div class="flow-step-text">Compute gradient for a layer &rarr; <strong>immediately</strong> reduce-scatter</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-step-num" style="background: rgba(0,212,106,0.2); color: var(--primary);">2</div>
+            <div class="flow-step-text">Non-local gradients are <strong>discarded instantly</strong></div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-step-num" style="background: rgba(0,212,106,0.2); color: var(--primary);">3</div>
+            <div class="flow-step-text">Peak gradient memory: <strong class="num-green">~130 values</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Forward Pass -->
+      <div class="callout callout-info">
+        <strong>Forward pass is identical to ZeRO-1.</strong> Each GPU independently runs the full model on its micro-batch:
+        LN1 &rarr; Attention &rarr; residual &rarr; LN2 &rarr; FFN &rarr; residual &rarr; W_vocab &rarr; softmax &rarr; CrossEntropy loss.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 5: BACKWARD PASS ANIMATION
+     ============================================================ -->
+<section id="backward" class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section 5</span>
+      <h2><span class="gradient-text">The Backward Pass, Frame by Frame</span></h2>
+      <p class="section-subtitle">Watch gradient memory on GPU-0 during backpropagation. ZeRO-1 accumulates everything; ZeRO-2 discards immediately.</p>
+    </div>
+
+    <!-- Animated Backward Pass -->
+    <div class="bwd-anim-container fade-in">
+      <div class="bwd-controls" id="bwdControls">
+        <button class="bwd-btn active" data-step="0">Start</button>
+        <button class="bwd-btn" data-step="1">W_vocab</button>
+        <button class="bwd-btn" data-step="2">W&#8322;</button>
+        <button class="bwd-btn" data-step="3">b&#8322;</button>
+        <button class="bwd-btn" data-step="4">W&#8321;</button>
+        <button class="bwd-btn" data-step="5">b&#8321;</button>
+        <button class="bwd-btn" data-step="6">W_o</button>
+        <button class="bwd-btn" data-step="7">W_v</button>
+        <button class="bwd-btn" data-step="8">W_k</button>
+        <button class="bwd-btn" data-step="9">W_q</button>
+        <button class="bwd-btn" data-step="10">&gamma;,&beta;</button>
+        <button class="bwd-btn" data-step="11">Done</button>
+      </div>
+
+      <div class="bwd-frame">
+        <div class="bwd-gpu-col">
+          <h5 style="background: rgba(255,112,67,0.15); color: var(--red);">ZeRO-1 (GPU-0)</h5>
+          <div class="bwd-mem-blocks" id="bwdZero1Blocks">
+            <div class="bwd-mem-empty">No gradients yet</div>
+          </div>
+          <div style="margin-top: 12px; font-family: var(--font-mono); font-size: 0.82rem;">
+            Memory: <span id="bwdZero1Mem" class="num-red">0</span> values
+          </div>
+        </div>
+        <div class="bwd-vs">vs</div>
+        <div class="bwd-gpu-col">
+          <h5 style="background: rgba(0,212,106,0.15); color: var(--primary);">ZeRO-2 (GPU-0)</h5>
+          <div class="bwd-mem-blocks" id="bwdZero2Blocks">
+            <div class="bwd-mem-empty">No gradients yet</div>
+          </div>
+          <div style="margin-top: 12px; font-family: var(--font-mono); font-size: 0.82rem;">
+            Memory: <span id="bwdZero2Mem" class="num-green">0</span> values
+          </div>
+        </div>
+      </div>
+
+      <div class="bwd-info-text" id="bwdInfoText">
+        Click the layer buttons above to step through the backward pass and watch gradient memory build up.
+      </div>
+
+      <div class="bwd-peak-summary">
+        <div class="bwd-peak-card" style="background: rgba(255,112,67,0.08); border: 1px solid rgba(255,112,67,0.2);">
+          <h6 style="color: var(--red);">ZeRO-1 Peak Gradient Memory</h6>
+          <div class="peak-val" id="zero1Peak" style="color: var(--red);">0 values</div>
+        </div>
+        <div class="bwd-peak-card" style="background: rgba(0,212,106,0.08); border: 1px solid rgba(0,212,106,0.2);">
+          <h6 style="color: var(--primary);">ZeRO-2 Peak Gradient Memory</h6>
+          <div class="peak-val" id="zero2Peak" style="color: var(--primary);">0 values</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Concrete gradient values example -->
+    <div class="step-block fade-in" style="margin-top: 32px;">
+      <div class="step-title">
+        <span class="step-number" style="font-size: 0.8rem;">Ex</span>
+        Concrete Example: Backprop through W_q
+      </div>
+      <p style="font-size: 0.88rem; color: var(--fg-muted); margin-bottom: 16px;">
+        Both GPUs compute local gradients for W_q, then immediately reduce-scatter. Since W_q is in GPU-0's slice, GPU-0 keeps the averaged result and GPU-1 discards everything.
+      </p>
+      <div class="grid-2">
+        <div class="matrix-visual">
+          <div class="matrix-title">GPU-0: g_q^(A) &mdash; local gradient</div>
+          <div class="matrix-grid" style="grid-template-columns: repeat(4, 1fr);">
+            <div class="matrix-cell gpu0">0.023</div><div class="matrix-cell gpu0">-0.011</div><div class="matrix-cell gpu0">0.045</div><div class="matrix-cell gpu0">-0.008</div>
+            <div class="matrix-cell gpu0">-0.031</div><div class="matrix-cell gpu0">0.019</div><div class="matrix-cell gpu0">-0.007</div><div class="matrix-cell gpu0">0.014</div>
+            <div class="matrix-cell gpu0">0.012</div><div class="matrix-cell gpu0">-0.028</div><div class="matrix-cell gpu0">0.033</div><div class="matrix-cell gpu0">-0.005</div>
+            <div class="matrix-cell gpu0">-0.016</div><div class="matrix-cell gpu0">0.009</div><div class="matrix-cell gpu0">-0.021</div><div class="matrix-cell gpu0">0.038</div>
+          </div>
+        </div>
+        <div class="matrix-visual">
+          <div class="matrix-title">GPU-1: g_q^(B) &mdash; local gradient</div>
+          <div class="matrix-grid" style="grid-template-columns: repeat(4, 1fr);">
+            <div class="matrix-cell gpu1">0.017</div><div class="matrix-cell gpu1">-0.025</div><div class="matrix-cell gpu1">0.031</div><div class="matrix-cell gpu1">-0.013</div>
+            <div class="matrix-cell gpu1">-0.009</div><div class="matrix-cell gpu1">0.041</div><div class="matrix-cell gpu1">-0.018</div><div class="matrix-cell gpu1">0.006</div>
+            <div class="matrix-cell gpu1">0.028</div><div class="matrix-cell gpu1">-0.014</div><div class="matrix-cell gpu1">0.022</div><div class="matrix-cell gpu1">-0.035</div>
+            <div class="matrix-cell gpu1">-0.020</div><div class="matrix-cell gpu1">0.016</div><div class="matrix-cell gpu1">-0.012</div><div class="matrix-cell gpu1">0.027</div>
+          </div>
+        </div>
+      </div>
+      <div style="text-align: center; margin: 16px 0; font-size: 1.2rem; color: var(--fg-muted);">&darr; Reduce-Scatter &darr;</div>
+      <div class="matrix-visual" style="max-width: 500px; margin: 0 auto;">
+        <div class="matrix-title" style="color: var(--primary);">GPU-0 receives: avg_g_q = (g_q^A + g_q^B) / 2</div>
+        <div class="matrix-grid" style="grid-template-columns: repeat(4, 1fr);">
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">0.020</div>
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">-0.018</div>
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">0.038</div>
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">-0.011</div>
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">-0.020</div>
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">0.030</div>
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">-0.013</div>
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">0.010</div>
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">0.020</div>
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">-0.021</div>
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">0.028</div>
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">-0.020</div>
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">-0.018</div>
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">0.013</div>
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">-0.017</div>
+          <div class="matrix-cell gpu0" style="background: rgba(0,212,106,0.15); color: var(--primary);">0.033</div>
+        </div>
+      </div>
+      <div class="callout callout-green" style="margin-top: 12px;">
+        <strong>GPU-1 receives NOTHING for W_q</strong> (not its slice!) and <strong>discards g_q^(B) immediately</strong>. This is the core ZeRO-2 mechanism.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 6: OPTIMIZER STEP + ALL-GATHER
+     ============================================================ -->
+<section id="optimizer" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section 6</span>
+      <h2><span class="gradient-text">Optimizer Step &amp; All-Gather</span></h2>
+      <p class="section-subtitle">These steps are identical to ZeRO-1. Each GPU runs Adam on its 130-element slice, then broadcasts the updated parameters.</p>
+    </div>
+
+    <!-- Step 3: Optimizer -->
+    <div class="step-block fade-in">
+      <div class="step-title">
+        <span class="step-number">3</span>
+        Adam Optimizer Update (Local Slice Only)
+        <span class="step-badge step-badge-same">Same as ZeRO-1</span>
+      </div>
+
+      <div class="adam-step-visual">
+        <span class="eq-label" style="display: block; font-family: var(--font-sans); font-size: 0.72rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; font-weight: 600;">GPU-0 updates W_q[0,0] &mdash; Adam step, t=1</span>
+        <span class="adam-var">lr</span>=<span class="adam-val">0.001</span>, <span class="adam-var">&beta;&#8321;</span>=<span class="adam-val">0.9</span>, <span class="adam-var">&beta;&#8322;</span>=<span class="adam-val">0.999</span>, <span class="adam-var">&epsilon;</span>=<span class="adam-val">1e-8</span><br><br>
+        <span class="adam-var">p</span> = <span class="adam-val">0.12</span> <span class="adam-op">(current master param, FP32)</span><br>
+        <span class="adam-var">g</span> = <span class="adam-val">0.020</span> <span class="adam-op">(averaged gradient)</span><br><br>
+        <span class="adam-var">m_new</span> = 0.9 &times; 0.0 + 0.1 &times; 0.020 = <span class="adam-val">0.002</span><br>
+        <span class="adam-var">v_new</span> = 0.999 &times; 0.0 + 0.001 &times; 0.0004 = <span class="adam-val">0.0000004</span><br><br>
+        <span class="adam-var">m&#770;</span> = 0.002 / (1 - 0.9) = <span class="adam-val">0.02</span><br>
+        <span class="adam-var">v&#770;</span> = 0.0000004 / (1 - 0.999) = <span class="adam-val">0.0004</span><br><br>
+        <span class="adam-var">p_new</span> = 0.12 - 0.001 &times; 0.02 / (&radic;0.0004 + 1e-8)<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= 0.12 - 0.001 &times; 0.02 / 0.02<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= 0.12 - 0.001 = <span class="adam-result">0.119</span><br><br>
+        Cast to BF16: W_q[0,0] &asymp; <span class="adam-result">0.1191</span>
+      </div>
+    </div>
+
+    <!-- Step 4: All-Gather -->
+    <div class="step-block fade-in">
+      <div class="step-title">
+        <span class="step-number">4</span>
+        All-Gather (Sync Updated Parameters)
+        <span class="step-badge step-badge-same">Same as ZeRO-1</span>
+      </div>
+
+      <div class="comm-visual">
+        <div class="comm-gpu" style="border-color: rgba(66,165,245,0.3);">
+          <div class="comm-gpu-name" style="color: var(--blue);">GPU-0</div>
+          <div class="comm-gpu-data">new_params[0:130]</div>
+        </div>
+        <div class="comm-arrow">
+          <span style="font-size: 0.72rem;">All-Gather</span>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <div class="comm-arrow-line"></div>
+            <div class="comm-arrow-line" style="transform: scaleX(-1);"></div>
+          </div>
+        </div>
+        <div class="comm-gpu" style="border-color: rgba(0,212,106,0.3);">
+          <div class="comm-gpu-name" style="color: var(--primary);">GPU-1</div>
+          <div class="comm-gpu-data">new_params[130:260]</div>
+        </div>
+      </div>
+      <p style="text-align: center; font-size: 0.88rem; color: var(--fg-muted); margin-top: 12px;">
+        After all-gather, both GPUs hold the full updated model <code>&theta;[260]</code>.
+      </p>
+    </div>
+
+    <!-- Step 5: End of Step -->
+    <div class="step-block fade-in">
+      <div class="step-title">
+        <span class="step-number">5</span>
+        End of Step &mdash; What Lives Where
+      </div>
+
+      <div class="gpu-diagram">
+        <div class="gpu-box" style="border-color: rgba(66,165,245,0.3);">
+          <div class="gpu-title">
+            <span style="color: var(--blue);">GPU-0</span>
+            <span class="gpu-chip" style="background: rgba(66,165,245,0.15); color: var(--blue); border: 1px solid rgba(66,165,245,0.3);">Slice 0:130</span>
+          </div>
+          <div class="gpu-mem-item"><span class="mem-label">&theta;[260] in BF16 (full model)</span><span class="mem-value num-purple">520 B</span></div>
+          <div class="gpu-mem-item"><span class="mem-label">avg_g[0:130] in BF16</span><span class="mem-value num-cyan">260 B</span></div>
+          <div class="gpu-mem-item"><span class="mem-label">m&#8320;[130] in FP32</span><span class="mem-value num-orange">520 B</span></div>
+          <div class="gpu-mem-item"><span class="mem-label">v&#8320;[130] in FP32</span><span class="mem-value num-orange">520 B</span></div>
+          <div class="gpu-mem-item"><span class="mem-label">p&#8320;[130] in FP32</span><span class="mem-value num-orange">520 B</span></div>
+          <div class="gpu-mem-total">
+            <span>Total</span>
+            <span class="num-green">2,340 bytes</span>
+          </div>
+        </div>
+        <div class="gpu-box" style="border-color: rgba(0,212,106,0.3);">
+          <div class="gpu-title">
+            <span style="color: var(--primary);">GPU-1</span>
+            <span class="gpu-chip" style="background: rgba(0,212,106,0.15); color: var(--primary); border: 1px solid rgba(0,212,106,0.3);">Slice 130:260</span>
+          </div>
+          <div class="gpu-mem-item"><span class="mem-label">&theta;[260] in BF16 (full model)</span><span class="mem-value num-purple">520 B</span></div>
+          <div class="gpu-mem-item"><span class="mem-label">avg_g[130:260] in BF16</span><span class="mem-value num-cyan">260 B</span></div>
+          <div class="gpu-mem-item"><span class="mem-label">m&#8321;[130] in FP32</span><span class="mem-value num-orange">520 B</span></div>
+          <div class="gpu-mem-item"><span class="mem-label">v&#8321;[130] in FP32</span><span class="mem-value num-orange">520 B</span></div>
+          <div class="gpu-mem-item"><span class="mem-label">p&#8321;[130] in FP32</span><span class="mem-value num-orange">520 B</span></div>
+          <div class="gpu-mem-total">
+            <span>Total</span>
+            <span class="num-green">2,340 bytes</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 7: COMMUNICATION COST
+     ============================================================ -->
+<section class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section 7</span>
+      <h2><span class="gradient-text">Communication Cost Analysis</span></h2>
+      <p class="section-subtitle">All three approaches have identical communication volume. ZeRO-2 just pipelines the reduce-scatter into the backward pass.</p>
+    </div>
+
+    <div class="comp-table-wrap fade-in">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>Reduce-Scatter</th>
+            <th>All-Gather</th>
+            <th>Total Comm.</th>
+            <th>Timing</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Standard All-Reduce</strong></td>
+            <td>520 B</td>
+            <td>520 B</td>
+            <td class="val-ok">1,040 B</td>
+            <td>After backward</td>
+          </tr>
+          <tr>
+            <td><strong>ZeRO-1</strong></td>
+            <td>520 B</td>
+            <td>520 B</td>
+            <td class="val-ok">1,040 B</td>
+            <td>After backward + after optimizer</td>
+          </tr>
+          <tr>
+            <td><strong>ZeRO-2</strong></td>
+            <td>520 B</td>
+            <td>520 B</td>
+            <td class="val-ok">1,040 B</td>
+            <td>During backward + after optimizer</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-green fade-in" style="margin-top: 16px;">
+      <strong>Identical communication volume!</strong> The difference is purely about <em>when</em> communication happens and <em>how long</em> gradient data is kept in memory. ZeRO-2 pipelines the reduce-scatter into the backward pass, allowing immediate gradient memory reclamation at zero extra communication cost.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 8: SCALING CALCULATOR
+     ============================================================ -->
+<section id="scaling" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section 8</span>
+      <h2><span class="gradient-text">Scale It Up: Interactive Calculator</span></h2>
+      <p class="section-subtitle">Adjust model size and GPU count to see how ZeRO-2 compares to ZeRO-1 and baseline.</p>
+    </div>
+
+    <div class="chart-container fade-in">
+      <div class="slider-group">
+        <div class="slider-row">
+          <span class="slider-label">Model Size</span>
+          <input type="range" id="modelSizeSlider" min="0" max="5" step="1" value="3">
+          <span class="slider-value" id="modelSizeVal">7B</span>
+        </div>
+        <div class="slider-row">
+          <span class="slider-label">Number of GPUs</span>
+          <input type="range" id="gpuCountSlider" min="1" max="6" step="1" value="3">
+          <span class="slider-value" id="gpuCountVal">8</span>
+        </div>
+      </div>
+
+      <div id="scalingChart" style="margin-top: 24px;">
+        <!-- Rendered by JS -->
+      </div>
+
+      <div id="scalingDetails" style="margin-top: 20px;">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+
+    <!-- 7B Fixed Table -->
+    <div class="comp-table-wrap fade-in" style="margin-top: 32px;">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Component</th>
+            <th>No ZeRO (per GPU)</th>
+            <th>ZeRO-1 (8 GPUs)</th>
+            <th>ZeRO-2 (8 GPUs)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Params (BF16)</td><td>14.0 GB</td><td>14.0 GB</td><td>14.0 GB</td></tr>
+          <tr><td>Gradients (BF16)</td><td>14.0 GB</td><td>14.0 GB</td><td class="val-great">1.75 GB</td></tr>
+          <tr><td>Optimizer: m (FP32)</td><td>28.0 GB</td><td class="val-good">3.5 GB</td><td class="val-good">3.5 GB</td></tr>
+          <tr><td>Optimizer: v (FP32)</td><td>28.0 GB</td><td class="val-good">3.5 GB</td><td class="val-good">3.5 GB</td></tr>
+          <tr><td>Optimizer: master p (FP32)</td><td>28.0 GB</td><td class="val-good">3.5 GB</td><td class="val-good">3.5 GB</td></tr>
+          <tr style="background: rgba(0,212,106,0.05);">
+            <td><strong>Total per GPU</strong></td>
+            <td class="val-bad"><strong>112.0 GB</strong></td>
+            <td class="val-good"><strong>38.5 GB</strong></td>
+            <td class="val-great"><strong>26.25 GB</strong></td>
+          </tr>
+          <tr>
+            <td>Saving vs baseline</td>
+            <td>&mdash;</td>
+            <td class="val-good">65.6%</td>
+            <td class="val-great">76.6%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 9: ZeRO-1 vs ZeRO-2 COMPARISON
+     ============================================================ -->
+<section class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section 9</span>
+      <h2><span class="gradient-text">ZeRO-1 &rarr; ZeRO-2: The One Key Change</span></h2>
+      <p class="section-subtitle">Why not always use ZeRO-2? In practice, you should. The communication volume is identical, and the memory savings are free.</p>
+    </div>
+
+    <div class="comp-table-wrap fade-in">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Dimension</th>
+            <th>ZeRO-1</th>
+            <th>ZeRO-2</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Gradient memory</strong></td><td class="val-bad">Full (P/1)</td><td class="val-great">Partitioned (P/N)</td></tr>
+          <tr><td><strong>Communication timing</strong></td><td>Reduce-scatter AFTER backward</td><td class="val-good">Reduce-scatter DURING backward</td></tr>
+          <tr><td><strong>Implementation</strong></td><td>Simple (one RS call)</td><td>More complex (bucket-by-bucket, fused)</td></tr>
+          <tr><td><strong>Communication volume</strong></td><td>Identical</td><td>Identical</td></tr>
+          <tr><td><strong>Optimizer step</strong></td><td>Identical</td><td>Identical</td></tr>
+          <tr><td><strong>All-gather</strong></td><td>Identical</td><td>Identical</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid-2 fade-in" style="margin-top: 24px;">
+      <div class="equation-box">
+        <span class="eq-label">ZeRO-1 per-GPU formula</span>
+        <span class="eq-highlight">2P</span> + <span style="color: var(--red);">2P</span> + 12P/N<br>
+        <span style="font-size: 0.75rem; color: var(--fg-muted);">params + full grads + optimizer/N</span>
+      </div>
+      <div class="equation-box">
+        <span class="eq-label">ZeRO-2 per-GPU formula</span>
+        <span class="eq-highlight">2P</span> + <span class="eq-highlight">2P/N</span> + 12P/N<br>
+        <span style="font-size: 0.75rem; color: var(--fg-muted);">params + grads/N + optimizer/N</span>
+      </div>
+    </div>
+
+    <div class="callout callout-info fade-in" style="margin-top: 20px;">
+      <strong>Progression to ZeRO-3 is natural:</strong> If we can partition gradients (ZeRO-2), why not partition the parameters themselves? That eliminates the remaining <code>2P</code> term &mdash; but at the cost of extra all-gather communication during the forward pass.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 10: KEY TAKEAWAYS
+     ============================================================ -->
+<section id="takeaways" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Key Takeaways</span>
+      <h2><span class="gradient-text">What You Should Remember</span></h2>
+    </div>
+
+    <div class="takeaway-grid fade-in">
+      <div class="takeaway-card">
+        <div class="takeaway-num">01</div>
+        <h4>Gradient Partitioning</h4>
+        <p>ZeRO-2 adds gradient partitioning on top of ZeRO-1's optimizer partitioning. Each GPU only stores averaged gradients for its own optimizer slice.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">02</div>
+        <h4>Fused Reduce-Scatter</h4>
+        <p>The key mechanism: reduce-scatter is fused into the backward pass. Gradients are communicated and discarded layer-by-layer, never stored in full.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">03</div>
+        <h4>Zero Extra Cost</h4>
+        <p>Communication volume is identical to ZeRO-1 and standard all-reduce. The memory saving is completely free &mdash; only implementation complexity increases.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">04</div>
+        <h4>Peak Memory Win</h4>
+        <p>Peak gradient memory drops from P to P/N. For 7B on 8 GPUs: 14 GB &rarr; 1.75 GB, saving 12.25 GB per GPU for free.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">05</div>
+        <h4>Always Use ZeRO-2</h4>
+        <p>There is no real reason to use ZeRO-1 over ZeRO-2. Modern frameworks like DeepSpeed handle the implementation complexity transparently.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">06</div>
+        <h4>Path to ZeRO-3</h4>
+        <p>ZeRO-2 leaves the 2P parameter term. ZeRO-3 partitions parameters too, eliminating this &mdash; but adds all-gather communication during forward pass.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     FOOTER
+     ============================================================ -->
+<footer class="footer">
+  <div class="container footer-inner">
+    <div class="footer-brand gradient-text">VizuaraAI</div>
+    <p>ZeRO-2: A Concrete Walkthrough with Actual Numbers</p>
+    <p class="footer-muted">Part of the ShallowSpeed Visual Guide series</p>
+  </div>
+</footer>
+
+<!-- ============================================================
+     JAVASCRIPT
+     ============================================================ -->
+<script>
+// ========================================
+// SCROLL ANIMATIONS
+// ========================================
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1 });
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// ========================================
+// MEMORY COMPARISON CHART
+// ========================================
+(function() {
+  const P = 260, N = 2;
+  const strategies = {
+    baseline: { label: 'No ZeRO', params: P*2, grads: P*2, optim: P*12 },
+    zero1:    { label: 'ZeRO-1',  params: P*2, grads: P*2, optim: (P/N)*12 },
+    zero2:    { label: 'ZeRO-2',  params: P*2, grads: (P/N)*2, optim: (P/N)*12 }
+  };
+  const maxTotal = strategies.baseline.params + strategies.baseline.grads + strategies.baseline.optim;
+
+  function renderChart(highlight) {
+    const chart = document.getElementById('memChart');
+    chart.innerHTML = '';
+    const keys = ['baseline', 'zero1', 'zero2'];
+    keys.forEach(key => {
+      const s = strategies[key];
+      const total = s.params + s.grads + s.optim;
+      const dim = highlight !== 'all' && highlight !== key;
+      const group = document.createElement('div');
+      group.className = 'chart-bar-group';
+      group.style.opacity = dim ? '0.25' : '1';
+      group.style.transition = 'opacity 0.3s';
+
+      const totalLabel = document.createElement('div');
+      totalLabel.className = 'chart-total-label';
+      totalLabel.textContent = total.toLocaleString() + ' B';
+      group.appendChild(totalLabel);
+
+      const stack = document.createElement('div');
+      stack.className = 'chart-bar-stack';
+      const height = (total / maxTotal) * 100;
+
+      const segOptim = document.createElement('div');
+      segOptim.className = 'chart-bar-seg optim';
+      segOptim.style.height = ((s.optim / total) * height * 2.8) + 'px';
+      segOptim.textContent = s.optim + ' B';
+
+      const segGrads = document.createElement('div');
+      segGrads.className = 'chart-bar-seg grads';
+      segGrads.style.height = ((s.grads / total) * height * 2.8) + 'px';
+      segGrads.textContent = s.grads + ' B';
+
+      const segParams = document.createElement('div');
+      segParams.className = 'chart-bar-seg params';
+      segParams.style.height = ((s.params / total) * height * 2.8) + 'px';
+      segParams.textContent = s.params + ' B';
+
+      stack.appendChild(segOptim);
+      stack.appendChild(segGrads);
+      stack.appendChild(segParams);
+      group.appendChild(stack);
+
+      const xlabel = document.createElement('div');
+      xlabel.className = 'chart-x-label';
+      xlabel.textContent = s.label;
+      group.appendChild(xlabel);
+
+      chart.appendChild(group);
+    });
+  }
+
+  renderChart('all');
+
+  document.getElementById('memStrategySelector').addEventListener('click', function(e) {
+    if (e.target.classList.contains('strategy-btn')) {
+      this.querySelectorAll('.strategy-btn').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      renderChart(e.target.dataset.strategy);
+    }
+  });
+})();
+
+// ========================================
+// PARTITION BAR
+// ========================================
+(function() {
+  const layers = [
+    { name: 'γ₁', size: 4, gpu: 0 },
+    { name: 'β₁', size: 4, gpu: 0 },
+    { name: 'W_q', size: 16, gpu: 0 },
+    { name: 'W_k', size: 16, gpu: 0 },
+    { name: 'W_v', size: 16, gpu: 0 },
+    { name: 'W_o', size: 16, gpu: 0 },
+    { name: 'γ₂', size: 4, gpu: 0 },
+    { name: 'β₂', size: 4, gpu: 0 },
+    { name: 'W₁ (GPU-0)', size: 50, gpu: 0 },
+    { name: 'W₁ (GPU-1)', size: 14, gpu: 1 },
+    { name: 'b₁', size: 16, gpu: 1 },
+    { name: 'W₂', size: 64, gpu: 1 },
+    { name: 'b₂', size: 4, gpu: 1 },
+    { name: 'W_vocab', size: 32, gpu: 1 }
+  ];
+  const total = 260;
+  const bar = document.getElementById('partitionBar');
+  layers.forEach(l => {
+    const seg = document.createElement('div');
+    seg.className = 'partition-seg';
+    seg.style.flex = (l.size / total);
+    seg.style.background = l.gpu === 0 ? 'rgba(66,165,245,0.3)' : 'rgba(0,212,106,0.3)';
+    seg.style.color = l.gpu === 0 ? 'var(--blue)' : 'var(--primary)';
+    if (l.size >= 16) seg.textContent = l.name;
+
+    const tooltip = document.createElement('div');
+    tooltip.className = 'seg-tooltip';
+    tooltip.textContent = l.name + ' (' + l.size + ' elements) → GPU-' + l.gpu;
+    seg.appendChild(tooltip);
+    bar.appendChild(seg);
+  });
+})();
+
+// ========================================
+// BACKWARD PASS ANIMATION
+// ========================================
+(function() {
+  // Layers in backward order (reverse of forward)
+  const layers = [
+    { name: 'W_vocab', size: 32, gpu: 1 },
+    { name: 'W₂', size: 64, gpu: 1 },
+    { name: 'b₂', size: 4, gpu: 1 },
+    { name: 'W₁', size: 64, gpu: -1, gpu0: 50, gpu1: 14 }, // split
+    { name: 'b₁', size: 16, gpu: 1 },
+    { name: 'W_o', size: 16, gpu: 0 },
+    { name: 'W_v', size: 16, gpu: 0 },
+    { name: 'W_k', size: 16, gpu: 0 },
+    { name: 'W_q', size: 16, gpu: 0 },
+    { name: 'γ,β (LN)', size: 16, gpu: 0 }, // γ₁+β₁+γ₂+β₂ = 16
+    // final
+  ];
+
+  const colors = {
+    0: 'rgba(66,165,245,0.6)',  // GPU-0 color (blue)
+    1: 'rgba(0,212,106,0.6)',   // GPU-1 color (green)
+    discard: 'rgba(255,112,67,0.3)'
+  };
+
+  let zero1State = []; // accumulated layers
+  let zero2State = []; // only GPU-0's portions
+  let zero1Mem = 0;
+  let zero2Mem = 0;
+  let zero1Peak = 0;
+  let zero2Peak = 0;
+
+  function renderBlocks(containerId, state, mode) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    if (state.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'bwd-mem-empty';
+      empty.textContent = 'No gradients yet';
+      container.appendChild(empty);
+      return;
+    }
+    state.forEach(item => {
+      const block = document.createElement('div');
+      block.className = 'bwd-mem-block';
+      block.style.background = item.color;
+      block.textContent = item.label + ' (' + item.size + ')';
+      container.appendChild(block);
+    });
+  }
+
+  function setStep(step) {
+    if (step === 0) {
+      zero1State = []; zero2State = [];
+      zero1Mem = 0; zero2Mem = 0;
+      zero1Peak = 0; zero2Peak = 0;
+    } else if (step <= layers.length) {
+      // Reset and replay up to this step
+      zero1State = []; zero2State = [];
+      zero1Mem = 0; zero2Mem = 0;
+      zero1Peak = 0; zero2Peak = 0;
+
+      for (let i = 0; i < step; i++) {
+        const l = layers[i];
+
+        // ZeRO-1: always accumulate full gradient
+        zero1State.push({
+          label: l.name,
+          size: l.size,
+          color: l.gpu === 0 ? colors[0] : (l.gpu === 1 ? colors[1] : 'rgba(167,139,250,0.5)')
+        });
+        zero1Mem += l.size;
+        zero1Peak = Math.max(zero1Peak, zero1Mem);
+
+        // ZeRO-2: only keep GPU-0's slice
+        if (l.gpu === 0) {
+          zero2State.push({
+            label: l.name + ' (avg)',
+            size: l.size,
+            color: colors[0]
+          });
+          zero2Mem += l.size;
+        } else if (l.gpu === -1) {
+          // Split layer - GPU-0 keeps its portion
+          zero2State.push({
+            label: l.name + ' (GPU-0 slice)',
+            size: l.gpu0,
+            color: colors[0]
+          });
+          zero2Mem += l.gpu0;
+        }
+        // gpu === 1: GPU-0 discards, nothing added to zero2
+        zero2Peak = Math.max(zero2Peak, zero2Mem);
+      }
+    } else {
+      // "Done" step - ZeRO-1 then does reduce-scatter
+      // Just show final state
+    }
+
+    renderBlocks('bwdZero1Blocks', zero1State, 'zero1');
+    renderBlocks('bwdZero2Blocks', zero2State, 'zero2');
+    document.getElementById('bwdZero1Mem').textContent = zero1Mem;
+    document.getElementById('bwdZero2Mem').textContent = zero2Mem;
+    document.getElementById('zero1Peak').textContent = zero1Peak + ' values (' + (zero1Peak * 2) + ' bytes)';
+    document.getElementById('zero2Peak').textContent = zero2Peak + ' values (' + (zero2Peak * 2) + ' bytes)';
+
+    // Info text
+    const infoEl = document.getElementById('bwdInfoText');
+    if (step === 0) {
+      infoEl.innerHTML = 'Click the layer buttons above to step through the backward pass and watch gradient memory build up.';
+    } else if (step <= layers.length) {
+      const l = layers[step - 1];
+      if (l.gpu === 1) {
+        infoEl.innerHTML = '<strong>Backprop ' + l.name + '</strong> (' + l.size + ' values): Both GPUs compute local gradients. Reduce-scatter fires immediately &mdash; GPU-1 keeps averaged result, <strong>GPU-0 discards</strong> (not its slice!).';
+      } else if (l.gpu === 0) {
+        infoEl.innerHTML = '<strong>Backprop ' + l.name + '</strong> (' + l.size + ' values): Both GPUs compute local gradients. Reduce-scatter fires immediately &mdash; <strong>GPU-0 keeps</strong> averaged result, GPU-1 discards.';
+      } else {
+        infoEl.innerHTML = '<strong>Backprop ' + l.name + '</strong> (' + l.size + ' values): This layer is split across both GPUs. GPU-0 keeps ' + l.gpu0 + ' averaged values, GPU-1 keeps ' + l.gpu1 + ' averaged values.';
+      }
+    } else {
+      infoEl.innerHTML = '<strong>Backward complete!</strong> ZeRO-1 held <span class="num-red">' + zero1Peak + ' gradient values</span> at peak. ZeRO-2 only held <span class="num-green">' + zero2Peak + ' gradient values</span> &mdash; exactly <strong>half</strong>!';
+    }
+  }
+
+  document.getElementById('bwdControls').addEventListener('click', function(e) {
+    if (e.target.classList.contains('bwd-btn')) {
+      this.querySelectorAll('.bwd-btn').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      setStep(parseInt(e.target.dataset.step));
+    }
+  });
+})();
+
+// ========================================
+// SCALING CALCULATOR
+// ========================================
+(function() {
+  const modelSizes = [
+    { label: '125M', params: 0.125 },
+    { label: '1.3B', params: 1.3 },
+    { label: '3B', params: 3 },
+    { label: '7B', params: 7 },
+    { label: '13B', params: 13 },
+    { label: '70B', params: 70 }
+  ];
+  const gpuCounts = [1, 2, 4, 8, 16, 64];
+
+  const modelSlider = document.getElementById('modelSizeSlider');
+  const gpuSlider = document.getElementById('gpuCountSlider');
+  const modelVal = document.getElementById('modelSizeVal');
+  const gpuVal = document.getElementById('gpuCountVal');
+
+  function computeMemory(P_billion, N) {
+    const P_GB = P_billion * 2; // BF16 = 2 bytes per param = 2 * P_billion GB
+    return {
+      baseline: {
+        params: P_GB,
+        grads: P_GB,
+        optim: P_billion * 12, // 12 bytes per param for Adam
+        get total() { return this.params + this.grads + this.optim; }
+      },
+      zero1: {
+        params: P_GB,
+        grads: P_GB,
+        optim: (P_billion * 12) / N,
+        get total() { return this.params + this.grads + this.optim; }
+      },
+      zero2: {
+        params: P_GB,
+        grads: P_GB / N,
+        optim: (P_billion * 12) / N,
+        get total() { return this.params + this.grads + this.optim; }
+      }
+    };
+  }
+
+  function renderScaling() {
+    const mIdx = parseInt(modelSlider.value);
+    const gIdx = parseInt(gpuSlider.value);
+    const model = modelSizes[mIdx];
+    const N = gpuCounts[gIdx];
+
+    modelVal.textContent = model.label;
+    gpuVal.textContent = N;
+
+    const mem = computeMemory(model.params, N);
+    const maxMem = mem.baseline.total;
+
+    // Render bar chart
+    const chartEl = document.getElementById('scalingChart');
+    const methods = [
+      { key: 'baseline', label: 'No ZeRO', data: mem.baseline },
+      { key: 'zero1', label: 'ZeRO-1', data: mem.zero1 },
+      { key: 'zero2', label: 'ZeRO-2', data: mem.zero2 }
+    ];
+
+    let html = '<div style="display:flex; align-items:flex-end; gap:20px; height:280px; padding:0 0 40px;">';
+    methods.forEach(m => {
+      const pctHeight = (m.data.total / maxMem) * 100;
+      const pPct = (m.data.params / m.data.total) * 100;
+      const gPct = (m.data.grads / m.data.total) * 100;
+      const oPct = (m.data.optim / m.data.total) * 100;
+
+      html += '<div class="chart-bar-group">';
+      html += '<div class="chart-total-label">' + m.data.total.toFixed(1) + ' GB</div>';
+      html += '<div class="chart-bar-stack" style="height:' + pctHeight + '%">';
+      html += '<div class="chart-bar-seg optim" style="height:' + oPct + '%">' + m.data.optim.toFixed(1) + '</div>';
+      html += '<div class="chart-bar-seg grads" style="height:' + gPct + '%">' + m.data.grads.toFixed(1) + '</div>';
+      html += '<div class="chart-bar-seg params" style="height:' + pPct + '%">' + m.data.params.toFixed(1) + '</div>';
+      html += '</div>';
+      html += '<div class="chart-x-label">' + m.label + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '<div class="chart-legend">';
+    html += '<div class="legend-item"><span class="lg-swatch" style="background:#a78bfa"></span> Parameters (BF16)</div>';
+    html += '<div class="legend-item"><span class="lg-swatch" style="background:#7c5cbf"></span> Gradients (BF16)</div>';
+    html += '<div class="legend-item"><span class="lg-swatch" style="background:#5b3a9e"></span> Optimizer (FP32)</div>';
+    html += '</div>';
+    chartEl.innerHTML = html;
+
+    // Render details
+    const detailsEl = document.getElementById('scalingDetails');
+    const savingZ1 = ((1 - mem.zero1.total / mem.baseline.total) * 100).toFixed(1);
+    const savingZ2 = ((1 - mem.zero2.total / mem.baseline.total) * 100).toFixed(1);
+    const extraSaving = (mem.zero1.total - mem.zero2.total).toFixed(2);
+
+    detailsEl.innerHTML = '<div class="grid-3" style="margin-top:8px;">' +
+      '<div class="equation-box"><span class="eq-label">ZeRO-1 Saving</span><span class="eq-highlight">' + savingZ1 + '%</span></div>' +
+      '<div class="equation-box"><span class="eq-label">ZeRO-2 Saving</span><span class="eq-highlight">' + savingZ2 + '%</span></div>' +
+      '<div class="equation-box"><span class="eq-label">Extra saving over Z1</span><span class="eq-highlight">' + extraSaving + ' GB</span></div>' +
+      '</div>';
+  }
+
+  modelSlider.addEventListener('input', renderScaling);
+  gpuSlider.addEventListener('input', renderScaling);
+  renderScaling();
+})();
+</script>
+</body>
+</html>
