@@ -1,0 +1,2725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZeRO-3 (FSDP) — A Concrete Walkthrough with Actual Numbers</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* ========================================
+   CSS Variables — Design System
+   ======================================== */
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #121212;
+  --bg-card-hover: #1a1a1a;
+  --bg-section-alt: #0f0f0f;
+  --fg: #f2f2f2;
+  --fg-muted: #a3a3a3;
+  --border: #262626;
+  --border-light: #333;
+  --primary: #00d46a;
+  --primary-dim: #00a854;
+  --secondary: #00c8e6;
+  --accent: #a78bfa;
+  --red: #FF7043;
+  --orange: #FF9800;
+  --yellow: #FFCA28;
+  --blue: #42A5F5;
+  --green: #66BB6A;
+  --pink: #F06292;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --max-w: 1280px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-sans);
+  line-height: 1.7; -webkit-font-smoothing: antialiased; overflow-x: hidden;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: var(--font-mono); }
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+
+/* Number highlights */
+.num-green { color: var(--primary); font-weight: 700; font-family: var(--font-mono); }
+.num-blue { color: var(--blue); font-weight: 700; font-family: var(--font-mono); }
+.num-cyan { color: var(--secondary); font-weight: 700; font-family: var(--font-mono); }
+.num-orange { color: var(--orange); font-weight: 700; font-family: var(--font-mono); }
+.num-red { color: var(--red); font-weight: 700; font-family: var(--font-mono); }
+.num-purple { color: var(--accent); font-weight: 700; font-family: var(--font-mono); }
+
+::selection { background: rgba(0,212,106,0.3); color: #fff; }
+
+/* ========================================
+   NAVBAR
+   ======================================== */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,10,0.85); backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.1rem; }
+.brand-tag {
+  font-size: 0.7rem; background: var(--primary); color: #000;
+  padding: 2px 8px; border-radius: 9999px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+/* ========================================
+   HERO
+   ======================================== */
+.hero {
+  position: relative; min-height: 100vh; display: flex;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 120px 24px 80px; overflow: hidden;
+}
+.hero-bg-orbs { position: absolute; inset: 0; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.12; }
+.orb-green { width: 500px; height: 500px; background: var(--primary); top: 10%; left: 10%; animation: float-slow 20s ease-in-out infinite; }
+.orb-cyan { width: 400px; height: 400px; background: var(--secondary); top: 40%; right: 5%; animation: float-slow 25s ease-in-out infinite reverse; }
+.orb-purple { width: 350px; height: 350px; background: var(--accent); bottom: 10%; left: 30%; animation: float-slow 22s ease-in-out infinite; }
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(30px, -20px); }
+  50% { transform: translate(-20px, 30px); }
+  75% { transform: translate(20px, 20px); }
+}
+.hero-content { position: relative; z-index: 1; max-width: 850px; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3);
+  border-radius: 9999px; padding: 6px 18px; font-size: 0.82rem;
+  font-weight: 500; color: var(--primary); margin-bottom: 24px;
+}
+.pulse-dot { width: 8px; height: 8px; background: var(--primary); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }
+.hero h1 { font-family: var(--font-serif); font-style: italic; font-size: clamp(2.5rem, 7vw, 4.5rem); font-weight: 400; line-height: 1.1; margin-bottom: 20px; }
+.hero-subtitle { font-size: 1.1rem; color: var(--fg-muted); line-height: 1.7; max-width: 700px; margin: 0 auto 40px; }
+.hero-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.hero-stat-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 12px; transition: border-color 0.3s, transform 0.2s;
+}
+.hero-stat-card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-2px); }
+.stat-number {
+  font-size: 1.7rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.stat-label { font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* ========================================
+   SECTIONS
+   ======================================== */
+.section { padding: 100px 0; position: relative; }
+.section-dark { background: var(--bg-section-alt); }
+.section-heading { text-align: center; margin-bottom: 60px; }
+.section-label {
+  display: inline-block; font-size: 0.78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.5px; color: var(--primary); margin-bottom: 12px;
+}
+.section-heading h2 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; line-height: 1.2; margin-bottom: 16px;
+}
+.section-subtitle { color: var(--fg-muted); font-size: 1.05rem; max-width: 650px; margin: 0 auto; }
+
+/* ========================================
+   CARDS
+   ======================================== */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; transition: border-color 0.3s, transform 0.2s;
+}
+.card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-3px); }
+.card h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; }
+.card p, .card li { font-size: 0.88rem; color: var(--fg-muted); line-height: 1.6; }
+.card code {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-size: 0.82rem; color: var(--secondary);
+}
+
+/* ========================================
+   GRIDS
+   ======================================== */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 900px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+
+/* ========================================
+   EQUATION BOX
+   ======================================== */
+.equation-box {
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 24px; margin: 16px 0; text-align: center;
+  font-family: var(--font-mono); font-size: 0.92rem; color: var(--secondary);
+  line-height: 2;
+}
+.equation-box .eq-label {
+  display: block; font-family: var(--font-sans); font-size: 0.72rem;
+  color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 8px; font-weight: 600;
+}
+.equation-box .eq-highlight { color: var(--primary); font-weight: 600; }
+
+/* ========================================
+   CALLOUTS
+   ======================================== */
+.callout {
+  border-radius: 10px; padding: 16px 20px; font-size: 0.85rem; line-height: 1.6; margin: 16px 0;
+}
+.callout-info { background: rgba(66,165,245,0.08); border: 1px solid rgba(66,165,245,0.2); color: var(--fg-muted); }
+.callout-warn { background: rgba(255,112,67,0.08); border: 1px solid rgba(255,112,67,0.2); color: var(--fg-muted); }
+.callout-success { background: rgba(0,212,106,0.08); border: 1px solid rgba(0,212,106,0.2); color: var(--fg-muted); }
+.callout-green { background: rgba(0,212,106,0.08); border: 1px solid rgba(0,212,106,0.2); color: var(--fg-muted); }
+.callout-purple { background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); color: var(--fg-muted); }
+.callout strong { color: var(--fg); }
+.callout code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; color: var(--secondary); }
+
+/* ========================================
+   COMPARISON TABLE
+   ======================================== */
+.comp-table-wrap {
+  overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); margin: 20px 0;
+}
+.comp-table {
+  width: 100%; border-collapse: collapse; font-size: 0.85rem;
+}
+.comp-table thead { background: #1a1a2e; }
+.comp-table th {
+  padding: 14px 16px; text-align: left; font-size: 0.75rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px; color: var(--fg-muted);
+  border-bottom: 1px solid var(--border);
+}
+.comp-table td {
+  padding: 12px 16px; border-bottom: 1px solid rgba(38,38,38,0.5);
+  color: var(--fg-muted); font-size: 0.82rem;
+}
+.comp-table td code {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-size: 0.78rem; color: var(--secondary);
+}
+.comp-table tr:hover td { background: rgba(255,255,255,0.02); }
+.val-good { color: var(--primary) !important; font-weight: 600; }
+.val-great { color: var(--secondary) !important; font-weight: 600; }
+.val-bad { color: var(--red) !important; font-weight: 600; }
+.val-ok { color: var(--orange) !important; font-weight: 600; }
+.val-neutral { color: var(--yellow) !important; font-weight: 600; }
+
+/* ========================================
+   TIMELINE / DIAGRAM CONTAINERS
+   ======================================== */
+.timeline-container {
+  background: rgba(0,0,0,0.2); border-radius: 14px; padding: 28px;
+  margin: 20px 0; border: 1px solid var(--border); overflow-x: auto;
+}
+.timeline-title { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.timeline-sub { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+.timeline-header {
+  display: grid; grid-template-columns: 120px 1fr 100px 1fr 100px;
+  gap: 8px; margin-bottom: 8px; font-size: 0.72rem; font-weight: 600; color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 0.5px; text-align: center;
+  min-width: 700px;
+}
+.timeline-header span:first-child { text-align: left; }
+.tl-row { display: flex; align-items: center; margin-bottom: 8px; min-width: 700px; }
+.tl-label { width: 100px; font-size: 0.75rem; font-weight: 600; color: var(--fg-muted); font-family: var(--font-mono); flex-shrink: 0; }
+.tl-track { flex: 1; display: flex; height: 36px; position: relative; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,0.02); }
+.tl-block {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.65rem; font-weight: 600; color: #fff; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; padding: 0 6px;
+  transition: opacity 0.3s;
+}
+.tl-block:hover { opacity: 0.85; }
+.tl-idle { background: rgba(255,255,255,0.03); }
+.tl-fwd { background: #66BB6A; }
+.tl-bwd { background: #F06292; }
+.tl-allreduce { background: #42A5F5; }
+.tl-optim { background: #FF9800; }
+.tl-sync { background: #a78bfa; }
+.tl-gather { background: #00c8e6; }
+.tl-scatter { background: #a78bfa; }
+.tl-flush { background: #FF7043; }
+.tl-overlap-bwd { background: linear-gradient(135deg, #F06292 50%, #42A5F5 50%); }
+
+.tl-time-axis { display: flex; min-width: 700px; padding-left: 100px; margin-top: 4px; }
+.tl-time-tick { font-size: 0.62rem; color: var(--fg-muted); font-family: var(--font-mono); }
+
+/* Timeline row for backward pass walkthrough */
+.timeline-row {
+  display: grid; grid-template-columns: 120px 1fr 100px 1fr 100px;
+  gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid rgba(38,38,38,0.4);
+  min-width: 700px; transition: background 0.2s;
+}
+.timeline-row:hover { background: rgba(255,255,255,0.02); }
+.timeline-layer {
+  font-size: 0.78rem; font-weight: 600; font-family: var(--font-mono);
+}
+.timeline-mem-bar {
+  height: 28px; border-radius: 4px; display: flex; align-items: center;
+  padding: 0 8px; font-size: 0.65rem; font-weight: 600; color: #fff;
+  transition: width 0.5s ease; position: relative;
+}
+.timeline-mem-val {
+  font-size: 0.75rem; font-weight: 600; font-family: var(--font-mono); text-align: center;
+}
+
+/* ========================================
+   GPU BOX VISUALIZATIONS
+   ======================================== */
+.gpu-diagram {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 20px 0;
+}
+.gpu-diagram.gpu-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+.gpu-box {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 24px; transition: border-color 0.3s;
+}
+.gpu-box:hover { border-color: rgba(0,212,106,0.3); }
+.gpu-title {
+  font-size: 1rem; font-weight: 700; margin-bottom: 16px;
+  display: flex; align-items: center; gap: 8px;
+}
+.gpu-title .gpu-chip {
+  font-size: 0.68rem; padding: 2px 8px; border-radius: 9999px;
+  font-weight: 600; text-transform: uppercase;
+}
+.gpu-mem-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid rgba(38,38,38,0.4);
+  font-size: 0.82rem;
+}
+.gpu-mem-item:last-child { border-bottom: none; }
+.gpu-mem-item .mem-label { color: var(--fg-muted); }
+.gpu-mem-item .mem-value { font-family: var(--font-mono); font-weight: 600; }
+.gpu-mem-total {
+  margin-top: 12px; padding-top: 12px; border-top: 2px solid var(--border);
+  display: flex; justify-content: space-between; font-weight: 700; font-size: 0.92rem;
+}
+.gpu-row {
+  display: flex; gap: 24px; margin: 20px 0; flex-wrap: wrap; justify-content: center;
+}
+.gpu-stream {
+  height: 28px; border-radius: 6px; margin: 6px 0; overflow: hidden;
+  display: flex; background: rgba(255,255,255,0.03);
+}
+.gpu-stream-label { font-size: 0.68rem; color: var(--fg-muted); margin-bottom: 2px; text-align: left; }
+
+/* ========================================
+   MEMORY BAR VISUALIZATION
+   ======================================== */
+.mem-bar-container {
+  margin: 24px 0; padding: 20px 24px;
+  background: rgba(0,0,0,0.25); border-radius: 14px; border: 1px solid var(--border);
+}
+.mem-bar-label { font-size: 0.82rem; font-weight: 600; margin-bottom: 12px; }
+.mem-bar-label code { color: var(--secondary); font-size: 0.78rem; }
+.mem-bar-row {
+  display: flex; border-radius: 8px; overflow: hidden; height: 44px; position: relative;
+}
+.mem-seg {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.68rem; font-weight: 600; color: #fff; transition: flex 0.5s ease;
+  white-space: nowrap; overflow: hidden; min-width: 0;
+}
+.mem-seg.params { background: #a78bfa; }
+.mem-seg.grads { background: #7c5cbf; }
+.mem-seg.optim-m { background: #5b3a9e; }
+.mem-seg.optim-v { background: #4a2d80; }
+.mem-seg.optim-p { background: #3a2166; }
+.mem-seg.activations { background: #00c8e6; }
+.mem-seg.gathered { background: rgba(167,139,250,0.4); border: 1px dashed var(--accent); }
+.mem-legend {
+  display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; justify-content: center;
+}
+.mem-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted); }
+.mem-swatch { width: 12px; height: 12px; border-radius: 3px; }
+
+/* ========================================
+   INTERACTIVE CONTROLS
+   ======================================== */
+.anim-container {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 24px 0;
+}
+.anim-controls {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
+}
+.anim-btn {
+  padding: 8px 20px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--fg); font-size: 0.82rem; font-weight: 500;
+  cursor: pointer; transition: all 0.2s; font-family: var(--font-sans);
+}
+.anim-btn:hover { border-color: var(--primary); color: var(--primary); }
+.anim-btn.active { background: rgba(0,212,106,0.12); border-color: var(--primary); color: var(--primary); }
+.anim-speed { font-size: 0.78rem; color: var(--fg-muted); }
+
+/* Sliders */
+.slider-group {
+  margin: 16px 0; display: flex; flex-direction: column; gap: 12px;
+}
+.slider-row {
+  display: flex; align-items: center; gap: 16px;
+}
+.slider-label {
+  font-size: 0.82rem; font-weight: 500; color: var(--fg-muted); min-width: 120px;
+}
+.slider-value {
+  font-family: var(--font-mono); font-size: 0.88rem; font-weight: 600;
+  color: var(--primary); min-width: 80px; text-align: right;
+}
+input[type="range"] {
+  flex: 1; -webkit-appearance: none; appearance: none;
+  height: 6px; border-radius: 3px; background: var(--border);
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--primary); cursor: pointer;
+  border: 2px solid #000;
+}
+
+/* Strategy toggle / tabs */
+.strat-toggle {
+  display: flex; gap: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--border);
+  margin: 0 auto 24px; width: fit-content;
+}
+.strat-btn {
+  padding: 10px 24px; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  background: var(--bg); color: var(--fg-muted); border: none; transition: all 0.2s;
+  font-family: var(--font-sans);
+}
+.strat-btn:hover { color: var(--fg); }
+.strat-btn.active-zero2 { background: rgba(66,165,245,0.15); color: var(--blue); }
+.strat-btn.active-zero3 { background: rgba(0,212,106,0.15); color: var(--primary); }
+.strat-btn.active { background: rgba(0,212,106,0.15); color: var(--primary); }
+
+/* Strategy selector (pill buttons) */
+.strategy-selector {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; justify-content: center;
+}
+.strategy-btn {
+  padding: 8px 18px; border-radius: 9999px; font-size: 0.82rem; font-weight: 500;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--fg-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.strategy-btn:hover { border-color: rgba(0,212,106,0.3); color: var(--fg); }
+.strategy-btn.active {
+  background: rgba(0,212,106,0.1); border-color: var(--primary); color: var(--primary); font-weight: 600;
+}
+
+/* Model tabs */
+.model-tabs {
+  display: flex; gap: 8px; margin-bottom: 16px; justify-content: center;
+}
+.model-tab {
+  padding: 6px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 500;
+  border: 1px solid var(--border); background: transparent; color: var(--fg-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.model-tab:hover { border-color: rgba(0,200,230,0.3); color: var(--fg); }
+.model-tab.active {
+  background: rgba(0,200,230,0.1); border-color: var(--secondary); color: var(--secondary); font-weight: 600;
+}
+
+/* ========================================
+   STEP PROGRESS DOTS
+   ======================================== */
+.step-progress {
+  display: flex; align-items: center; gap: 0; margin: 20px 0; justify-content: center;
+}
+.step-dot {
+  width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-size: 0.72rem; font-weight: 700; font-family: var(--font-mono);
+  background: var(--bg); border: 2px solid var(--border); color: var(--fg-muted);
+  transition: all 0.3s;
+}
+.step-dot.active { border-color: var(--primary); color: var(--primary); background: rgba(0,212,106,0.1); }
+.step-dot.done { border-color: var(--primary); color: #fff; background: var(--primary); }
+.step-line { width: 40px; height: 2px; background: var(--border); transition: background 0.3s; }
+.step-line.done { background: var(--primary); }
+
+/* Step blocks */
+.step-block {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 32px; margin: 28px 0;
+}
+.step-number {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: #000; font-weight: 700; font-size: 1rem; margin-right: 12px;
+}
+.step-title {
+  font-size: 1.2rem; font-weight: 600; margin-bottom: 16px;
+  display: flex; align-items: center;
+}
+.step-badge {
+  font-size: 0.68rem; padding: 2px 10px; border-radius: 9999px;
+  margin-left: 12px; font-weight: 600;
+}
+.step-badge-new {
+  background: rgba(0,212,106,0.15); border: 1px solid rgba(0,212,106,0.3); color: var(--primary);
+}
+.step-badge-same {
+  background: rgba(66,165,245,0.15); border: 1px solid rgba(66,165,245,0.3); color: var(--blue);
+}
+
+/* ========================================
+   TAKEAWAYS
+   ======================================== */
+.takeaway-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.takeaway-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 24px; position: relative; overflow: hidden;
+}
+.takeaway-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+}
+.takeaway-num {
+  font-family: var(--font-mono); font-size: 2.5rem; font-weight: 700;
+  opacity: 0.08; position: absolute; top: 8px; right: 16px;
+}
+.takeaway-card h4 { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+.takeaway-card p { font-size: 0.82rem; color: var(--fg-muted); line-height: 1.6; }
+
+/* ========================================
+   FOOTER
+   ======================================== */
+.footer {
+  border-top: 1px solid var(--border); padding: 40px 0; text-align: center;
+}
+.footer-inner { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.footer-brand { font-size: 1.1rem; font-weight: 600; }
+.footer p { font-size: 0.85rem; color: var(--fg-muted); }
+.footer-muted { font-size: 0.78rem !important; color: rgba(163,163,163,0.5) !important; }
+
+/* ========================================
+   SCROLL ANIMATIONS
+   ======================================== */
+.fade-in {
+  opacity: 0; transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+.stagger-1 { transition-delay: 0.1s; }
+.stagger-2 { transition-delay: 0.2s; }
+.stagger-3 { transition-delay: 0.3s; }
+.stagger-4 { transition-delay: 0.4s; }
+
+/* ========================================
+   CODE BLOCKS
+   ======================================== */
+.code-block {
+  background: #0d0d1a; border: 1px solid rgba(167,139,250,0.15); border-radius: 10px;
+  padding: 16px 20px; margin: 16px 0; overflow-x: auto; font-size: 0.8rem; line-height: 1.6;
+}
+.code-block .kw { color: var(--accent); }
+.code-block .fn { color: var(--secondary); }
+.code-block .cm { color: #6a6a8a; }
+.code-block .st { color: var(--green); }
+.code-block .num { color: var(--orange); }
+
+/* Inline code helper */
+.code-inline {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-family: var(--font-mono); font-size: 0.78rem; color: var(--secondary);
+}
+
+/* ========================================
+   CHART CONTAINERS (bar charts)
+   ======================================== */
+.chart-container {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 24px 0;
+}
+.chart-container h4 { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.chart-container .chart-subtitle { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+.chart-area {
+  display: flex; align-items: flex-end; gap: 16px; height: 320px; padding: 0 0 30px;
+  position: relative;
+}
+.chart-y-axis {
+  position: absolute; left: 0; top: 0; bottom: 30px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  font-size: 0.62rem; color: var(--fg-muted); font-family: var(--font-mono); width: 50px;
+}
+.chart-bar-group {
+  flex: 1; display: flex; flex-direction: column; justify-content: flex-end;
+  height: 100%; position: relative; cursor: pointer;
+}
+.chart-bar-group:hover .chart-bar-stack { filter: brightness(1.15); }
+.chart-bar-stack {
+  display: flex; flex-direction: column; justify-content: flex-end; border-radius: 4px 4px 0 0;
+  overflow: hidden; transition: filter 0.2s;
+}
+.chart-bar-seg {
+  width: 100%; transition: height 0.5s ease; display: flex; align-items: center;
+  justify-content: center; font-size: 0.55rem; font-weight: 600; color: rgba(255,255,255,0.8);
+}
+.chart-bar-seg.params { background: #a78bfa; }
+.chart-bar-seg.grads { background: #7c5cbf; }
+.chart-bar-seg.optim { background: #5b3a9e; }
+.chart-x-label {
+  position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+  font-size: 0.7rem; color: var(--fg-muted); font-family: var(--font-mono); white-space: nowrap;
+}
+.chart-total-label {
+  position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+  font-size: 0.62rem; color: var(--fg); font-family: var(--font-mono); font-weight: 600;
+  white-space: nowrap;
+}
+.chart-legend {
+  display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; padding: 12px 0 0;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted); }
+.lg-swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+/* ========================================
+   PARTITION / SHARD DIAGRAM
+   ======================================== */
+.partition-visual {
+  background: rgba(0,0,0,0.2); border-radius: 14px; padding: 24px;
+  margin: 20px 0; border: 1px solid var(--border);
+}
+.partition-bar {
+  display: flex; border-radius: 8px; overflow: hidden; height: 52px; margin: 12px 0;
+  border: 1px solid var(--border);
+}
+.partition-seg {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.65rem; font-weight: 600; color: #fff;
+  transition: all 0.3s; cursor: default; position: relative;
+  border-right: 1px solid rgba(0,0,0,0.3);
+}
+.partition-seg:last-child { border-right: none; }
+.partition-seg:hover { filter: brightness(1.2); }
+.partition-seg .seg-tooltip {
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  background: #1a1a1a; border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 10px; font-size: 0.68rem; color: var(--fg-muted);
+  white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.2s; z-index: 10;
+}
+.partition-seg:hover .seg-tooltip { opacity: 1; }
+.partition-labels {
+  display: flex; justify-content: center; gap: 24px; margin-top: 12px;
+}
+.partition-label-item {
+  display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--fg-muted);
+}
+.partition-color-dot {
+  width: 10px; height: 10px; border-radius: 3px;
+}
+
+/* ========================================
+   PARAMETER SHARD VISUALIZATION
+   (ZeRO-3 specific — showing which GPU owns what)
+   ======================================== */
+.shard-visual {
+  background: rgba(0,0,0,0.2); border-radius: 14px; padding: 24px;
+  margin: 20px 0; border: 1px solid var(--border);
+}
+.shard-visual-title {
+  font-size: 0.92rem; font-weight: 600; margin-bottom: 16px;
+}
+.shard-layer-row {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
+}
+.shard-layer-label {
+  font-size: 0.75rem; font-weight: 600; font-family: var(--font-mono);
+  color: var(--fg-muted); min-width: 90px; text-align: right; flex-shrink: 0;
+}
+.shard-bar {
+  flex: 1; display: flex; height: 36px; border-radius: 6px; overflow: hidden;
+  border: 1px solid var(--border);
+}
+.shard-seg {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.62rem; font-weight: 600; color: #fff;
+  transition: all 0.3s; position: relative; overflow: hidden;
+}
+.shard-seg:hover { filter: brightness(1.2); }
+.shard-seg.gpu0 { background: rgba(66,165,245,0.7); }
+.shard-seg.gpu1 { background: rgba(0,212,106,0.7); }
+.shard-seg.gpu2 { background: rgba(255,152,0,0.7); }
+.shard-seg.gpu3 { background: rgba(240,98,146,0.7); }
+.shard-seg.gathered {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(167,139,250,0.3),
+    rgba(167,139,250,0.3) 4px,
+    rgba(167,139,250,0.15) 4px,
+    rgba(167,139,250,0.15) 8px
+  );
+  border: 1px dashed var(--accent);
+}
+.shard-owner-badge {
+  position: absolute; top: 2px; right: 4px;
+  font-size: 0.5rem; font-weight: 700; opacity: 0.7;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.shard-legend {
+  display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; justify-content: center;
+}
+.shard-legend-item {
+  display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--fg-muted);
+}
+.shard-legend-dot {
+  width: 12px; height: 12px; border-radius: 3px;
+}
+
+/* Full parameter indicator (for gathered state) */
+.shard-full-indicator {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.68rem; font-weight: 600; color: var(--accent);
+  padding: 2px 8px; background: rgba(167,139,250,0.1);
+  border: 1px solid rgba(167,139,250,0.3); border-radius: 6px;
+  margin-left: 8px;
+}
+
+/* ========================================
+   GATHER-COMPUTE-FLUSH ANIMATION
+   (ZeRO-3 specific — the core FSDP loop)
+   ======================================== */
+.gcf-container {
+  background: rgba(0,0,0,0.2); border-radius: 14px; padding: 28px;
+  margin: 20px 0; border: 1px solid var(--border);
+}
+.gcf-title { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.gcf-subtitle { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+.gcf-timeline {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.gcf-row {
+  display: flex; align-items: center; gap: 12px; min-width: 700px;
+}
+.gcf-label {
+  width: 100px; font-size: 0.72rem; font-weight: 600; color: var(--fg-muted);
+  font-family: var(--font-mono); flex-shrink: 0; text-align: right;
+}
+.gcf-track {
+  flex: 1; display: flex; height: 40px; border-radius: 6px; overflow: hidden;
+  background: rgba(255,255,255,0.02); position: relative;
+}
+.gcf-block {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.6rem; font-weight: 600; color: #fff; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; padding: 0 4px;
+  transition: all 0.4s ease; position: relative;
+}
+.gcf-block.gather { background: #00c8e6; }
+.gcf-block.compute { background: #66BB6A; }
+.gcf-block.flush { background: #FF7043; }
+.gcf-block.idle { background: rgba(255,255,255,0.03); }
+.gcf-block.bwd-compute { background: #F06292; }
+.gcf-block.reduce-scatter { background: #a78bfa; }
+.gcf-block.all-gather { background: #00c8e6; }
+.gcf-block.optim-step { background: #FF9800; }
+.gcf-block.prefetch {
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(0,200,230,0.5),
+    rgba(0,200,230,0.5) 3px,
+    rgba(0,200,230,0.25) 3px,
+    rgba(0,200,230,0.25) 6px
+  );
+}
+
+/* Phase labels below the timeline */
+.gcf-phase-labels {
+  display: flex; gap: 0; min-width: 700px; padding-left: 112px; margin-top: 6px;
+}
+.gcf-phase-label {
+  font-size: 0.62rem; font-weight: 600; text-align: center; color: var(--fg-muted);
+  font-family: var(--font-mono); border-top: 2px solid var(--border); padding-top: 4px;
+}
+
+/* GCF step indicator */
+.gcf-step-indicator {
+  display: flex; align-items: center; gap: 8px; margin: 16px 0;
+  justify-content: center;
+}
+.gcf-step-pill {
+  padding: 4px 14px; border-radius: 9999px; font-size: 0.72rem; font-weight: 600;
+  transition: all 0.3s;
+}
+.gcf-step-pill.inactive {
+  background: rgba(255,255,255,0.04); color: var(--fg-muted); border: 1px solid var(--border);
+}
+.gcf-step-pill.active-gather {
+  background: rgba(0,200,230,0.15); color: var(--secondary); border: 1px solid rgba(0,200,230,0.4);
+}
+.gcf-step-pill.active-compute {
+  background: rgba(102,187,106,0.15); color: var(--green); border: 1px solid rgba(102,187,106,0.4);
+}
+.gcf-step-pill.active-flush {
+  background: rgba(255,112,67,0.15); color: var(--red); border: 1px solid rgba(255,112,67,0.4);
+}
+
+/* Arrow between GCF steps */
+.gcf-arrow {
+  font-size: 0.82rem; color: var(--fg-muted); font-weight: 300;
+}
+
+/* ========================================
+   MEMORY WATERFALL CHART
+   (ZeRO-3 specific — memory over time during forward/backward)
+   ======================================== */
+.waterfall-container {
+  background: rgba(0,0,0,0.2); border-radius: 14px; padding: 28px;
+  margin: 20px 0; border: 1px solid var(--border); overflow-x: auto;
+}
+.waterfall-title { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.waterfall-subtitle { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+.waterfall-chart {
+  position: relative; min-height: 300px; min-width: 600px;
+  padding: 0 0 40px 60px;
+}
+.waterfall-y-axis {
+  position: absolute; left: 0; top: 0; bottom: 40px; width: 55px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  font-size: 0.62rem; color: var(--fg-muted); font-family: var(--font-mono);
+  text-align: right; padding-right: 8px;
+}
+.waterfall-y-label {
+  position: absolute; left: -8px; top: 50%; transform: rotate(-90deg) translateX(-50%);
+  transform-origin: 0 0; font-size: 0.68rem; color: var(--fg-muted);
+  font-weight: 600; white-space: nowrap;
+}
+.waterfall-x-axis {
+  position: absolute; bottom: 0; left: 60px; right: 0; height: 35px;
+  display: flex; justify-content: space-between;
+  font-size: 0.62rem; color: var(--fg-muted); font-family: var(--font-mono);
+}
+.waterfall-x-label {
+  position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+  font-size: 0.68rem; color: var(--fg-muted); font-weight: 600; width: 100%; text-align: center;
+}
+.waterfall-bars {
+  display: flex; align-items: flex-end; gap: 2px; height: 250px;
+  padding-left: 0;
+}
+.waterfall-bar {
+  flex: 1; display: flex; flex-direction: column; justify-content: flex-end;
+  border-radius: 2px 2px 0 0; overflow: hidden; transition: all 0.4s ease;
+  position: relative; min-width: 8px;
+}
+.waterfall-bar-seg {
+  width: 100%; transition: height 0.4s ease;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.5rem; font-weight: 600; color: rgba(255,255,255,0.7);
+}
+.waterfall-bar-seg.base-mem { background: rgba(163,163,163,0.2); }
+.waterfall-bar-seg.shard-params { background: #a78bfa; }
+.waterfall-bar-seg.gathered-params { background: rgba(0,200,230,0.6); }
+.waterfall-bar-seg.activations { background: rgba(66,165,245,0.5); }
+.waterfall-bar-seg.gradients { background: rgba(240,98,146,0.5); }
+.waterfall-bar-seg.optim-states { background: rgba(255,152,0,0.5); }
+.waterfall-peak-line {
+  position: absolute; left: 0; right: 0; height: 2px;
+  background: var(--red); opacity: 0.7;
+  border-top: 1px dashed var(--red);
+}
+.waterfall-peak-label {
+  position: absolute; right: 4px; font-size: 0.58rem; font-weight: 700;
+  color: var(--red); font-family: var(--font-mono); white-space: nowrap;
+  transform: translateY(-100%);
+}
+
+/* ========================================
+   COMMUNICATION COST BAR CHART
+   (ZeRO-3 specific — AllGather + ReduceScatter volume)
+   ======================================== */
+.comm-chart-container {
+  background: rgba(0,0,0,0.2); border-radius: 14px; padding: 28px;
+  margin: 20px 0; border: 1px solid var(--border);
+}
+.comm-chart-title { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.comm-chart-subtitle { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+.comm-bars {
+  display: flex; align-items: flex-end; gap: 24px; height: 260px;
+  justify-content: center; padding: 0 20px 30px;
+  position: relative;
+}
+.comm-bar-wrapper {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  flex: 1; max-width: 140px; height: 100%;
+  justify-content: flex-end;
+}
+.comm-bar-stack {
+  width: 100%; display: flex; flex-direction: column; justify-content: flex-end;
+  border-radius: 6px 6px 0 0; overflow: hidden; transition: filter 0.2s;
+  cursor: pointer;
+}
+.comm-bar-stack:hover { filter: brightness(1.15); }
+.comm-bar-fill {
+  width: 100%; display: flex; align-items: center; justify-content: center;
+  font-size: 0.62rem; font-weight: 600; color: #fff;
+  transition: height 0.5s ease;
+}
+.comm-bar-fill.all-gather { background: #00c8e6; }
+.comm-bar-fill.reduce-scatter { background: #a78bfa; }
+.comm-bar-fill.all-reduce { background: #42A5F5; }
+.comm-bar-label {
+  font-size: 0.72rem; font-weight: 600; color: var(--fg-muted);
+  font-family: var(--font-mono); text-align: center;
+}
+.comm-bar-value {
+  font-size: 0.68rem; font-weight: 700; color: var(--fg);
+  font-family: var(--font-mono); text-align: center;
+}
+.comm-chart-legend {
+  display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; margin-top: 16px;
+}
+
+/* Communication visual (GPU-to-GPU arrows) */
+.comm-visual {
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  margin: 20px 0; flex-wrap: wrap;
+}
+.comm-gpu {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px 24px; text-align: center; min-width: 150px;
+}
+.comm-gpu-name { font-weight: 700; font-size: 0.88rem; margin-bottom: 8px; }
+.comm-gpu-data {
+  font-family: var(--font-mono); font-size: 0.72rem; color: var(--fg-muted);
+  padding: 4px 8px; background: rgba(0,0,0,0.3); border-radius: 6px;
+}
+.comm-arrow {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  font-size: 0.72rem; color: var(--fg-muted);
+}
+.comm-arrow-line {
+  width: 60px; height: 2px; background: var(--primary); position: relative;
+}
+.comm-arrow-line::after {
+  content: ''; position: absolute; right: -4px; top: -4px;
+  border: 5px solid transparent; border-left-color: var(--primary);
+}
+
+/* ========================================
+   PREFETCHING TIMELINE OVERLAP DIAGRAM
+   (ZeRO-3 specific — showing how gather of layer N+1 overlaps with compute of layer N)
+   ======================================== */
+.prefetch-container {
+  background: rgba(0,0,0,0.2); border-radius: 14px; padding: 28px;
+  margin: 20px 0; border: 1px solid var(--border); overflow-x: auto;
+}
+.prefetch-title { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.prefetch-subtitle { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+.prefetch-timeline {
+  display: flex; flex-direction: column; gap: 4px; min-width: 700px;
+}
+.prefetch-row {
+  display: flex; align-items: center; gap: 12px;
+}
+.prefetch-label {
+  width: 110px; font-size: 0.72rem; font-weight: 600; color: var(--fg-muted);
+  font-family: var(--font-mono); flex-shrink: 0; text-align: right;
+}
+.prefetch-track {
+  flex: 1; display: flex; height: 34px; border-radius: 6px; overflow: hidden;
+  background: rgba(255,255,255,0.02); position: relative;
+}
+.prefetch-block {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.58rem; font-weight: 600; color: #fff; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; padding: 0 4px;
+  transition: all 0.3s;
+}
+.prefetch-block.gather { background: #00c8e6; }
+.prefetch-block.compute-fwd { background: #66BB6A; }
+.prefetch-block.compute-bwd { background: #F06292; }
+.prefetch-block.reduce-scatter { background: #a78bfa; }
+.prefetch-block.flush { background: #FF7043; }
+.prefetch-block.idle { background: rgba(255,255,255,0.03); }
+.prefetch-block.overlap-gather {
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(0,200,230,0.6),
+    rgba(0,200,230,0.6) 3px,
+    rgba(0,200,230,0.35) 3px,
+    rgba(0,200,230,0.35) 6px
+  );
+}
+
+/* Overlap indicator bracket */
+.prefetch-overlap-bracket {
+  position: relative; min-width: 700px; padding-left: 122px;
+  margin-top: 4px; margin-bottom: 8px;
+}
+.prefetch-bracket-line {
+  height: 16px; border-left: 2px solid var(--primary); border-right: 2px solid var(--primary);
+  border-bottom: 2px solid var(--primary); border-radius: 0 0 6px 6px;
+  position: relative;
+}
+.prefetch-bracket-label {
+  position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%);
+  font-size: 0.65rem; font-weight: 600; color: var(--primary);
+  font-family: var(--font-mono); white-space: nowrap;
+  background: var(--bg); padding: 0 6px;
+}
+
+/* Legend for prefetching diagram */
+.prefetch-legend {
+  display: flex; flex-wrap: wrap; gap: 14px; margin-top: 16px; justify-content: center;
+  min-width: 700px; padding-left: 122px;
+}
+.prefetch-legend-item {
+  display: flex; align-items: center; gap: 5px; font-size: 0.68rem; color: var(--fg-muted);
+}
+.prefetch-legend-dot {
+  width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0;
+}
+
+/* ========================================
+   BACKWARD ANIMATION
+   ======================================== */
+.bwd-anim-container {
+  background: rgba(0,0,0,0.2); border-radius: 14px; padding: 28px;
+  margin: 20px 0; border: 1px solid var(--border);
+}
+.bwd-controls {
+  display: flex; gap: 8px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap;
+}
+.bwd-btn {
+  padding: 8px 20px; border-radius: 9999px; font-size: 0.82rem; font-weight: 600;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--fg-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.bwd-btn:hover { border-color: rgba(0,212,106,0.3); color: var(--fg); }
+.bwd-btn.active {
+  background: rgba(0,212,106,0.1); border-color: var(--primary); color: var(--primary);
+}
+.bwd-frame {
+  display: grid; grid-template-columns: 1fr 80px 1fr; gap: 16px; align-items: start;
+  min-height: 180px;
+}
+.bwd-gpu-col { text-align: center; }
+.bwd-gpu-col h5 {
+  font-size: 0.82rem; font-weight: 700; margin-bottom: 12px;
+  padding: 4px 12px; border-radius: 8px; display: inline-block;
+}
+.bwd-vs { display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 700; color: var(--fg-muted); opacity: 0.3; }
+.bwd-mem-blocks { display: flex; flex-direction: column; gap: 4px; }
+.bwd-mem-block {
+  padding: 6px 10px; border-radius: 6px; font-size: 0.68rem; font-weight: 600;
+  color: #fff; text-align: center; transition: all 0.4s ease;
+}
+.bwd-mem-empty {
+  padding: 6px 10px; border-radius: 6px; font-size: 0.68rem; font-weight: 500;
+  color: var(--fg-muted); text-align: center; border: 1px dashed var(--border);
+  background: transparent;
+}
+.bwd-info-text {
+  margin-top: 16px; text-align: center; font-size: 0.82rem; color: var(--fg-muted); line-height: 1.6;
+}
+.bwd-info-text strong { color: var(--fg); }
+.bwd-peak-summary {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;
+}
+.bwd-peak-card {
+  padding: 16px; border-radius: 10px; text-align: center;
+}
+.bwd-peak-card h6 { font-size: 0.75rem; font-weight: 600; margin-bottom: 4px; }
+.bwd-peak-card .peak-val { font-family: var(--font-mono); font-size: 1.3rem; font-weight: 700; }
+
+/* ========================================
+   ADAM STEP VISUAL
+   ======================================== */
+.adam-step-visual {
+  background: rgba(0,0,0,0.25); border-radius: 12px; padding: 24px;
+  margin: 16px 0; border: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 0.82rem; line-height: 2.2;
+  color: var(--fg-muted);
+}
+.adam-step-visual .adam-var { color: var(--secondary); font-weight: 600; }
+.adam-step-visual .adam-val { color: var(--primary); font-weight: 600; }
+.adam-step-visual .adam-op { color: var(--fg-muted); }
+.adam-step-visual .adam-result { color: var(--yellow); font-weight: 700; }
+
+/* ========================================
+   MATRIX VISUAL (weight shard grid)
+   ======================================== */
+.matrix-visual {
+  background: rgba(0,0,0,0.25); border-radius: 12px; padding: 20px;
+  margin: 16px 0; border: 1px solid var(--border); overflow-x: auto;
+}
+.matrix-title {
+  font-size: 0.82rem; font-weight: 600; margin-bottom: 12px;
+  font-family: var(--font-mono); color: var(--secondary);
+}
+.matrix-grid {
+  display: inline-grid; gap: 2px; font-family: var(--font-mono); font-size: 0.72rem;
+}
+.matrix-cell {
+  padding: 6px 10px; text-align: right; border-radius: 4px;
+  transition: background 0.2s;
+}
+.matrix-cell.gpu0 { background: rgba(66,165,245,0.12); color: var(--blue); }
+.matrix-cell.gpu1 { background: rgba(0,212,106,0.12); color: var(--primary); }
+.matrix-cell.gpu2 { background: rgba(255,152,0,0.12); color: var(--orange); }
+.matrix-cell.gpu3 { background: rgba(240,98,146,0.12); color: var(--pink); }
+.matrix-cell:hover { filter: brightness(1.3); }
+
+/* Flow step styling */
+.flow-step {
+  display: flex; align-items: center; gap: 12px; margin: 12px 0;
+  padding: 12px 16px; border-radius: 10px;
+  background: rgba(0,0,0,0.15); border: 1px solid rgba(38,38,38,0.5);
+}
+.flow-step-num {
+  width: 28px; height: 28px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; font-weight: 700;
+  font-size: 0.78rem; flex-shrink: 0;
+}
+.flow-step-text { font-size: 0.82rem; color: var(--fg-muted); line-height: 1.5; }
+.flow-step-text strong { color: var(--fg); }
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+@media (max-width: 768px) {
+  .hero-cards { grid-template-columns: repeat(2, 1fr); }
+  .nav-links { display: none; }
+  .hero h1 { font-size: 2.2rem; }
+  .section { padding: 60px 0; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .gpu-diagram, .gpu-diagram.gpu-4 { grid-template-columns: 1fr; }
+  .takeaway-grid { grid-template-columns: 1fr; }
+  .bwd-frame, .bwd-peak-summary { grid-template-columns: 1fr; }
+  .chart-area { height: 240px; }
+  .timeline-container { font-size: 0.75rem; }
+  .slider-row { flex-wrap: wrap; }
+  .tl-row, .tl-time-axis { min-width: 500px; }
+  .gcf-row, .gcf-phase-labels { min-width: 500px; }
+  .prefetch-timeline, .prefetch-overlap-bracket, .prefetch-legend { min-width: 500px; }
+  .waterfall-chart { min-width: 400px; }
+  .comm-bars { gap: 12px; }
+  .gpu-box { width: 100%; }
+  .shard-layer-row { flex-wrap: wrap; }
+  .shard-layer-label { min-width: unset; width: 100%; text-align: left; }
+}
+
+@media (max-width: 480px) {
+  .hero-cards { grid-template-columns: 1fr; }
+  .hero { padding: 100px 16px 60px; }
+  .container { padding: 0 16px; }
+  .step-block { padding: 20px; }
+  .gcf-container, .prefetch-container, .waterfall-container, .comm-chart-container { padding: 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     NAVBAR
+     ============================================================ -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      ShallowSpeed <span class="brand-tag">ZeRO-3 / FSDP</span>
+    </div>
+    <div class="nav-links">
+      <a href="#setup">Setup</a>
+      <a href="#memory">Memory</a>
+      <a href="#partition">Partition</a>
+      <a href="#forward">Forward Pass</a>
+      <a href="#backward">Backward Pass</a>
+      <a href="#communication">Communication</a>
+      <a href="#prefetching">Prefetching</a>
+      <a href="#scaling">Scaling</a>
+      <a href="#takeaways">Takeaways</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============================================================
+     HERO
+     ============================================================ -->
+<section class="hero">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-green"></div>
+    <div class="orb orb-cyan"></div>
+    <div class="orb orb-purple"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="pulse-dot"></span>
+      ZeRO Series &mdash; Stage 3
+    </div>
+    <h1><span class="gradient-text">ZeRO-3 (FSDP)</span></h1>
+    <p class="hero-subtitle">
+      The final frontier of data-parallel memory optimization. By sharding parameters, gradients, AND optimizer states,
+      every GPU holds only 1/N of everything. Walk through every gather-compute-flush step with actual numbers.
+    </p>
+    <div class="hero-cards">
+      <div class="hero-stat-card fade-in stagger-1">
+        <div class="stat-number">260</div>
+        <div class="stat-label">Total parameters (tiny model)</div>
+      </div>
+      <div class="hero-stat-card fade-in stagger-2">
+        <div class="stat-number">50%</div>
+        <div class="stat-label">Memory saved vs baseline</div>
+      </div>
+      <div class="hero-stat-card fade-in stagger-3">
+        <div class="stat-number">1.5x</div>
+        <div class="stat-label">Communication overhead</div>
+      </div>
+      <div class="hero-stat-card fade-in stagger-4">
+        <div class="stat-number">16P/N</div>
+        <div class="stat-label">Perfect memory scaling</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 1: SETUP
+     ============================================================ -->
+<section id="setup" class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">The Model</span>
+      <h2><span class="gradient-text">Our Tiny Transformer Setup</span></h2>
+      <p class="section-subtitle">The same 260-parameter transformer we used in ZeRO-1 and ZeRO-2 &mdash; now with full parameter sharding.</p>
+    </div>
+
+    <div class="grid-3 fade-in">
+      <!-- Architecture Card -->
+      <div class="card">
+        <h3>Architecture</h3>
+        <ul style="list-style: none; padding: 0; margin-top: 8px;">
+          <li style="padding: 4px 0;"><code>d = 4</code> &mdash; hidden dimension</li>
+          <li style="padding: 4px 0;"><code>heads = 2</code> &mdash; attention heads</li>
+          <li style="padding: 4px 0;"><code>d_k = 2</code> &mdash; head dimension</li>
+          <li style="padding: 4px 0;"><code>FFN = 16</code> &mdash; inner dimension (4x)</li>
+          <li style="padding: 4px 0;"><code>vocab = 8</code> &mdash; vocabulary size</li>
+          <li style="padding: 4px 0;"><code>T = 3</code> &mdash; sequence length</li>
+          <li style="padding: 4px 0;"><code>GPUs = 2</code> &mdash; world size N</li>
+        </ul>
+      </div>
+
+      <!-- Parameter Count Card -->
+      <div class="card">
+        <h3>Parameter Count</h3>
+        <div class="comp-table-wrap" style="margin-top: 8px;">
+          <table class="comp-table">
+            <thead>
+              <tr><th>Layer</th><th>Shape</th><th>Count</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>LayerNorm 1 (&#947;, &#946;)</td><td>(4)+(4)</td><td class="num-cyan">8</td></tr>
+              <tr><td>W_q, W_k, W_v</td><td>3 x (4x4)</td><td class="num-cyan">48</td></tr>
+              <tr><td>W_o</td><td>(4x4)</td><td class="num-cyan">16</td></tr>
+              <tr><td>LayerNorm 2 (&#947;, &#946;)</td><td>(4)+(4)</td><td class="num-cyan">8</td></tr>
+              <tr><td>W&#8321; (FFN up)</td><td>(4x16)</td><td class="num-cyan">64</td></tr>
+              <tr><td>b&#8321;</td><td>(16)</td><td class="num-cyan">16</td></tr>
+              <tr><td>W&#8322; (FFN down)</td><td>(16x4)</td><td class="num-cyan">64</td></tr>
+              <tr><td>b&#8322;</td><td>(4)</td><td class="num-cyan">4</td></tr>
+              <tr><td>W_vocab</td><td>(4x8)</td><td class="num-cyan">32</td></tr>
+              <tr style="border-top: 2px solid var(--border);"><td><strong>Total</strong></td><td></td><td class="num-green"><strong>260</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- What's New Card -->
+      <div class="card">
+        <h3>What's New in ZeRO-3</h3>
+        <p style="margin-top: 8px;">
+          ZeRO-1 sharded <strong>optimizer states</strong>.<br>
+          ZeRO-2 added <strong>gradient sharding</strong>.<br>
+          ZeRO-3 goes all the way: <strong>parameters themselves</strong> are sharded.
+        </p>
+        <p style="margin-top: 12px;">
+          No GPU holds the full model at rest. To compute any layer, GPUs must first
+          <span class="num-cyan">all-gather</span> that layer's parameters, compute, then
+          <span class="num-red">flush</span> the non-owned shards.
+        </p>
+        <div class="callout callout-purple" style="margin-top: 16px;">
+          <strong>FSDP = ZeRO-3.</strong> PyTorch's FullyShardedDataParallel (FSDP) implements exactly
+          the same algorithm as DeepSpeed ZeRO Stage 3.
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-info fade-in" style="margin-top: 24px;">
+      <strong>BF16 precision:</strong> Each parameter = 2 bytes. So 260 parameters = <span class="num-green">520 bytes</span> of model weights.
+      AdamW stores <code>m</code> (momentum), <code>v</code> (variance), and <code>p</code> (FP32 copy) &mdash; each 4 bytes per parameter.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 2: MEMORY ACCOUNTING
+     ============================================================ -->
+<section id="memory" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Memory</span>
+      <h2><span class="gradient-text">Memory Accounting: The Full ZeRO Progression</span></h2>
+      <p class="section-subtitle">See how memory per GPU drops as we shard more aggressively from No ZeRO through ZeRO-3.</p>
+    </div>
+
+    <!-- Stacked Bar Chart -->
+    <div class="chart-container fade-in" id="memory-chart-container">
+      <h4>Memory per GPU (bytes) &mdash; 260 Parameters, 2 GPUs</h4>
+      <p class="chart-subtitle">Hover over bars to see breakdown. Click to highlight.</p>
+      <div class="chart-area" id="memory-chart-area" style="padding-left: 60px;">
+        <!-- Built by JS -->
+      </div>
+      <div class="chart-legend" id="memory-chart-legend">
+        <div class="legend-item"><span class="lg-swatch" style="background:#a78bfa;"></span> Parameters (2P)</div>
+        <div class="legend-item"><span class="lg-swatch" style="background:#7c5cbf;"></span> Gradients (2P)</div>
+        <div class="legend-item"><span class="lg-swatch" style="background:#5b3a9e;"></span> Optimizer (m+v+p = 12P)</div>
+      </div>
+    </div>
+
+    <!-- Memory Formula Cards -->
+    <div class="grid-4 fade-in" style="margin-top: 32px;">
+      <div class="card" style="text-align: center;">
+        <h3 style="color: var(--fg-muted);">No ZeRO</h3>
+        <div class="equation-box">
+          <span class="eq-label">Memory per GPU</span>
+          <span class="eq-highlight">16P</span>
+        </div>
+        <p style="font-size: 0.82rem; color: var(--fg-muted);">= 16 x 260 = <span class="num-red">4,160 B</span></p>
+      </div>
+      <div class="card" style="text-align: center;">
+        <h3 style="color: var(--blue);">ZeRO-1</h3>
+        <div class="equation-box">
+          <span class="eq-label">Memory per GPU</span>
+          (4 + 12/N)P
+        </div>
+        <p style="font-size: 0.82rem; color: var(--fg-muted);">= 10 x 260 = <span class="num-orange">2,600 B</span></p>
+      </div>
+      <div class="card" style="text-align: center;">
+        <h3 style="color: var(--accent);">ZeRO-2</h3>
+        <div class="equation-box">
+          <span class="eq-label">Memory per GPU</span>
+          (2 + 14/N)P
+        </div>
+        <p style="font-size: 0.82rem; color: var(--fg-muted);">= 9 x 260 = <span class="num-purple">2,340 B</span></p>
+      </div>
+      <div class="card" style="text-align: center;">
+        <h3 style="color: var(--primary);">ZeRO-3</h3>
+        <div class="equation-box">
+          <span class="eq-label">Memory per GPU</span>
+          <span class="eq-highlight">16P / N</span>
+        </div>
+        <p style="font-size: 0.82rem; color: var(--fg-muted);">= 8 x 260 = <span class="num-green">2,080 B</span></p>
+      </div>
+    </div>
+
+    <!-- Comparison Table -->
+    <div class="comp-table-wrap fade-in" style="margin-top: 32px;">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Strategy</th>
+            <th>Params (bytes)</th>
+            <th>Grads (bytes)</th>
+            <th>Optimizer (bytes)</th>
+            <th>Total (bytes)</th>
+            <th>Savings vs No ZeRO</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>No ZeRO</strong></td>
+            <td>520</td><td>520</td><td>3,120</td>
+            <td class="val-bad">4,160</td>
+            <td>--</td>
+          </tr>
+          <tr>
+            <td><strong>ZeRO-1</strong></td>
+            <td>520</td><td>520</td><td>1,560</td>
+            <td class="val-ok">2,600</td>
+            <td class="val-ok">37.5%</td>
+          </tr>
+          <tr>
+            <td><strong>ZeRO-2</strong></td>
+            <td>520</td><td>260</td><td>1,560</td>
+            <td class="val-neutral">2,340</td>
+            <td class="val-neutral">43.8%</td>
+          </tr>
+          <tr>
+            <td><strong>ZeRO-3</strong></td>
+            <td class="val-great">260</td><td class="val-great">260</td><td class="val-great">1,560</td>
+            <td class="val-great">2,080</td>
+            <td class="val-great">50.0%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-green fade-in" style="margin-top: 24px;">
+      <strong>Perfect scaling:</strong> With ZeRO-3, memory per GPU = <code>16P/N</code>.
+      Double the GPUs &rarr; halve the memory. This is the theoretical optimum for data parallelism.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 3: PARTITION
+     ============================================================ -->
+<section id="partition" class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Partition</span>
+      <h2><span class="gradient-text">Who Owns What &mdash; At Rest</span></h2>
+      <p class="section-subtitle">All 260 parameters are flattened into one vector and split at index 130. Each GPU stores only its shard.</p>
+    </div>
+
+    <!-- Partition Bar Visualization -->
+    <div class="partition-visual fade-in">
+      <div style="display: flex; justify-content: space-between; font-size: 0.75rem; font-family: var(--font-mono); color: var(--fg-muted); margin-bottom: 4px;">
+        <span>Index 0</span>
+        <span>Index 130</span>
+        <span>Index 259</span>
+      </div>
+      <div class="partition-bar" id="partition-bar">
+        <!-- GPU-0 segments (indices 0-129) -->
+        <div class="partition-seg" style="flex: 8; background: rgba(66,165,245,0.6);" title="LayerNorm1 gamma+beta: 8 params">
+          <span class="seg-tooltip">&#947;&#8321;, &#946;&#8321; (8 params, idx 0-7)</span>
+          &#947;&#8321;&#946;&#8321;
+        </div>
+        <div class="partition-seg" style="flex: 16; background: rgba(66,165,245,0.5);" title="W_q: 16 params">
+          <span class="seg-tooltip">W_q (16 params, idx 8-23)</span>
+          W_q
+        </div>
+        <div class="partition-seg" style="flex: 16; background: rgba(66,165,245,0.45);" title="W_k: 16 params">
+          <span class="seg-tooltip">W_k (16 params, idx 24-39)</span>
+          W_k
+        </div>
+        <div class="partition-seg" style="flex: 16; background: rgba(66,165,245,0.55);" title="W_v: 16 params">
+          <span class="seg-tooltip">W_v (16 params, idx 40-55)</span>
+          W_v
+        </div>
+        <div class="partition-seg" style="flex: 16; background: rgba(66,165,245,0.5);" title="W_o: 16 params">
+          <span class="seg-tooltip">W_o (16 params, idx 56-71)</span>
+          W_o
+        </div>
+        <div class="partition-seg" style="flex: 8; background: rgba(66,165,245,0.45);" title="LayerNorm2: 8 params">
+          <span class="seg-tooltip">&#947;&#8322;, &#946;&#8322; (8 params, idx 72-79)</span>
+          &#947;&#8322;&#946;&#8322;
+        </div>
+        <div class="partition-seg" style="flex: 50; background: rgba(66,165,245,0.6);" title="W1 partial: 50 params">
+          <span class="seg-tooltip">W&#8321; partial (50 params, idx 80-129)</span>
+          W&#8321; (partial)
+        </div>
+        <!-- GPU-1 segments (indices 130-259) -->
+        <div class="partition-seg" style="flex: 14; background: rgba(0,212,106,0.6);" title="W1 rest: 14 params">
+          <span class="seg-tooltip">W&#8321; rest (14 params, idx 130-143)</span>
+          W&#8321;
+        </div>
+        <div class="partition-seg" style="flex: 16; background: rgba(0,212,106,0.5);" title="b1: 16 params">
+          <span class="seg-tooltip">b&#8321; (16 params, idx 144-159)</span>
+          b&#8321;
+        </div>
+        <div class="partition-seg" style="flex: 64; background: rgba(0,212,106,0.55);" title="W2: 64 params">
+          <span class="seg-tooltip">W&#8322; (64 params, idx 160-223)</span>
+          W&#8322;
+        </div>
+        <div class="partition-seg" style="flex: 4; background: rgba(0,212,106,0.45);" title="b2: 4 params">
+          <span class="seg-tooltip">b&#8322; (4 params, idx 224-227)</span>
+          b&#8322;
+        </div>
+        <div class="partition-seg" style="flex: 32; background: rgba(0,212,106,0.6);" title="W_vocab: 32 params">
+          <span class="seg-tooltip">W_vocab (32 params, idx 228-259)</span>
+          W_vocab
+        </div>
+      </div>
+      <div class="partition-labels">
+        <div class="partition-label-item">
+          <div class="partition-color-dot" style="background: rgba(66,165,245,0.6);"></div>
+          GPU-0 (indices 0&ndash;129) &mdash; 130 params
+        </div>
+        <div class="partition-label-item">
+          <div class="partition-color-dot" style="background: rgba(0,212,106,0.6);"></div>
+          GPU-1 (indices 130&ndash;259) &mdash; 130 params
+        </div>
+      </div>
+    </div>
+
+    <!-- GPU Memory Boxes -->
+    <div class="gpu-diagram fade-in" style="margin-top: 32px;">
+      <div class="gpu-box" style="border-color: rgba(66,165,245,0.3);">
+        <div class="gpu-title">
+          <span class="gpu-chip" style="background: rgba(66,165,245,0.2); color: var(--blue);">GPU-0</span>
+          At Rest
+        </div>
+        <div class="gpu-mem-item">
+          <span class="mem-label">&#952;&#8320;[130] (BF16 params)</span>
+          <span class="mem-value num-blue">260 B</span>
+        </div>
+        <div class="gpu-mem-item">
+          <span class="mem-label">m&#8320;[130] (FP32 momentum)</span>
+          <span class="mem-value num-blue">520 B</span>
+        </div>
+        <div class="gpu-mem-item">
+          <span class="mem-label">v&#8320;[130] (FP32 variance)</span>
+          <span class="mem-value num-blue">520 B</span>
+        </div>
+        <div class="gpu-mem-item">
+          <span class="mem-label">p&#8320;[130] (FP32 copy)</span>
+          <span class="mem-value num-blue">520 B</span>
+        </div>
+        <div class="gpu-mem-total">
+          <span>Total at rest</span>
+          <span class="num-blue">1,820 B</span>
+        </div>
+      </div>
+
+      <div class="gpu-box" style="border-color: rgba(0,212,106,0.3);">
+        <div class="gpu-title">
+          <span class="gpu-chip" style="background: rgba(0,212,106,0.2); color: var(--primary);">GPU-1</span>
+          At Rest
+        </div>
+        <div class="gpu-mem-item">
+          <span class="mem-label">&#952;&#8321;[130] (BF16 params)</span>
+          <span class="mem-value num-green">260 B</span>
+        </div>
+        <div class="gpu-mem-item">
+          <span class="mem-label">m&#8321;[130] (FP32 momentum)</span>
+          <span class="mem-value num-green">520 B</span>
+        </div>
+        <div class="gpu-mem-item">
+          <span class="mem-label">v&#8321;[130] (FP32 variance)</span>
+          <span class="mem-value num-green">520 B</span>
+        </div>
+        <div class="gpu-mem-item">
+          <span class="mem-label">p&#8321;[130] (FP32 copy)</span>
+          <span class="mem-value num-green">520 B</span>
+        </div>
+        <div class="gpu-mem-total">
+          <span>Total at rest</span>
+          <span class="num-green">1,820 B</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-warn fade-in" style="margin-top: 24px;">
+      <strong>Neither GPU can run the model alone!</strong> GPU-0 has only 130 of 260 parameters.
+      To compute any layer, it must first all-gather the missing shard from GPU-1 (and vice versa).
+      This is the fundamental trade-off of ZeRO-3: less memory, more communication.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 4: FORWARD PASS
+     ============================================================ -->
+<section id="forward" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Forward Pass</span>
+      <h2><span class="gradient-text">Gather &rarr; Compute &rarr; Flush</span></h2>
+      <p class="section-subtitle">The core FSDP loop. For each layer: all-gather its parameters, compute the output, then flush the non-owned shard.</p>
+    </div>
+
+    <!-- Layer Selector -->
+    <div class="anim-container fade-in" id="fwd-anim">
+      <div class="anim-controls" style="justify-content: center;">
+        <button class="anim-btn active" data-layer="ln1" onclick="selectFwdLayer('ln1')">LN1</button>
+        <button class="anim-btn" data-layer="attn" onclick="selectFwdLayer('attn')">Attention</button>
+        <button class="anim-btn" data-layer="ln2" onclick="selectFwdLayer('ln2')">LN2</button>
+        <button class="anim-btn" data-layer="ffn" onclick="selectFwdLayer('ffn')">FFN</button>
+        <button class="anim-btn" data-layer="output" onclick="selectFwdLayer('output')">Output</button>
+      </div>
+
+      <!-- GCF Step Indicator -->
+      <div class="gcf-step-indicator" id="gcf-step-indicator">
+        <div class="gcf-step-pill active-gather" id="gcf-pill-gather">GATHER</div>
+        <div class="gcf-arrow">&rarr;</div>
+        <div class="gcf-step-pill inactive" id="gcf-pill-compute">COMPUTE</div>
+        <div class="gcf-arrow">&rarr;</div>
+        <div class="gcf-step-pill inactive" id="gcf-pill-flush">FLUSH</div>
+      </div>
+
+      <!-- Phase Controls -->
+      <div style="display: flex; justify-content: center; gap: 8px; margin: 16px 0;">
+        <button class="strategy-btn active" onclick="selectFwdPhase('gather')">1. Gather</button>
+        <button class="strategy-btn" onclick="selectFwdPhase('compute')">2. Compute</button>
+        <button class="strategy-btn" onclick="selectFwdPhase('flush')">3. Flush</button>
+      </div>
+
+      <!-- Phase Content -->
+      <div id="fwd-phase-content" style="min-height: 200px;">
+        <!-- Populated by JS -->
+      </div>
+
+      <!-- Memory Bar -->
+      <div class="mem-bar-container" style="margin-top: 20px;">
+        <div class="mem-bar-label">GPU-0 Memory During Forward: <code id="fwd-mem-label">Gathering LN1 params...</code></div>
+        <div class="mem-bar-row" id="fwd-mem-bar">
+          <!-- Populated by JS -->
+        </div>
+        <div class="mem-legend">
+          <div class="mem-legend-item"><div class="mem-swatch" style="background: #a78bfa;"></div> Own shard (260B)</div>
+          <div class="mem-legend-item"><div class="mem-swatch" style="background: rgba(0,200,230,0.6);"></div> Gathered params (temp)</div>
+          <div class="mem-legend-item"><div class="mem-swatch" style="background: #5b3a9e;"></div> Optimizer states (1,560B)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Forward Pass Communication Summary Table -->
+    <div class="comp-table-wrap fade-in" style="margin-top: 32px;">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Layer</th>
+            <th>Params in layer</th>
+            <th>Temp memory (BF16)</th>
+            <th>All-Gather comm</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>LN1</strong></td>
+            <td class="num-cyan">8</td>
+            <td>16 B</td>
+            <td>16 B</td>
+            <td>Small layer</td>
+          </tr>
+          <tr>
+            <td><strong>Attention</strong></td>
+            <td class="num-cyan">64</td>
+            <td>128 B</td>
+            <td>128 B</td>
+            <td>W_q + W_k + W_v + W_o</td>
+          </tr>
+          <tr>
+            <td><strong>LN2</strong></td>
+            <td class="num-cyan">8</td>
+            <td>16 B</td>
+            <td>16 B</td>
+            <td>Small layer</td>
+          </tr>
+          <tr style="background: rgba(255,112,67,0.05);">
+            <td><strong>FFN</strong></td>
+            <td class="num-red">148</td>
+            <td class="num-red">296 B</td>
+            <td class="num-red">296 B</td>
+            <td><strong>PEAK memory</strong></td>
+          </tr>
+          <tr>
+            <td><strong>Output</strong></td>
+            <td class="num-cyan">32</td>
+            <td>64 B</td>
+            <td>64 B</td>
+            <td>W_vocab</td>
+          </tr>
+          <tr style="border-top: 2px solid var(--border);">
+            <td><strong>Total</strong></td>
+            <td class="num-green"><strong>260</strong></td>
+            <td>&mdash;</td>
+            <td class="num-green"><strong>520 B</strong></td>
+            <td><span class="step-badge step-badge-new">NEW vs ZeRO-1/2</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-info fade-in" style="margin-top: 20px;">
+      <strong>Key insight:</strong> In ZeRO-1 and ZeRO-2, the forward pass required <span class="num-blue">zero</span> extra communication
+      because every GPU held the full model. In ZeRO-3, each forward pass costs an <span class="num-cyan">all-gather of all 260 parameters</span>
+      (520 bytes total communication), but the temporary memory is bounded by the <em>largest single layer</em> (FFN: 296 B).
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 5: BACKWARD PASS
+     ============================================================ -->
+<section id="backward" class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Backward Pass</span>
+      <h2><span class="gradient-text">Gather &rarr; Backprop &rarr; Flush + Reduce-Scatter</span></h2>
+      <p class="section-subtitle">Mirror of forward but in reverse layer order, with reduce-scatter to distribute gradients.</p>
+    </div>
+
+    <!-- Backward Layer Selector -->
+    <div class="bwd-anim-container fade-in">
+      <div class="bwd-controls">
+        <button class="bwd-btn active" onclick="selectBwdLayer('output')">Output</button>
+        <button class="bwd-btn" onclick="selectBwdLayer('ffn')">FFN</button>
+        <button class="bwd-btn" onclick="selectBwdLayer('ln2')">LN2</button>
+        <button class="bwd-btn" onclick="selectBwdLayer('attn')">Attention</button>
+        <button class="bwd-btn" onclick="selectBwdLayer('ln1')">LN1</button>
+      </div>
+
+      <div id="bwd-phase-content" style="min-height: 220px;">
+        <!-- Populated by JS -->
+      </div>
+
+      <div class="bwd-info-text" id="bwd-info-text">
+        Select a layer above to see the backward pass steps.
+      </div>
+    </div>
+
+    <!-- Backward Communication Summary -->
+    <div class="grid-2 fade-in" style="margin-top: 32px;">
+      <div class="card" style="text-align: center;">
+        <h3>All-Gather (parameters)</h3>
+        <div class="equation-box">
+          <span class="eq-label">NEW in ZeRO-3</span>
+          <span class="eq-highlight">520 B</span>
+        </div>
+        <p>Same as forward &mdash; must re-gather each layer's full parameters to compute gradients.</p>
+      </div>
+      <div class="card" style="text-align: center;">
+        <h3>Reduce-Scatter (gradients)</h3>
+        <div class="equation-box">
+          <span class="eq-label">Same as ZeRO-2</span>
+          520 B
+        </div>
+        <p>Each GPU receives only its owned shard of gradients, averaged across all GPUs.</p>
+      </div>
+    </div>
+
+    <!-- Gradient Example -->
+    <div class="card fade-in" style="margin-top: 24px;">
+      <h3>Concrete Example: Gradient for W_q</h3>
+      <p style="margin-top: 8px;">W_q has 16 parameters (indices 8&ndash;23). Both GPUs compute the full gradient &nabla;W_q[16].</p>
+      <div class="flow-step" style="margin-top: 12px;">
+        <div class="flow-step-num" style="background: rgba(0,200,230,0.2); color: var(--secondary);">1</div>
+        <div class="flow-step-text">
+          <strong>All-Gather W_q:</strong> GPU-0 sends its 8 elements of W_q, GPU-1 sends its 8. Both now have all 16.
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-num" style="background: rgba(240,98,146,0.2); color: var(--pink);">2</div>
+        <div class="flow-step-text">
+          <strong>Compute &nabla;W_q:</strong> Each GPU computes the full 16-element gradient using its own mini-batch data.
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-num" style="background: rgba(167,139,250,0.2); color: var(--accent);">3</div>
+        <div class="flow-step-text">
+          <strong>Reduce-Scatter:</strong> Average the 16 gradients, then GPU-0 gets &nabla;W_q[0:8], GPU-1 gets &nabla;W_q[8:16]. Each owns only its shard.
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-num" style="background: rgba(255,112,67,0.2); color: var(--red);">4</div>
+        <div class="flow-step-text">
+          <strong>Flush:</strong> Discard the gathered W_q parameters (non-owned shard) and the non-owned gradient shard. Memory returns to baseline.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 6: COMMUNICATION COST
+     ============================================================ -->
+<section id="communication" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Communication</span>
+      <h2><span class="gradient-text">The Price of ZeRO-3</span></h2>
+      <p class="section-subtitle">ZeRO-3 trades 50% more communication for the ability to shard parameters.</p>
+    </div>
+
+    <!-- Communication Cost Bar Chart -->
+    <div class="comm-chart-container fade-in" id="comm-chart">
+      <div class="comm-chart-title">Communication Volume per Training Step (bytes)</div>
+      <div class="comm-chart-subtitle">Total bytes sent per GPU through the network</div>
+      <div class="comm-bars" id="comm-bars">
+        <!-- Built by JS -->
+      </div>
+      <div class="comm-chart-legend">
+        <div class="legend-item"><span class="lg-swatch" style="background: #00c8e6;"></span> All-Gather</div>
+        <div class="legend-item"><span class="lg-swatch" style="background: #a78bfa;"></span> Reduce-Scatter</div>
+      </div>
+    </div>
+
+    <!-- Breakdown Table -->
+    <div class="comp-table-wrap fade-in" style="margin-top: 24px;">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Phase</th>
+            <th>ZeRO-1</th>
+            <th>ZeRO-2</th>
+            <th>ZeRO-3</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Forward All-Gather</strong></td>
+            <td>0</td>
+            <td>0</td>
+            <td class="val-bad">520 B</td>
+          </tr>
+          <tr>
+            <td><strong>Backward All-Gather</strong></td>
+            <td>0</td>
+            <td>0</td>
+            <td class="val-bad">520 B</td>
+          </tr>
+          <tr>
+            <td><strong>Backward Reduce-Scatter</strong></td>
+            <td>520 B</td>
+            <td>520 B</td>
+            <td>520 B</td>
+          </tr>
+          <tr>
+            <td><strong>Post-Optim All-Gather</strong></td>
+            <td>520 B</td>
+            <td>520 B</td>
+            <td>0</td>
+          </tr>
+          <tr style="border-top: 2px solid var(--border);">
+            <td><strong>Total</strong></td>
+            <td class="num-blue">1,040 B</td>
+            <td class="num-blue">1,040 B</td>
+            <td class="num-red">1,560 B</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-warn fade-in" style="margin-top: 24px;">
+      <strong>The trade-off explained:</strong> ZeRO-1 and ZeRO-2 both need a post-optimizer all-gather
+      (520 B) to rebuild full parameters. ZeRO-3 eliminates this but adds <em>two</em> all-gathers
+      (forward + backward = 1,040 B). Net extra = <span class="num-red">1 additional all-gather (520 B)</span>,
+      making ZeRO-3 cost <strong>1.5x</strong> the communication of ZeRO-1/2.
+    </div>
+
+    <div class="callout callout-green fade-in" style="margin-top: 12px;">
+      <strong>Why it's worth it:</strong> That extra 520 B of communication buys you
+      <span class="num-green">parameter sharding</span> &mdash; the difference between fitting a model in GPU memory or not.
+      For large models, this is the only way to train with data parallelism alone.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 7: PREFETCHING
+     ============================================================ -->
+<section id="prefetching" class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Optimization</span>
+      <h2><span class="gradient-text">Prefetching: Hiding the Communication Cost</span></h2>
+      <p class="section-subtitle">Overlap the all-gather of layer N+1 with the compute of layer N to hide latency.</p>
+    </div>
+
+    <!-- Forward Prefetch Timeline -->
+    <div class="prefetch-container fade-in">
+      <div class="prefetch-title">Forward Pass with Prefetching</div>
+      <div class="prefetch-subtitle">While computing layer N, simultaneously gather layer N+1's parameters</div>
+      <div class="prefetch-timeline" id="fwd-prefetch-timeline">
+        <div class="prefetch-row">
+          <div class="prefetch-label">GPU Compute</div>
+          <div class="prefetch-track">
+            <div class="prefetch-block idle" style="flex: 1;"></div>
+            <div class="prefetch-block compute-fwd" style="flex: 2;">Compute LN1</div>
+            <div class="prefetch-block compute-fwd" style="flex: 5;">Compute Attn</div>
+            <div class="prefetch-block compute-fwd" style="flex: 2;">Compute LN2</div>
+            <div class="prefetch-block compute-fwd" style="flex: 8;">Compute FFN</div>
+            <div class="prefetch-block compute-fwd" style="flex: 3;">Compute Out</div>
+          </div>
+        </div>
+        <div class="prefetch-row">
+          <div class="prefetch-label">GPU Network</div>
+          <div class="prefetch-track">
+            <div class="prefetch-block gather" style="flex: 1;">Gather LN1</div>
+            <div class="prefetch-block overlap-gather" style="flex: 2;">Gather Attn</div>
+            <div class="prefetch-block overlap-gather" style="flex: 5;">Gather LN2</div>
+            <div class="prefetch-block overlap-gather" style="flex: 2;">Gather FFN</div>
+            <div class="prefetch-block overlap-gather" style="flex: 8;">Gather Out</div>
+            <div class="prefetch-block idle" style="flex: 3;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="prefetch-legend">
+        <div class="prefetch-legend-item"><div class="prefetch-legend-dot" style="background: #66BB6A;"></div> Compute</div>
+        <div class="prefetch-legend-item"><div class="prefetch-legend-dot" style="background: #00c8e6;"></div> Gather (initial)</div>
+        <div class="prefetch-legend-item"><div class="prefetch-legend-dot" style="background: repeating-linear-gradient(90deg, rgba(0,200,230,0.6), rgba(0,200,230,0.6) 3px, rgba(0,200,230,0.35) 3px, rgba(0,200,230,0.35) 6px);"></div> Prefetched Gather (overlapped)</div>
+      </div>
+    </div>
+
+    <!-- Backward Prefetch Timeline -->
+    <div class="prefetch-container fade-in" style="margin-top: 24px;">
+      <div class="prefetch-title">Backward Pass with Prefetching</div>
+      <div class="prefetch-subtitle">Same overlap strategy in reverse order, plus reduce-scatter interleaving</div>
+      <div class="prefetch-timeline" id="bwd-prefetch-timeline">
+        <div class="prefetch-row">
+          <div class="prefetch-label">GPU Compute</div>
+          <div class="prefetch-track">
+            <div class="prefetch-block idle" style="flex: 1;"></div>
+            <div class="prefetch-block compute-bwd" style="flex: 3;">Backprop Out</div>
+            <div class="prefetch-block compute-bwd" style="flex: 8;">Backprop FFN</div>
+            <div class="prefetch-block compute-bwd" style="flex: 2;">Backprop LN2</div>
+            <div class="prefetch-block compute-bwd" style="flex: 5;">Backprop Attn</div>
+            <div class="prefetch-block compute-bwd" style="flex: 2;">Backprop LN1</div>
+          </div>
+        </div>
+        <div class="prefetch-row">
+          <div class="prefetch-label">All-Gather</div>
+          <div class="prefetch-track">
+            <div class="prefetch-block gather" style="flex: 1;">Gather Out</div>
+            <div class="prefetch-block overlap-gather" style="flex: 3;">Gather FFN</div>
+            <div class="prefetch-block overlap-gather" style="flex: 8;">Gather LN2</div>
+            <div class="prefetch-block overlap-gather" style="flex: 2;">Gather Attn</div>
+            <div class="prefetch-block overlap-gather" style="flex: 5;">Gather LN1</div>
+            <div class="prefetch-block idle" style="flex: 2;"></div>
+          </div>
+        </div>
+        <div class="prefetch-row">
+          <div class="prefetch-label">Reduce-Scatter</div>
+          <div class="prefetch-track">
+            <div class="prefetch-block idle" style="flex: 4;"></div>
+            <div class="prefetch-block reduce-scatter" style="flex: 3;">RS Out</div>
+            <div class="prefetch-block reduce-scatter" style="flex: 8;">RS FFN</div>
+            <div class="prefetch-block reduce-scatter" style="flex: 2;">RS LN2</div>
+            <div class="prefetch-block reduce-scatter" style="flex: 5;">RS Attn</div>
+            <div class="prefetch-block reduce-scatter" style="flex: 2;">RS LN1</div>
+          </div>
+        </div>
+      </div>
+      <div class="prefetch-legend">
+        <div class="prefetch-legend-item"><div class="prefetch-legend-dot" style="background: #F06292;"></div> Backprop Compute</div>
+        <div class="prefetch-legend-item"><div class="prefetch-legend-dot" style="background: #00c8e6;"></div> All-Gather</div>
+        <div class="prefetch-legend-item"><div class="prefetch-legend-dot" style="background: #a78bfa;"></div> Reduce-Scatter</div>
+      </div>
+    </div>
+
+    <div class="callout callout-info fade-in" style="margin-top: 24px;">
+      <strong>Effective prefetching limit:</strong> Prefetching works well as long as compute time per layer &ge; communication time.
+      For very large clusters (&gt;512 GPUs), the all-gather may become the bottleneck, reducing the effectiveness of overlap.
+      DeepSpeed and FSDP both support configurable prefetch counts (<code>prefetch_count</code> / <code>forward_prefetch</code>).
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 8: MEMORY WATERFALL
+     ============================================================ -->
+<section id="waterfall" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Memory Over Time</span>
+      <h2><span class="gradient-text">Frame-by-Frame Memory During Forward Pass</span></h2>
+      <p class="section-subtitle">Compare how memory usage changes during the forward pass for ZeRO-2 vs ZeRO-3.</p>
+    </div>
+
+    <!-- Toggle -->
+    <div class="strat-toggle fade-in" style="margin-bottom: 32px;">
+      <button class="strat-btn active-zero2" id="wf-btn-zero2" onclick="selectWaterfall('zero2')">ZeRO-2</button>
+      <button class="strat-btn" id="wf-btn-zero3" onclick="selectWaterfall('zero3')">ZeRO-3</button>
+    </div>
+
+    <!-- Waterfall Chart -->
+    <div class="waterfall-container fade-in" id="waterfall-chart">
+      <div class="waterfall-title" id="waterfall-title">ZeRO-2: Memory During Forward Pass</div>
+      <div class="waterfall-subtitle" id="waterfall-subtitle">Parameters stay constant since every GPU has the full model</div>
+      <div id="waterfall-content" style="min-height: 300px;">
+        <!-- Built by JS -->
+      </div>
+    </div>
+
+    <div class="callout callout-purple fade-in" style="margin-top: 24px;" id="waterfall-callout">
+      <strong>Key difference:</strong> In ZeRO-2, the parameter memory is constant at 520 B throughout the forward pass.
+      In ZeRO-3, the base is only 260 B, but temporary gathered parameters spike during each layer computation.
+      Peak temp memory is bounded by the largest layer (FFN: 296 B extra).
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 9: SCALING
+     ============================================================ -->
+<section id="scaling" class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Real World</span>
+      <h2><span class="gradient-text">Scaling to 7B Parameters on 8 GPUs</span></h2>
+      <p class="section-subtitle">See how ZeRO-3's perfect linear scaling makes large model training feasible on consumer hardware.</p>
+    </div>
+
+    <!-- GPU Count Slider -->
+    <div class="anim-container fade-in" id="scaling-container">
+      <h4 style="margin-bottom: 4px;">Interactive Scaling Calculator</h4>
+      <p style="font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px;">Model: 7B parameters (BF16). Adjust the number of GPUs.</p>
+
+      <div class="slider-group">
+        <div class="slider-row">
+          <span class="slider-label">Number of GPUs</span>
+          <input type="range" id="gpu-slider" min="0" max="5" step="1" value="2"
+                 oninput="updateScaling(this.value)">
+          <span class="slider-value" id="gpu-count-label">8</span>
+        </div>
+      </div>
+
+      <!-- Scaling Results Table -->
+      <div class="comp-table-wrap" style="margin-top: 24px;">
+        <table class="comp-table" id="scaling-table">
+          <thead>
+            <tr>
+              <th>Strategy</th>
+              <th>Formula</th>
+              <th>Memory per GPU</th>
+              <th>Fits in 24GB?</th>
+            </tr>
+          </thead>
+          <tbody id="scaling-tbody">
+            <!-- Built by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Highlight box -->
+      <div class="equation-box" style="margin-top: 24px;" id="scaling-highlight">
+        <span class="eq-label">ZeRO-3 with 8 GPUs</span>
+        <span class="eq-highlight" id="scaling-result">14.00 GB</span> per GPU
+      </div>
+    </div>
+
+    <div class="callout callout-green fade-in" style="margin-top: 24px;">
+      <strong>14 GB per GPU!</strong> Train a 7-billion parameter model on 8 consumer GPUs (RTX 4090, 24 GB each).
+      Without ZeRO-3, you'd need 112 GB per GPU &mdash; impossible even on A100-80GB.
+      ZeRO-3 makes data-parallel training of large models accessible.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 10: ZeRO PROGRESSION SUMMARY
+     ============================================================ -->
+<section id="progression" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">The Big Picture</span>
+      <h2><span class="gradient-text">The Full ZeRO Progression</span></h2>
+      <p class="section-subtitle">From no sharding to full sharding &mdash; each stage trades communication for memory savings.</p>
+    </div>
+
+    <!-- Progression Table -->
+    <div class="comp-table-wrap fade-in">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>No ZeRO</th>
+            <th>ZeRO-1</th>
+            <th>ZeRO-2</th>
+            <th>ZeRO-3 (FSDP)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Shard optimizer</strong></td>
+            <td class="val-bad">No</td>
+            <td class="val-good">Yes</td>
+            <td class="val-good">Yes</td>
+            <td class="val-good">Yes</td>
+          </tr>
+          <tr>
+            <td><strong>Shard gradients</strong></td>
+            <td class="val-bad">No</td>
+            <td class="val-bad">No</td>
+            <td class="val-good">Yes</td>
+            <td class="val-good">Yes</td>
+          </tr>
+          <tr>
+            <td><strong>Shard parameters</strong></td>
+            <td class="val-bad">No</td>
+            <td class="val-bad">No</td>
+            <td class="val-bad">No</td>
+            <td class="val-great">Yes</td>
+          </tr>
+          <tr>
+            <td><strong>Memory formula</strong></td>
+            <td><code>16P</code></td>
+            <td><code>(4+12/N)P</code></td>
+            <td><code>(2+14/N)P</code></td>
+            <td class="val-great"><code>16P/N</code></td>
+          </tr>
+          <tr>
+            <td><strong>Comm per step</strong></td>
+            <td><code>2P</code> (AllReduce)</td>
+            <td><code>2P</code></td>
+            <td><code>2P</code></td>
+            <td class="val-bad"><code>3P</code></td>
+          </tr>
+          <tr>
+            <td><strong>Forward all-gather</strong></td>
+            <td>None</td>
+            <td>None</td>
+            <td>None</td>
+            <td class="val-bad">Required</td>
+          </tr>
+          <tr>
+            <td><strong>Full model in memory</strong></td>
+            <td class="val-bad">Yes (wasteful)</td>
+            <td class="val-bad">Yes</td>
+            <td class="val-bad">Yes</td>
+            <td class="val-great">No</td>
+          </tr>
+          <tr>
+            <td><strong>7B on 8 GPUs (mem)</strong></td>
+            <td class="val-bad">112 GB</td>
+            <td class="val-ok">38.5 GB</td>
+            <td class="val-neutral">26.25 GB</td>
+            <td class="val-great">14 GB</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Decision Cards -->
+    <h3 class="fade-in" style="text-align: center; margin-top: 48px; margin-bottom: 24px; font-size: 1.2rem;">When to Use Which?</h3>
+    <div class="grid-4 fade-in">
+      <div class="card" style="border-top: 3px solid var(--fg-muted);">
+        <h3 style="font-size: 0.95rem;">No ZeRO</h3>
+        <p style="margin-top: 8px;">Model fits easily in one GPU. Don't want any communication overhead. Quick experiments and prototyping.</p>
+      </div>
+      <div class="card" style="border-top: 3px solid var(--blue);">
+        <h3 style="font-size: 0.95rem; color: var(--blue);">ZeRO-1</h3>
+        <p style="margin-top: 8px;">Model fits in memory but optimizer is tight. Zero extra communication cost. Best default choice for multi-GPU.</p>
+      </div>
+      <div class="card" style="border-top: 3px solid var(--accent);">
+        <h3 style="font-size: 0.95rem; color: var(--accent);">ZeRO-2</h3>
+        <p style="margin-top: 8px;">Need more memory savings than ZeRO-1. Still no extra communication. Gradients are large relative to optimizer states.</p>
+      </div>
+      <div class="card" style="border-top: 3px solid var(--primary);">
+        <h3 style="font-size: 0.95rem; color: var(--primary);">ZeRO-3 / FSDP</h3>
+        <p style="margin-top: 8px;"><strong>Model doesn't fit in one GPU.</strong> Willing to pay 1.5x communication for parameter sharding. The only choice for truly large models with data parallelism alone.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 11: TAKEAWAYS
+     ============================================================ -->
+<section id="takeaways" class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Summary</span>
+      <h2><span class="gradient-text">Key Takeaways</span></h2>
+    </div>
+    <div class="takeaway-grid fade-in">
+      <div class="takeaway-card">
+        <div class="takeaway-num">01</div>
+        <h4>16P/N &mdash; Perfect Linear Memory Scaling</h4>
+        <p>ZeRO-3 achieves the theoretical optimum: total memory divided equally across all GPUs. Double the GPUs, halve the memory per GPU.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">02</div>
+        <h4>Gather-Compute-Flush &mdash; The Core FSDP Loop</h4>
+        <p>For every layer: all-gather the full parameters, run the computation, flush the non-owned shard. This pattern repeats for both forward and backward passes.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">03</div>
+        <h4>1.5x Communication &mdash; The Price of Full Sharding</h4>
+        <p>ZeRO-3 costs 3P total communication vs 2P for ZeRO-1/2. The extra all-gather during forward and backward is the cost of not storing full parameters.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">04</div>
+        <h4>Prefetching &mdash; Hiding the Extra Cost</h4>
+        <p>By overlapping the all-gather of the next layer with the compute of the current layer, much of the extra communication latency can be hidden behind useful work.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">05</div>
+        <h4>No Full Replica &mdash; Each GPU Holds Only Its Shard</h4>
+        <p>Unlike ZeRO-1/2 where every GPU has all parameters, ZeRO-3 means no single GPU can run the model alone. Parameters exist only temporarily during compute.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">06</div>
+        <h4>When to Use &mdash; Model Doesn't Fit in One GPU</h4>
+        <p>ZeRO-3/FSDP is the go-to when your model's memory footprint exceeds what a single GPU can handle. It's the bridge between data parallelism and model parallelism.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     FOOTER
+     ============================================================ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">ZeRO-3 (FSDP) Visual Guide</div>
+      <p>Part of the ShallowSpeed GPU Workshop series</p>
+      <p class="footer-muted">Built with nothing but HTML, CSS, and vanilla JS.</p>
+    </div>
+  </div>
+</footer>
+
+<!-- ============================================================
+     JAVASCRIPT
+     ============================================================ -->
+<script>
+/* ========================================
+   1. INTERSECTION OBSERVER FOR SCROLL ANIMATIONS
+   ======================================== */
+(function() {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+})();
+
+/* ========================================
+   2. MEMORY BAR CHART (Stacked Bars for 4 ZeRO stages)
+   ======================================== */
+(function buildMemoryChart() {
+  const data = [
+    { label: 'No ZeRO', params: 520, grads: 520, optim: 3120, total: 4160 },
+    { label: 'ZeRO-1', params: 520, grads: 520, optim: 1560, total: 2600 },
+    { label: 'ZeRO-2', params: 520, grads: 260, optim: 1560, total: 2340 },
+    { label: 'ZeRO-3', params: 260, grads: 260, optim: 1560, total: 2080 }
+  ];
+  const maxVal = 4160;
+  const area = document.getElementById('memory-chart-area');
+  if (!area) return;
+
+  // Y-axis
+  const yAxis = document.createElement('div');
+  yAxis.className = 'chart-y-axis';
+  for (let i = 4; i >= 0; i--) {
+    const tick = document.createElement('span');
+    tick.textContent = (maxVal * i / 4).toFixed(0);
+    yAxis.appendChild(tick);
+  }
+  area.appendChild(yAxis);
+
+  data.forEach(d => {
+    const group = document.createElement('div');
+    group.className = 'chart-bar-group';
+
+    const totalLabel = document.createElement('div');
+    totalLabel.className = 'chart-total-label';
+    totalLabel.textContent = d.total.toLocaleString() + ' B';
+    group.appendChild(totalLabel);
+
+    const stack = document.createElement('div');
+    stack.className = 'chart-bar-stack';
+
+    // Optimizer
+    const segO = document.createElement('div');
+    segO.className = 'chart-bar-seg optim';
+    segO.style.height = (d.optim / maxVal * 100) + '%';
+    segO.textContent = d.optim >= 400 ? d.optim + 'B' : '';
+    segO.title = 'Optimizer: ' + d.optim + ' B';
+    stack.appendChild(segO);
+
+    // Gradients
+    const segG = document.createElement('div');
+    segG.className = 'chart-bar-seg grads';
+    segG.style.height = (d.grads / maxVal * 100) + '%';
+    segG.textContent = d.grads >= 200 ? d.grads + 'B' : '';
+    segG.title = 'Gradients: ' + d.grads + ' B';
+    stack.appendChild(segG);
+
+    // Params
+    const segP = document.createElement('div');
+    segP.className = 'chart-bar-seg params';
+    segP.style.height = (d.params / maxVal * 100) + '%';
+    segP.textContent = d.params >= 200 ? d.params + 'B' : '';
+    segP.title = 'Parameters: ' + d.params + ' B';
+    stack.appendChild(segP);
+
+    group.appendChild(stack);
+
+    const xLabel = document.createElement('div');
+    xLabel.className = 'chart-x-label';
+    xLabel.textContent = d.label;
+    group.appendChild(xLabel);
+
+    area.appendChild(group);
+  });
+})();
+
+/* ========================================
+   3. FORWARD PASS INTERACTIVE
+   ======================================== */
+const fwdLayers = {
+  ln1:    { name: 'LayerNorm 1', params: 8, bytes: 16, desc: 'gamma and beta vectors (4 each)' },
+  attn:   { name: 'Attention',   params: 64, bytes: 128, desc: 'W_q + W_k + W_v + W_o (4x4 each)' },
+  ln2:    { name: 'LayerNorm 2', params: 8, bytes: 16, desc: 'gamma and beta vectors (4 each)' },
+  ffn:    { name: 'FFN',         params: 148, bytes: 296, desc: 'W1(4x16) + b1(16) + W2(16x4) + b2(4)' },
+  output: { name: 'Output',      params: 32, bytes: 64, desc: 'W_vocab (4x8)' }
+};
+
+let currentFwdLayer = 'ln1';
+let currentFwdPhase = 'gather';
+
+function selectFwdLayer(layer) {
+  currentFwdLayer = layer;
+  currentFwdPhase = 'gather';
+  // Update buttons
+  document.querySelectorAll('#fwd-anim .anim-btn').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-layer') === layer);
+  });
+  // Reset phase buttons
+  document.querySelectorAll('#fwd-anim .strategy-btn').forEach((b, i) => {
+    b.classList.toggle('active', i === 0);
+  });
+  updateFwdDisplay();
+}
+
+function selectFwdPhase(phase) {
+  currentFwdPhase = phase;
+  const phases = ['gather', 'compute', 'flush'];
+  document.querySelectorAll('#fwd-anim .strategy-btn').forEach((b, i) => {
+    b.classList.toggle('active', phases[i] === phase);
+  });
+  updateFwdDisplay();
+}
+
+function updateFwdDisplay() {
+  const L = fwdLayers[currentFwdLayer];
+  const phase = currentFwdPhase;
+
+  // Update GCF pills
+  const pillG = document.getElementById('gcf-pill-gather');
+  const pillC = document.getElementById('gcf-pill-compute');
+  const pillF = document.getElementById('gcf-pill-flush');
+  pillG.className = 'gcf-step-pill ' + (phase === 'gather' ? 'active-gather' : (phase === 'compute' || phase === 'flush' ? 'inactive' : 'inactive'));
+  pillC.className = 'gcf-step-pill ' + (phase === 'compute' ? 'active-compute' : 'inactive');
+  pillF.className = 'gcf-step-pill ' + (phase === 'flush' ? 'active-flush' : 'inactive');
+  if (phase === 'compute') { pillG.className = 'gcf-step-pill inactive'; pillG.style.opacity = '0.5'; }
+  else { pillG.style.opacity = '1'; }
+  if (phase === 'flush') { pillG.style.opacity = '0.5'; pillC.style.opacity = '0.5'; }
+  else { pillC.style.opacity = '1'; }
+
+  // Phase content
+  const content = document.getElementById('fwd-phase-content');
+  let html = '';
+
+  if (phase === 'gather') {
+    html = `
+      <div class="card" style="border-color: rgba(0,200,230,0.3);">
+        <h3 style="color: var(--secondary);">All-Gather: ${L.name}</h3>
+        <p style="margin-top: 8px;">${L.desc}</p>
+        <div class="flow-step" style="margin-top: 12px;">
+          <div class="flow-step-num" style="background: rgba(0,200,230,0.2); color: var(--secondary);">AG</div>
+          <div class="flow-step-text">
+            All-Gather <strong>${L.params} parameters</strong> from all GPUs.<br>
+            Each GPU sends its shard (${Math.ceil(L.params/2)} params) and receives the other shard.<br>
+            Temp memory: <span class="num-cyan">+${L.bytes} bytes</span> (full layer in BF16).
+          </div>
+        </div>
+        <div class="comm-visual" style="margin-top: 16px;">
+          <div class="comm-gpu">
+            <div class="comm-gpu-name" style="color: var(--blue);">GPU-0</div>
+            <div class="comm-gpu-data">owns ${Math.ceil(L.params/2)} params</div>
+          </div>
+          <div class="comm-arrow">
+            <span style="font-size: 0.68rem;">All-Gather</span>
+            <div class="comm-arrow-line"></div>
+            <span style="font-size: 0.68rem;">${L.bytes} B</span>
+          </div>
+          <div class="comm-gpu">
+            <div class="comm-gpu-name" style="color: var(--primary);">GPU-1</div>
+            <div class="comm-gpu-data">owns ${Math.floor(L.params/2)} params</div>
+          </div>
+        </div>
+      </div>`;
+  } else if (phase === 'compute') {
+    html = `
+      <div class="card" style="border-color: rgba(102,187,106,0.3);">
+        <h3 style="color: var(--green);">Compute: ${L.name}</h3>
+        <p style="margin-top: 8px;">Both GPUs now have <strong>all ${L.params} parameters</strong> for this layer.</p>
+        <div class="flow-step" style="margin-top: 12px;">
+          <div class="flow-step-num" style="background: rgba(102,187,106,0.2); color: var(--green);">FWD</div>
+          <div class="flow-step-text">
+            Each GPU runs the forward pass of <strong>${L.name}</strong> on its own mini-batch data.<br>
+            This is identical to the non-sharded case &mdash; the math is the same.<br>
+            Current temp memory usage: <span class="num-green">${L.bytes} bytes</span> for gathered params.
+          </div>
+        </div>
+      </div>`;
+  } else {
+    html = `
+      <div class="card" style="border-color: rgba(255,112,67,0.3);">
+        <h3 style="color: var(--red);">Flush: ${L.name}</h3>
+        <p style="margin-top: 8px;">Computation done. Discard the non-owned shard to free memory.</p>
+        <div class="flow-step" style="margin-top: 12px;">
+          <div class="flow-step-num" style="background: rgba(255,112,67,0.2); color: var(--red);">FL</div>
+          <div class="flow-step-text">
+            Each GPU <strong>drops the other GPU's shard</strong> of ${L.name}.<br>
+            Memory freed: <span class="num-red">&minus;${Math.ceil(L.bytes/2)} bytes</span> (the non-owned half).<br>
+            Each GPU retains only its owned shard (${Math.ceil(L.params/2)} params = ${Math.ceil(L.bytes/2)} B).
+          </div>
+        </div>
+      </div>`;
+  }
+  content.innerHTML = html;
+
+  // Update memory bar
+  updateFwdMemBar();
+}
+
+function updateFwdMemBar() {
+  const L = fwdLayers[currentFwdLayer];
+  const bar = document.getElementById('fwd-mem-bar');
+  const label = document.getElementById('fwd-mem-label');
+  const baseOwned = 260;   // own shard in bytes
+  const optimStates = 1560; // optimizer states
+  let gathered = 0;
+
+  if (currentFwdPhase === 'gather' || currentFwdPhase === 'compute') {
+    gathered = L.bytes;
+  } else {
+    gathered = 0;
+  }
+
+  const total = baseOwned + optimStates + gathered;
+  const maxTotal = 260 + 1560 + 296; // max possible (FFN gathered)
+
+  if (currentFwdPhase === 'gather') {
+    label.textContent = `Gathering ${L.name}: +${L.bytes}B temp. Total = ${total}B`;
+  } else if (currentFwdPhase === 'compute') {
+    label.textContent = `Computing ${L.name} with full params. Total = ${total}B`;
+  } else {
+    label.textContent = `After flushing ${L.name}. Total = ${baseOwned + optimStates}B (back to baseline)`;
+  }
+
+  bar.innerHTML = `
+    <div class="mem-seg" style="flex: ${baseOwned}; background: #a78bfa;" title="Own shard: ${baseOwned}B">${baseOwned}B</div>
+    ${gathered > 0 ? `<div class="mem-seg gathered" style="flex: ${gathered};" title="Gathered params: ${gathered}B">${gathered}B</div>` : ''}
+    <div class="mem-seg" style="flex: ${optimStates}; background: #5b3a9e;" title="Optimizer: ${optimStates}B">${optimStates}B</div>
+  `;
+}
+
+// Initialize forward pass display
+document.addEventListener('DOMContentLoaded', () => { updateFwdDisplay(); });
+
+/* ========================================
+   4. BACKWARD PASS INTERACTIVE
+   ======================================== */
+const bwdLayers = {
+  output: { name: 'Output', params: 32, bytes: 64 },
+  ffn:    { name: 'FFN',    params: 148, bytes: 296 },
+  ln2:    { name: 'LN2',    params: 8, bytes: 16 },
+  attn:   { name: 'Attention', params: 64, bytes: 128 },
+  ln1:    { name: 'LN1',    params: 8, bytes: 16 }
+};
+
+let currentBwdLayer = 'output';
+
+function selectBwdLayer(layer) {
+  currentBwdLayer = layer;
+  document.querySelectorAll('.bwd-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent.trim().toLowerCase().replace(/\s+/g,'') === layer ||
+      (layer === 'output' && b.textContent.trim() === 'Output') ||
+      (layer === 'ffn' && b.textContent.trim() === 'FFN') ||
+      (layer === 'ln2' && b.textContent.trim() === 'LN2') ||
+      (layer === 'attn' && b.textContent.trim() === 'Attention') ||
+      (layer === 'ln1' && b.textContent.trim() === 'LN1'));
+  });
+  updateBwdDisplay();
+}
+
+function updateBwdDisplay() {
+  const L = bwdLayers[currentBwdLayer];
+  const content = document.getElementById('bwd-phase-content');
+  const info = document.getElementById('bwd-info-text');
+
+  const gradShardBytes = Math.ceil(L.params / 2) * 2;
+
+  content.innerHTML = `
+    <div class="bwd-frame">
+      <div class="bwd-gpu-col">
+        <h5 style="background: rgba(66,165,245,0.15); color: var(--blue);">GPU-0</h5>
+        <div class="bwd-mem-blocks">
+          <div class="bwd-mem-block" style="background: rgba(0,200,230,0.5);">All-Gather ${L.name}: +${L.bytes}B</div>
+          <div class="bwd-mem-block" style="background: rgba(240,98,146,0.5);">Compute grad ${L.name}</div>
+          <div class="bwd-mem-block" style="background: rgba(167,139,250,0.5);">Reduce-Scatter grads</div>
+          <div class="bwd-mem-block" style="background: rgba(255,112,67,0.5);">Flush non-owned: &minus;${Math.ceil(L.bytes/2)}B</div>
+          <div class="bwd-mem-block" style="background: rgba(0,212,106,0.3);">Keep own grad shard: ${gradShardBytes}B</div>
+        </div>
+      </div>
+      <div class="bwd-vs">&harr;</div>
+      <div class="bwd-gpu-col">
+        <h5 style="background: rgba(0,212,106,0.15); color: var(--primary);">GPU-1</h5>
+        <div class="bwd-mem-blocks">
+          <div class="bwd-mem-block" style="background: rgba(0,200,230,0.5);">All-Gather ${L.name}: +${L.bytes}B</div>
+          <div class="bwd-mem-block" style="background: rgba(240,98,146,0.5);">Compute grad ${L.name}</div>
+          <div class="bwd-mem-block" style="background: rgba(167,139,250,0.5);">Reduce-Scatter grads</div>
+          <div class="bwd-mem-block" style="background: rgba(255,112,67,0.5);">Flush non-owned: &minus;${Math.ceil(L.bytes/2)}B</div>
+          <div class="bwd-mem-block" style="background: rgba(0,212,106,0.3);">Keep own grad shard: ${gradShardBytes}B</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  info.innerHTML = `
+    <strong>Backward ${L.name}:</strong> All-gather <span class="num-cyan">${L.bytes}B</span> params &rarr;
+    compute gradients &rarr; reduce-scatter <span class="num-purple">${L.params * 2}B</span> grads &rarr;
+    flush gathered params. Each GPU keeps only its <span class="num-green">${gradShardBytes}B</span> gradient shard.
+  `;
+}
+
+document.addEventListener('DOMContentLoaded', () => { updateBwdDisplay(); });
+
+/* ========================================
+   5. COMMUNICATION COST CHART
+   ======================================== */
+(function buildCommChart() {
+  const data = [
+    { label: 'ZeRO-1', fwdAG: 0, bwdAG: 0, bwdRS: 520, postAG: 520, total: 1040 },
+    { label: 'ZeRO-2', fwdAG: 0, bwdAG: 0, bwdRS: 520, postAG: 520, total: 1040 },
+    { label: 'ZeRO-3', fwdAG: 520, bwdAG: 520, bwdRS: 520, postAG: 0, total: 1560 }
+  ];
+  const maxVal = 1560;
+  const barsEl = document.getElementById('comm-bars');
+  if (!barsEl) return;
+
+  data.forEach(d => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'comm-bar-wrapper';
+
+    const valueLabel = document.createElement('div');
+    valueLabel.className = 'comm-bar-value';
+    valueLabel.textContent = d.total.toLocaleString() + ' B';
+    wrapper.appendChild(valueLabel);
+
+    const stack = document.createElement('div');
+    stack.className = 'comm-bar-stack';
+    stack.style.height = (d.total / maxVal * 100) + '%';
+
+    // Post-optim All-Gather (if any)
+    if (d.postAG > 0) {
+      const seg = document.createElement('div');
+      seg.className = 'comm-bar-fill all-gather';
+      seg.style.height = (d.postAG / d.total * 100) + '%';
+      seg.textContent = 'Post AG ' + d.postAG;
+      seg.title = 'Post-Optimizer All-Gather: ' + d.postAG + ' B';
+      stack.appendChild(seg);
+    }
+
+    // Backward RS
+    if (d.bwdRS > 0) {
+      const seg = document.createElement('div');
+      seg.className = 'comm-bar-fill reduce-scatter';
+      seg.style.height = (d.bwdRS / d.total * 100) + '%';
+      seg.textContent = 'Bwd RS ' + d.bwdRS;
+      seg.title = 'Backward Reduce-Scatter: ' + d.bwdRS + ' B';
+      stack.appendChild(seg);
+    }
+
+    // Backward AG (ZeRO-3 only)
+    if (d.bwdAG > 0) {
+      const seg = document.createElement('div');
+      seg.className = 'comm-bar-fill all-gather';
+      seg.style.height = (d.bwdAG / d.total * 100) + '%';
+      seg.textContent = 'Bwd AG ' + d.bwdAG;
+      seg.title = 'Backward All-Gather: ' + d.bwdAG + ' B';
+      stack.appendChild(seg);
+    }
+
+    // Forward AG (ZeRO-3 only)
+    if (d.fwdAG > 0) {
+      const seg = document.createElement('div');
+      seg.className = 'comm-bar-fill all-gather';
+      seg.style.height = (d.fwdAG / d.total * 100) + '%';
+      seg.textContent = 'Fwd AG ' + d.fwdAG;
+      seg.title = 'Forward All-Gather: ' + d.fwdAG + ' B';
+      stack.appendChild(seg);
+    }
+
+    wrapper.appendChild(stack);
+
+    const nameLabel = document.createElement('div');
+    nameLabel.className = 'comm-bar-label';
+    nameLabel.textContent = d.label;
+    wrapper.appendChild(nameLabel);
+
+    barsEl.appendChild(wrapper);
+  });
+})();
+
+/* ========================================
+   6. GPU COUNT SLIDER FOR SCALING
+   ======================================== */
+const gpuSteps = [2, 4, 8, 16, 32, 64];
+
+function updateScaling(sliderVal) {
+  const N = gpuSteps[parseInt(sliderVal)];
+  const P = 7e9; // 7B params
+  const bytesPerParam = 2; // BF16
+
+  document.getElementById('gpu-count-label').textContent = N;
+
+  const noZero = 16 * P / 1e9;
+  const zero1  = (4 + 12/N) * P / 1e9;
+  const zero2  = (2 + 14/N) * P / 1e9;
+  const zero3  = 16 * P / (N * 1e9);
+
+  const tbody = document.getElementById('scaling-tbody');
+  tbody.innerHTML = `
+    <tr>
+      <td><strong>No ZeRO</strong></td>
+      <td><code>16P</code></td>
+      <td class="val-bad">${noZero.toFixed(2)} GB</td>
+      <td class="${noZero <= 24 ? 'val-good' : 'val-bad'}">${noZero <= 24 ? 'Yes' : 'No'}</td>
+    </tr>
+    <tr>
+      <td><strong>ZeRO-1</strong></td>
+      <td><code>(4 + 12/${N})P</code></td>
+      <td class="val-ok">${zero1.toFixed(2)} GB</td>
+      <td class="${zero1 <= 24 ? 'val-good' : 'val-bad'}">${zero1 <= 24 ? 'Yes' : 'No'}</td>
+    </tr>
+    <tr>
+      <td><strong>ZeRO-2</strong></td>
+      <td><code>(2 + 14/${N})P</code></td>
+      <td class="val-neutral">${zero2.toFixed(2)} GB</td>
+      <td class="${zero2 <= 24 ? 'val-good' : 'val-bad'}">${zero2 <= 24 ? 'Yes' : 'No'}</td>
+    </tr>
+    <tr>
+      <td><strong>ZeRO-3</strong></td>
+      <td><code>16P / ${N}</code></td>
+      <td class="val-great">${zero3.toFixed(2)} GB</td>
+      <td class="${zero3 <= 24 ? 'val-good' : 'val-bad'}">${zero3 <= 24 ? 'Yes' : 'No'}</td>
+    </tr>
+  `;
+
+  document.getElementById('scaling-result').textContent = zero3.toFixed(2) + ' GB';
+  document.getElementById('scaling-highlight').querySelector('.eq-label').textContent = `ZeRO-3 with ${N} GPUs`;
+}
+
+document.addEventListener('DOMContentLoaded', () => { updateScaling(2); });
+
+/* ========================================
+   7. MEMORY WATERFALL (ZeRO-2 vs ZeRO-3)
+   ======================================== */
+let currentWaterfall = 'zero2';
+
+function selectWaterfall(mode) {
+  currentWaterfall = mode;
+  const btn2 = document.getElementById('wf-btn-zero2');
+  const btn3 = document.getElementById('wf-btn-zero3');
+  btn2.className = mode === 'zero2' ? 'strat-btn active-zero2' : 'strat-btn';
+  btn3.className = mode === 'zero3' ? 'strat-btn active-zero3' : 'strat-btn';
+  buildWaterfall();
+}
+
+function buildWaterfall() {
+  const container = document.getElementById('waterfall-content');
+  const title = document.getElementById('waterfall-title');
+  const subtitle = document.getElementById('waterfall-subtitle');
+  const callout = document.getElementById('waterfall-callout');
+
+  if (currentWaterfall === 'zero2') {
+    title.textContent = 'ZeRO-2: Memory During Forward Pass';
+    subtitle.textContent = 'Parameters stay constant since every GPU holds the full model.';
+    callout.innerHTML = '<strong>ZeRO-2 baseline:</strong> Parameters (520B) are always in memory. Optimizer states take 1,560B. ' +
+      'Total steady-state = 2,080B. Activations add on top during compute.';
+
+    const states = [
+      { label: 'At Rest', params: 520, optim: 1560, gathered: 0, total: 2080 },
+      { label: 'LN1', params: 520, optim: 1560, gathered: 0, total: 2080 },
+      { label: 'Attention', params: 520, optim: 1560, gathered: 0, total: 2080 },
+      { label: 'LN2', params: 520, optim: 1560, gathered: 0, total: 2080 },
+      { label: 'FFN', params: 520, optim: 1560, gathered: 0, total: 2080 },
+      { label: 'Output', params: 520, optim: 1560, gathered: 0, total: 2080 }
+    ];
+    renderWaterfallBars(container, states, 2600);
+  } else {
+    title.textContent = 'ZeRO-3: Memory During Forward Pass';
+    subtitle.textContent = 'Parameters are gathered temporarily for each layer, then flushed.';
+    callout.innerHTML = '<strong>ZeRO-3 key insight:</strong> Base memory is only 1,820B (260B shard + 1,560B optimizer). ' +
+      'During FFN compute, gathered params add 296B temporarily, making peak = 2,116B. ' +
+      'After flush, memory returns to 1,820B. Peak is <span class="num-red">lower</span> than ZeRO-2\'s constant 2,080B!';
+
+    const states = [
+      { label: 'At Rest', params: 260, optim: 1560, gathered: 0, total: 1820 },
+      { label: 'LN1', params: 260, optim: 1560, gathered: 16, total: 1836 },
+      { label: 'Attention', params: 260, optim: 1560, gathered: 128, total: 1948 },
+      { label: 'LN2', params: 260, optim: 1560, gathered: 16, total: 1836 },
+      { label: 'FFN (PEAK)', params: 260, optim: 1560, gathered: 296, total: 2116 },
+      { label: 'After Flush', params: 260, optim: 1560, gathered: 0, total: 1820 }
+    ];
+    renderWaterfallBars(container, states, 2600);
+  }
+}
+
+function renderWaterfallBars(container, states, maxVal) {
+  let html = '<div style="display: flex; align-items: flex-end; gap: 12px; height: 260px; padding: 0 0 36px;">';
+
+  states.forEach((s, i) => {
+    const totalH = (s.total / maxVal * 100);
+    const paramH = (s.params / maxVal * 100);
+    const gatheredH = (s.gathered / maxVal * 100);
+    const optimH = (s.optim / maxVal * 100);
+
+    html += `
+      <div style="flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; position: relative;">
+        <div style="font-size: 0.65rem; font-family: var(--font-mono); font-weight: 600; color: var(--fg); margin-bottom: 4px;">${s.total}B</div>
+        <div style="width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 4px 4px 0 0; overflow: hidden;">
+          <div style="height: ${optimH}%; background: #5b3a9e; display: flex; align-items: center; justify-content: center; font-size: 0.5rem; font-weight: 600; color: rgba(255,255,255,0.7); min-height: ${optimH > 2 ? '20px' : '0'};">${s.optim > 100 ? s.optim + 'B' : ''}</div>
+          ${s.gathered > 0 ? `<div style="height: ${gatheredH}%; background: rgba(0,200,230,0.6); display: flex; align-items: center; justify-content: center; font-size: 0.5rem; font-weight: 600; color: #fff; min-height: ${gatheredH > 1 ? '16px' : '0'}; border: 1px dashed var(--secondary);">${s.gathered}B</div>` : ''}
+          <div style="height: ${paramH}%; background: #a78bfa; display: flex; align-items: center; justify-content: center; font-size: 0.5rem; font-weight: 600; color: rgba(255,255,255,0.7); min-height: ${paramH > 2 ? '16px' : '0'};">${s.params}B</div>
+        </div>
+        <div style="font-size: 0.62rem; color: var(--fg-muted); font-family: var(--font-mono); margin-top: 8px; text-align: center; white-space: nowrap;">${s.label}</div>
+      </div>
+    `;
+  });
+
+  html += '</div>';
+  html += `<div class="mem-legend" style="margin-top: 8px;">
+    <div class="mem-legend-item"><div class="mem-swatch" style="background: #a78bfa;"></div> Parameters</div>
+    ${currentWaterfall === 'zero3' ? '<div class="mem-legend-item"><div class="mem-swatch" style="background: rgba(0,200,230,0.6); border: 1px dashed var(--secondary);"></div> Gathered (temp)</div>' : ''}
+    <div class="mem-legend-item"><div class="mem-swatch" style="background: #5b3a9e;"></div> Optimizer States</div>
+  </div>`;
+
+  container.innerHTML = html;
+}
+
+document.addEventListener('DOMContentLoaded', () => { buildWaterfall(); });
+
+/* ========================================
+   8. SMOOTH SCROLL FOR NAV LINKS
+   ======================================== */
+document.querySelectorAll('.nav-links a').forEach(link => {
+  link.addEventListener('click', e => {
+    e.preventDefault();
+    const target = document.querySelector(link.getAttribute('href'));
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+</script>
+
+</body>
+</html>
