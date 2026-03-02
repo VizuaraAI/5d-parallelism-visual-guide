@@ -1,0 +1,1708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TP vs ZeRO for Inference — Visual Deep Dive</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* ========================================
+   CSS Variables — Design System
+   ======================================== */
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #121212;
+  --bg-card-hover: #1a1a1a;
+  --bg-section-alt: #0f0f0f;
+  --fg: #f2f2f2;
+  --fg-muted: #a3a3a3;
+  --border: #262626;
+  --border-light: #333;
+  --primary: #00d46a;
+  --primary-dim: #00a854;
+  --secondary: #00c8e6;
+  --accent: #a78bfa;
+  --red: #FF7043;
+  --orange: #FF9800;
+  --yellow: #FFCA28;
+  --blue: #42A5F5;
+  --green: #66BB6A;
+  --pink: #F06292;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --max-w: 1280px;
+  --glow-opacity: 0.15;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: var(--font-mono); }
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ========================================
+   NAVBAR
+   ======================================== */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,10,0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.1rem; }
+.brand-icon { font-size: 1.3rem; }
+.brand-tag {
+  font-size: 0.7rem; background: var(--primary); color: #000;
+  padding: 2px 8px; border-radius: 9999px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+/* ========================================
+   HERO
+   ======================================== */
+.hero {
+  position: relative; min-height: 100vh; display: flex;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 120px 24px 80px; overflow: hidden;
+}
+.hero-bg-orbs { position: absolute; inset: 0; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.12; }
+.orb-green { width: 500px; height: 500px; background: var(--primary); top: 10%; left: 10%; animation: float-slow 20s ease-in-out infinite; }
+.orb-cyan { width: 400px; height: 400px; background: var(--secondary); top: 40%; right: 5%; animation: float-slow 25s ease-in-out infinite reverse; }
+.orb-purple { width: 350px; height: 350px; background: var(--accent); bottom: 10%; left: 30%; animation: float-slow 22s ease-in-out infinite; }
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(30px, -20px); }
+  50% { transform: translate(-20px, 30px); }
+  75% { transform: translate(20px, 20px); }
+}
+.hero-content { position: relative; z-index: 1; max-width: 850px; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3);
+  border-radius: 9999px; padding: 6px 18px; font-size: 0.82rem;
+  font-weight: 500; color: var(--primary); margin-bottom: 24px;
+}
+.pulse-dot { width: 8px; height: 8px; background: var(--primary); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }
+.hero h1 { font-family: var(--font-serif); font-style: italic; font-size: clamp(2.5rem, 7vw, 4.5rem); font-weight: 400; line-height: 1.1; margin-bottom: 20px; }
+.hero-subtitle { font-size: 1.15rem; color: var(--fg-muted); line-height: 1.7; max-width: 650px; margin: 0 auto 40px; }
+.hero-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.hero-stat-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 12px; transition: border-color 0.3s, transform 0.2s;
+}
+.hero-stat-card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-2px); }
+.stat-number {
+  font-size: 1.8rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.stat-label { font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* ========================================
+   SECTIONS
+   ======================================== */
+.section { padding: 100px 0; position: relative; }
+.section-dark { background: var(--bg-section-alt); }
+.section-heading { text-align: center; margin-bottom: 60px; }
+.section-label {
+  display: inline-block; font-size: 0.78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.5px; color: var(--primary); margin-bottom: 12px;
+}
+.section-heading h2 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; line-height: 1.2; margin-bottom: 16px;
+}
+.section-subtitle { color: var(--fg-muted); font-size: 1.05rem; max-width: 650px; margin: 0 auto; }
+
+/* ========================================
+   CARDS
+   ======================================== */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; transition: border-color 0.3s, transform 0.2s;
+}
+.card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-3px); }
+.card h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; }
+.card p, .card li { font-size: 0.88rem; color: var(--fg-muted); line-height: 1.6; }
+.card code {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-size: 0.82rem; color: var(--secondary);
+}
+.card-icon { font-size: 1.8rem; margin-bottom: 12px; display: block; }
+
+/* ========================================
+   GRIDS
+   ======================================== */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 900px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+
+/* ========================================
+   EQUATION BOX
+   ======================================== */
+.equation-box {
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 24px; margin: 16px 0; text-align: center;
+  font-family: var(--font-mono); font-size: 0.92rem; color: var(--secondary);
+  line-height: 2;
+}
+.equation-box .eq-label {
+  display: block; font-family: var(--font-sans); font-size: 0.72rem;
+  color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 8px; font-weight: 600;
+}
+.equation-box .eq-highlight { color: var(--primary); font-weight: 600; }
+
+/* ========================================
+   CALLOUTS
+   ======================================== */
+.callout {
+  border-radius: 10px; padding: 16px 20px; font-size: 0.85rem; line-height: 1.6; margin: 16px 0;
+}
+.callout-info { background: rgba(66,165,245,0.08); border: 1px solid rgba(66,165,245,0.2); color: var(--fg-muted); }
+.callout-green { background: rgba(0,212,106,0.08); border: 1px solid rgba(0,212,106,0.2); color: var(--fg-muted); }
+.callout-warn { background: rgba(255,112,67,0.08); border: 1px solid rgba(255,112,67,0.2); color: var(--fg-muted); }
+.callout-purple { background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); color: var(--fg-muted); }
+.callout strong { color: var(--fg); }
+.callout code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; color: var(--secondary); }
+
+/* ========================================
+   COMPARISON TABLE
+   ======================================== */
+.comp-table-wrap {
+  overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); margin: 20px 0;
+}
+.comp-table {
+  width: 100%; border-collapse: collapse; font-size: 0.85rem;
+}
+.comp-table thead { background: #1a1a2e; }
+.comp-table th {
+  padding: 14px 16px; text-align: left; font-size: 0.75rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px; color: var(--fg-muted);
+  border-bottom: 1px solid var(--border);
+}
+.comp-table td {
+  padding: 12px 16px; border-bottom: 1px solid rgba(38,38,38,0.5);
+  color: var(--fg-muted); font-size: 0.82rem;
+}
+.comp-table td code {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-size: 0.78rem; color: var(--secondary);
+}
+.val-good { color: var(--primary) !important; font-weight: 600; }
+.val-great { color: var(--secondary) !important; font-weight: 600; }
+.val-bad { color: var(--red) !important; font-weight: 600; }
+.val-ok { color: var(--orange) !important; font-weight: 600; }
+
+/* ========================================
+   STRATEGY SELECTOR & TABS
+   ======================================== */
+.strategy-selector {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; justify-content: center;
+}
+.strategy-btn {
+  padding: 8px 18px; border-radius: 9999px; font-size: 0.82rem; font-weight: 500;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--fg-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.strategy-btn:hover { border-color: rgba(0,212,106,0.3); color: var(--fg); }
+.strategy-btn.active {
+  background: rgba(0,212,106,0.1); border-color: var(--primary); color: var(--primary); font-weight: 600;
+}
+.model-tabs {
+  display: flex; gap: 8px; margin-bottom: 16px; justify-content: center;
+}
+.model-tab {
+  padding: 6px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 500;
+  border: 1px solid var(--border); background: transparent; color: var(--fg-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.model-tab:hover { border-color: rgba(0,200,230,0.3); color: var(--fg); }
+.model-tab.active {
+  background: rgba(0,200,230,0.1); border-color: var(--secondary); color: var(--secondary); font-weight: 600;
+}
+
+/* ========================================
+   CHART CONTAINER
+   ======================================== */
+.chart-container {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 24px 0;
+}
+.chart-container h4 { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.chart-container .chart-subtitle { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+
+/* ========================================
+   PIPELINE / TIMELINE VISUAL
+   ======================================== */
+.pipeline-visual {
+  display: flex; flex-direction: column; gap: 8px;
+  background: rgba(0,0,0,0.2); border-radius: 12px; padding: 20px; margin: 16px 0;
+}
+.pipe-row { display: flex; align-items: center; gap: 4px; }
+.pipe-label { width: 100px; font-size: 0.72rem; font-weight: 600; color: var(--fg-muted); text-align: right; padding-right: 8px; flex-shrink: 0; }
+.pipe-block {
+  padding: 8px 12px; border-radius: 6px; font-size: 0.72rem; font-weight: 600;
+  text-align: center; min-width: 60px; color: #fff;
+}
+.pipe-gather { background: #FF7043; }
+.pipe-compute { background: #42A5F5; }
+.pipe-allreduce { background: #66BB6A; }
+.pipe-idle { background: rgba(255,255,255,0.05); color: var(--fg-muted); border: 1px dashed var(--border); }
+
+/* ========================================
+   GPU DIAGRAM
+   ======================================== */
+.gpu-diagram {
+  display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
+  margin: 20px 0; padding: 24px;
+  background: rgba(0,0,0,0.2); border-radius: 12px;
+}
+.gpu-box {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px; min-width: 140px; text-align: center;
+  transition: border-color 0.3s;
+}
+.gpu-box:hover { border-color: rgba(0,212,106,0.3); }
+.gpu-label { font-size: 0.78rem; font-weight: 600; margin-bottom: 8px; color: var(--fg); }
+.gpu-mem-bar {
+  height: 120px; width: 60px; margin: 0 auto;
+  background: rgba(0,0,0,0.3); border-radius: 6px;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  overflow: hidden; border: 1px solid var(--border);
+}
+.gpu-mem-seg {
+  width: 100%; display: flex; align-items: center; justify-content: center;
+  font-size: 0.55rem; font-weight: 600; color: rgba(255,255,255,0.9);
+  transition: height 0.5s ease;
+}
+.gpu-caption { font-size: 0.68rem; color: var(--fg-muted); margin-top: 8px; }
+
+/* ========================================
+   COMMUNICATION VISUAL
+   ======================================== */
+.comm-visual {
+  position: relative; padding: 30px 20px;
+  background: rgba(0,0,0,0.2); border-radius: 12px; margin: 16px 0;
+}
+.comm-gpus {
+  display: flex; justify-content: space-around; align-items: flex-start;
+  position: relative; z-index: 2;
+}
+.comm-gpu {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.comm-gpu-chip {
+  width: 80px; height: 50px; border-radius: 8px; display: flex;
+  align-items: center; justify-content: center; font-size: 0.72rem;
+  font-weight: 700; border: 2px solid;
+}
+.comm-gpu-chip.tp-chip { background: rgba(0,212,106,0.1); border-color: var(--primary); color: var(--primary); }
+.comm-gpu-chip.zero-chip { background: rgba(255,112,67,0.1); border-color: var(--red); color: var(--red); }
+.comm-data-label { font-size: 0.62rem; color: var(--fg-muted); font-family: var(--font-mono); max-width: 90px; text-align: center; }
+.comm-arrows {
+  display: flex; justify-content: center; align-items: center;
+  margin: 12px 0; gap: 8px;
+}
+.comm-arrow-line {
+  height: 3px; flex: 1; max-width: 120px; border-radius: 2px;
+}
+.comm-arrow-label {
+  font-size: 0.72rem; font-weight: 600; padding: 4px 12px;
+  border-radius: 6px; white-space: nowrap;
+}
+.comm-arrow-label.tp-arrow { background: rgba(0,212,106,0.1); color: var(--primary); border: 1px solid rgba(0,212,106,0.3); }
+.comm-arrow-label.zero-arrow { background: rgba(255,112,67,0.1); color: var(--red); border: 1px solid rgba(255,112,67,0.3); }
+
+/* ========================================
+   DATA VOLUME BAR CHART
+   ======================================== */
+.vol-chart {
+  display: flex; align-items: flex-end; gap: 40px; justify-content: center;
+  height: 280px; padding: 20px 0 40px; position: relative;
+}
+.vol-bar-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.vol-bar {
+  width: 80px; border-radius: 8px 8px 0 0; display: flex;
+  align-items: flex-end; justify-content: center; padding-bottom: 8px;
+  font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700;
+  transition: height 0.6s ease; position: relative;
+}
+.vol-bar .vol-inner-label {
+  position: absolute; top: -24px; font-size: 0.75rem; white-space: nowrap;
+}
+.vol-bar-label { font-size: 0.78rem; font-weight: 600; }
+.vol-bar-sublabel { font-size: 0.65rem; color: var(--fg-muted); }
+
+/* ========================================
+   INTERACTIVE SLIDER
+   ======================================== */
+.slider-group {
+  display: flex; align-items: center; gap: 16px; margin: 16px 0; flex-wrap: wrap;
+}
+.slider-group label {
+  font-size: 0.85rem; font-weight: 500; min-width: 140px;
+}
+.slider-group input[type="range"] {
+  flex: 1; min-width: 200px; accent-color: var(--primary);
+  height: 6px; cursor: pointer;
+}
+.slider-val {
+  font-family: var(--font-mono); font-size: 0.88rem; font-weight: 600;
+  color: var(--primary); min-width: 80px; text-align: right;
+}
+
+/* ========================================
+   TAKEAWAY CARDS
+   ======================================== */
+.takeaway-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; position: relative; overflow: hidden;
+}
+.takeaway-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+}
+.takeaway-num {
+  font-family: var(--font-mono); font-size: 2rem; font-weight: 700;
+  color: rgba(0,212,106,0.15); position: absolute; top: 12px; right: 16px;
+}
+.takeaway-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 6px; }
+.takeaway-card p { font-size: 0.85rem; color: var(--fg-muted); line-height: 1.6; }
+
+/* ========================================
+   TIMELINE ANIMATION
+   ======================================== */
+.timeline-container {
+  position: relative; padding: 20px; background: rgba(0,0,0,0.2);
+  border-radius: 12px; margin: 16px 0; overflow-x: auto;
+}
+.timeline-row {
+  display: flex; align-items: center; margin-bottom: 8px; min-width: 600px;
+}
+.timeline-label {
+  width: 90px; font-size: 0.72rem; font-weight: 600; color: var(--fg-muted);
+  text-align: right; padding-right: 12px; flex-shrink: 0;
+}
+.timeline-blocks { display: flex; gap: 2px; flex: 1; }
+.timeline-block {
+  height: 36px; border-radius: 4px; display: flex; align-items: center;
+  justify-content: center; font-size: 0.58rem; font-weight: 600; color: #fff;
+  position: relative; overflow: hidden;
+}
+.timeline-block.gather { background: var(--red); }
+.timeline-block.compute { background: var(--blue); }
+.timeline-block.allreduce { background: var(--primary); }
+.timeline-block.idle { background: rgba(255,255,255,0.03); color: var(--fg-muted); border: 1px dashed var(--border); }
+.timeline-block.weight-resident { background: rgba(167,139,250,0.15); border: 1px solid rgba(167,139,250,0.3); color: var(--accent); }
+
+.timeline-legend {
+  display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; justify-content: center;
+}
+.timeline-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted); }
+.tl-swatch { width: 14px; height: 14px; border-radius: 3px; }
+
+/* ========================================
+   RATIO VISUALIZATION
+   ======================================== */
+.ratio-vis {
+  display: flex; gap: 32px; justify-content: center; flex-wrap: wrap;
+  margin: 20px 0;
+}
+.ratio-circle-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.ratio-circle {
+  width: 140px; height: 140px; border-radius: 50%; position: relative;
+  display: flex; align-items: center; justify-content: center;
+}
+.ratio-circle-inner {
+  font-family: var(--font-mono); font-size: 1.4rem; font-weight: 700;
+  z-index: 1;
+}
+.ratio-label { font-size: 0.82rem; font-weight: 600; }
+.ratio-sublabel { font-size: 0.72rem; color: var(--fg-muted); }
+
+/* ========================================
+   NUMBER HIGHLIGHTS
+   ======================================== */
+.num-green { color: var(--primary); font-weight: 700; font-family: var(--font-mono); }
+.num-blue { color: var(--blue); font-weight: 700; font-family: var(--font-mono); }
+.num-orange { color: var(--orange); font-weight: 700; font-family: var(--font-mono); }
+.num-red { color: var(--red); font-weight: 700; font-family: var(--font-mono); }
+.num-cyan { color: var(--secondary); font-weight: 700; font-family: var(--font-mono); }
+
+/* ========================================
+   FOOTER
+   ======================================== */
+.footer {
+  border-top: 1px solid var(--border); padding: 40px 0; text-align: center;
+}
+.footer-inner { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.footer-brand { font-size: 1.1rem; font-weight: 600; }
+.footer p { font-size: 0.85rem; color: var(--fg-muted); }
+.footer-muted { font-size: 0.78rem !important; color: rgba(163,163,163,0.5) !important; }
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+.fade-in {
+  opacity: 0; transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+.stagger-1 { transition-delay: 0.1s; }
+.stagger-2 { transition-delay: 0.2s; }
+.stagger-3 { transition-delay: 0.3s; }
+.stagger-4 { transition-delay: 0.4s; }
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+@media (max-width: 768px) {
+  .hero-cards { grid-template-columns: repeat(2, 1fr); }
+  .nav-links { display: none; }
+  .hero h1 { font-size: 2.2rem; }
+  .section { padding: 60px 0; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .vol-chart { flex-direction: column; height: auto; align-items: center; }
+  .vol-bar { width: 100%; max-width: 200px; }
+  .ratio-vis { flex-direction: column; align-items: center; }
+  .timeline-row { min-width: 500px; }
+}
+
+::selection { background: rgba(0,212,106,0.3); color: #fff; }
+
+/* ========================================
+   ANIMATED DATA FLOW
+   ======================================== */
+.data-flow-container {
+  position: relative; padding: 32px 20px;
+  background: rgba(0,0,0,0.2); border-radius: 12px; margin: 20px 0;
+  min-height: 200px;
+}
+.flow-title {
+  font-size: 0.85rem; font-weight: 600; margin-bottom: 16px; text-align: center;
+}
+.flow-gpu-row {
+  display: flex; justify-content: space-around; gap: 8px; margin-bottom: 20px;
+}
+.flow-gpu {
+  flex: 1; max-width: 150px; border-radius: 10px; padding: 10px 8px;
+  text-align: center; border: 2px solid;
+}
+.flow-gpu-label { font-size: 0.7rem; font-weight: 700; margin-bottom: 4px; }
+.flow-gpu-content { font-size: 0.6rem; color: var(--fg-muted); min-height: 24px; }
+.flow-step-indicator {
+  text-align: center; margin: 12px 0; font-size: 0.78rem; font-weight: 600;
+  color: var(--secondary); font-family: var(--font-mono);
+}
+.flow-controls {
+  display: flex; justify-content: center; gap: 12px; margin-top: 16px;
+}
+.flow-btn {
+  padding: 8px 20px; border-radius: 8px; font-size: 0.82rem; font-weight: 600;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--fg-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.flow-btn:hover { border-color: var(--primary); color: var(--primary); }
+.flow-btn.active { background: rgba(0,212,106,0.1); border-color: var(--primary); color: var(--primary); }
+
+/* Speed indicator */
+.speed-indicator {
+  display: flex; align-items: center; gap: 12px; justify-content: center;
+  margin: 16px 0; padding: 12px 20px;
+  background: rgba(0,0,0,0.2); border-radius: 8px;
+}
+.speed-bar-track {
+  flex: 1; max-width: 300px; height: 8px; background: rgba(255,255,255,0.05);
+  border-radius: 4px; overflow: hidden; position: relative;
+}
+.speed-bar-fill {
+  height: 100%; border-radius: 4px; transition: width 0.5s ease;
+}
+.speed-label { font-size: 0.78rem; font-weight: 600; min-width: 60px; }
+.speed-value { font-family: var(--font-mono); font-size: 0.78rem; font-weight: 600; min-width: 50px; text-align: right; }
+</style>
+</head>
+<body>
+
+<!-- ======== NAVBAR ======== -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <span class="brand-icon">&#9889;</span>
+      <span>ShallowSpeed</span>
+      <span class="brand-tag">Inference</span>
+    </div>
+    <div class="nav-links">
+      <a href="#core-problem">The Problem</a>
+      <a href="#zero-inference">ZeRO Inference</a>
+      <a href="#tp-inference">TP Inference</a>
+      <a href="#data-volumes">Data Volumes</a>
+      <a href="#interactive">Interactive</a>
+      <a href="#takeaways">Takeaways</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ======== HERO ======== -->
+<section class="hero">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-green"></div>
+    <div class="orb orb-cyan"></div>
+    <div class="orb orb-purple"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <div class="pulse-dot"></div>
+      Distributed Inference
+    </div>
+    <h1><span class="gradient-text">Tensor Parallelism</span> vs <span class="gradient-text">ZeRO</span> for Inference</h1>
+    <p class="hero-subtitle">
+      Why does Tensor Parallelism dominate inference workloads while ZeRO shines in training?
+      A first-principles visual exploration of communication patterns, latency, and data volumes.
+    </p>
+    <div class="hero-cards">
+      <div class="hero-stat-card fade-in stagger-1">
+        <div class="stat-number">10,000&times;</div>
+        <div class="stat-label">More data moved per layer by ZeRO-3 vs TP</div>
+      </div>
+      <div class="hero-stat-card fade-in stagger-2">
+        <div class="stat-number">~16 KB</div>
+        <div class="stat-label">TP all-reduce per layer (single token, 70B)</div>
+      </div>
+      <div class="hero-stat-card fade-in stagger-3">
+        <div class="stat-number">~200 MB</div>
+        <div class="stat-label">ZeRO-3 all-gather per layer (70B model)</div>
+      </div>
+      <div class="hero-stat-card fade-in stagger-4">
+        <div class="stat-number">80 layers</div>
+        <div class="stat-label">Communication events per token (Llama 70B)</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======== SECTION 1: THE CORE PROBLEM ======== -->
+<section id="core-problem" class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">The Core Problem</div>
+      <h2><span class="gradient-text">Training vs. Inference</span> — Different Worlds</h2>
+      <p class="section-subtitle">
+        What works well for training can be catastrophic for inference. The key difference?
+        How much compute you do per byte of communication.
+      </p>
+    </div>
+
+    <div class="grid-2 fade-in">
+      <div class="card">
+        <div class="card-icon" style="color: var(--blue);">&#9881;</div>
+        <h3>Training: Throughput-Bound</h3>
+        <p>During training, you process <strong style="color:var(--fg)">large batches</strong> across long sequences.
+        Each forward + backward pass involves massive matrix multiplications. Communication costs
+        (gradient syncs, weight gathers) get <strong style="color:var(--fg)">amortized</strong> over huge compute budgets.</p>
+        <div class="equation-box" style="margin-top: 16px;">
+          <span class="eq-label">Training Arithmetic Intensity</span>
+          Compute per layer &asymp; <span class="eq-highlight">2 &times; B &times; S &times; d &times; d_ff</span><br>
+          B=32, S=2048 &rArr; billions of FLOPs/layer
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-icon" style="color: var(--red);">&#9889;</div>
+        <h3>Inference (Decoding): Latency-Bound</h3>
+        <p>During autoregressive decoding, you generate <strong style="color:var(--fg)">one token at a time</strong>.
+        Each token requires a full forward pass through every layer. The compute per layer
+        is <strong style="color:var(--fg)">tiny</strong> — just a few matmuls on a single token vector.</p>
+        <div class="equation-box" style="margin-top: 16px;">
+          <span class="eq-label">Decoding Arithmetic Intensity</span>
+          Compute per layer &asymp; <span class="eq-highlight">2 &times; 1 &times; 1 &times; d &times; d_ff</span><br>
+          B=1, S=1 &rArr; millions of FLOPs/layer
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-warn fade-in" style="margin-top: 24px;">
+      <strong>The crucial ratio:</strong> During decoding, compute drops by ~<span class="num-red">65,000&times;</span>
+      (32&times;2048 = 65,536) compared to training — but communication costs stay roughly
+      the same. This is why the parallelism strategy matters enormously at inference time.
+    </div>
+  </div>
+</section>
+
+<!-- ======== SECTION 2: ZeRO INFERENCE ======== -->
+<section id="zero-inference" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">ZeRO-3 at Inference</div>
+      <h2><span class="gradient-text">The All-Gather Bottleneck</span></h2>
+      <p class="section-subtitle">
+        ZeRO-3 shards model parameters across GPUs. During inference, every single layer
+        requires an all-gather to reconstruct weights — for every single token.
+      </p>
+    </div>
+
+    <!-- GPU weight sharding diagram -->
+    <div class="fade-in">
+      <h4 style="text-align:center; margin-bottom: 16px; font-size: 0.92rem;">How ZeRO-3 Stores Weights</h4>
+      <div class="gpu-diagram" id="zero-gpu-diagram">
+        <!-- Generated by JS -->
+      </div>
+      <p style="text-align:center; font-size: 0.82rem; color: var(--fg-muted); margin-top: 8px;">
+        Each GPU holds only <span class="num-red">1/N</span> of every layer's parameters. No single GPU can compute anything alone.
+      </p>
+    </div>
+
+    <!-- Timeline: ZeRO inference per layer -->
+    <div class="fade-in" style="margin-top: 40px;">
+      <h4 style="text-align:center; margin-bottom: 16px; font-size: 0.92rem;">ZeRO-3 Inference: Per-Token Timeline (4 Layers shown)</h4>
+      <div class="timeline-container">
+        <div class="timeline-row">
+          <div class="timeline-label">Layer 1</div>
+          <div class="timeline-blocks">
+            <div class="timeline-block gather" style="flex: 5;">All-Gather Weights</div>
+            <div class="timeline-block compute" style="flex: 1;">Compute</div>
+            <div class="timeline-block idle" style="flex: 0.5;">Discard</div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="timeline-label">Layer 2</div>
+          <div class="timeline-blocks">
+            <div class="timeline-block idle" style="flex: 6.5;">Waiting...</div>
+            <div class="timeline-block gather" style="flex: 5;">All-Gather Weights</div>
+            <div class="timeline-block compute" style="flex: 1;">Compute</div>
+            <div class="timeline-block idle" style="flex: 0.5;">Discard</div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="timeline-label">Layer 3</div>
+          <div class="timeline-blocks">
+            <div class="timeline-block idle" style="flex: 13;">Waiting...</div>
+            <div class="timeline-block gather" style="flex: 5;">All-Gather Weights</div>
+            <div class="timeline-block compute" style="flex: 1;">Compute</div>
+            <div class="timeline-block idle" style="flex: 0.5;">Discard</div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="timeline-label">Layer 4</div>
+          <div class="timeline-blocks">
+            <div class="timeline-block idle" style="flex: 19.5;">Waiting...</div>
+            <div class="timeline-block gather" style="flex: 5;">All-Gather Weights</div>
+            <div class="timeline-block compute" style="flex: 1;">Compute</div>
+            <div class="timeline-block idle" style="flex: 0.5;">Discard</div>
+          </div>
+        </div>
+        <div class="timeline-legend">
+          <div class="timeline-legend-item"><div class="tl-swatch" style="background: var(--red);"></div> All-Gather (weights)</div>
+          <div class="timeline-legend-item"><div class="tl-swatch" style="background: var(--blue);"></div> Compute (matmul)</div>
+          <div class="timeline-legend-item"><div class="tl-swatch" style="background: rgba(255,255,255,0.05); border: 1px dashed var(--border);"></div> Idle / Discard</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-warn fade-in" style="margin-top: 16px;">
+      <strong>Notice the pattern:</strong> The red all-gather blocks dominate the timeline. For each layer,
+      the GPU spends ~<span class="num-red">83%</span> of the time fetching weights and only ~<span class="num-blue">17%</span>
+      actually computing. Then the gathered weights are <em>discarded</em> — only to be gathered again
+      for the next token!
+    </div>
+
+    <div class="equation-box fade-in" style="margin-top: 20px;">
+      <span class="eq-label">ZeRO-3 Communication per Token (Llama 70B, 8 GPUs)</span>
+      Per layer: all-gather <span class="eq-highlight">~200 MB</span> of weights<br>
+      80 layers &times; 200 MB = <span class="eq-highlight">~16 GB</span> communicated per token<br>
+      At 600 GB/s NVLink: <span class="eq-highlight">~27 ms</span> just for communication
+    </div>
+  </div>
+</section>
+
+<!-- ======== SECTION 3: TP INFERENCE ======== -->
+<section id="tp-inference" class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Tensor Parallelism at Inference</div>
+      <h2><span class="gradient-text">Weights Stay, Activations Flow</span></h2>
+      <p class="section-subtitle">
+        With TP, each GPU permanently holds its slice of every layer. The only communication
+        is a tiny all-reduce on activations — orders of magnitude less data.
+      </p>
+    </div>
+
+    <!-- GPU weight layout for TP -->
+    <div class="fade-in">
+      <h4 style="text-align:center; margin-bottom: 16px; font-size: 0.92rem;">How TP Stores Weights</h4>
+      <div class="gpu-diagram" id="tp-gpu-diagram">
+        <!-- Generated by JS -->
+      </div>
+      <p style="text-align:center; font-size: 0.82rem; color: var(--fg-muted); margin-top: 8px;">
+        Each GPU holds <span class="num-green">its 1/N column slice of every layer</span> — weights are always resident and ready.
+      </p>
+    </div>
+
+    <!-- Timeline: TP inference per layer -->
+    <div class="fade-in" style="margin-top: 40px;">
+      <h4 style="text-align:center; margin-bottom: 16px; font-size: 0.92rem;">TP Inference: Per-Token Timeline (4 Layers shown)</h4>
+      <div class="timeline-container">
+        <div class="timeline-row">
+          <div class="timeline-label">Layer 1</div>
+          <div class="timeline-blocks">
+            <div class="timeline-block weight-resident" style="flex: 0.3;" title="Weights already in GPU memory">&#10003;</div>
+            <div class="timeline-block compute" style="flex: 4;">Compute (local shard)</div>
+            <div class="timeline-block allreduce" style="flex: 0.5;">AR</div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="timeline-label">Layer 2</div>
+          <div class="timeline-blocks">
+            <div class="timeline-block idle" style="flex: 4.8;">Waiting...</div>
+            <div class="timeline-block weight-resident" style="flex: 0.3;">&#10003;</div>
+            <div class="timeline-block compute" style="flex: 4;">Compute (local shard)</div>
+            <div class="timeline-block allreduce" style="flex: 0.5;">AR</div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="timeline-label">Layer 3</div>
+          <div class="timeline-blocks">
+            <div class="timeline-block idle" style="flex: 9.6;">Waiting...</div>
+            <div class="timeline-block weight-resident" style="flex: 0.3;">&#10003;</div>
+            <div class="timeline-block compute" style="flex: 4;">Compute (local shard)</div>
+            <div class="timeline-block allreduce" style="flex: 0.5;">AR</div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="timeline-label">Layer 4</div>
+          <div class="timeline-blocks">
+            <div class="timeline-block idle" style="flex: 14.4;">Waiting...</div>
+            <div class="timeline-block weight-resident" style="flex: 0.3;">&#10003;</div>
+            <div class="timeline-block compute" style="flex: 4;">Compute (local shard)</div>
+            <div class="timeline-block allreduce" style="flex: 0.5;">AR</div>
+          </div>
+        </div>
+        <div class="timeline-legend">
+          <div class="timeline-legend-item"><div class="tl-swatch" style="background: rgba(167,139,250,0.15); border: 1px solid rgba(167,139,250,0.3);"></div> Weights Resident</div>
+          <div class="timeline-legend-item"><div class="tl-swatch" style="background: var(--blue);"></div> Compute (local matmul)</div>
+          <div class="timeline-legend-item"><div class="tl-swatch" style="background: var(--primary);"></div> All-Reduce (activations)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-green fade-in" style="margin-top: 16px;">
+      <strong>Key insight:</strong> The green all-reduce blocks are tiny because they communicate
+      <strong>activations</strong> (a vector of <span class="num-green">d_model = 8192</span> floats for Llama 70B),
+      not entire weight matrices. The compute phase dominates, which is exactly what you want.
+    </div>
+
+    <div class="equation-box fade-in" style="margin-top: 20px;">
+      <span class="eq-label">TP Communication per Token (Llama 70B, 8 GPUs)</span>
+      Per layer: all-reduce <span class="eq-highlight">2 &times; 8192 &times; 2 bytes = ~32 KB</span> (2 all-reduces per layer)<br>
+      80 layers &times; 32 KB = <span class="eq-highlight">~2.5 MB</span> communicated per token<br>
+      At 600 GB/s NVLink: <span class="eq-highlight">~0.004 ms</span> just for communication
+    </div>
+  </div>
+</section>
+
+<!-- ======== SECTION 4: DATA VOLUMES ======== -->
+<section id="data-volumes" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Communication Volumes</div>
+      <h2><span class="gradient-text">What Gets Communicated?</span></h2>
+      <p class="section-subtitle">
+        The fundamental difference: ZeRO communicates massive weight matrices,
+        TP communicates tiny activation vectors. Let's see the numbers.
+      </p>
+    </div>
+
+    <!-- Side-by-side communication diagram -->
+    <div class="grid-2 fade-in">
+      <div class="card" style="border-color: rgba(255,112,67,0.3);">
+        <h3 style="color: var(--red);">ZeRO-3: Communicates Weights</h3>
+        <div class="comm-visual" style="margin-top: 12px;">
+          <div class="flow-title" style="color: var(--red);">All-Gather per Layer</div>
+          <div class="flow-gpu-row">
+            <div class="flow-gpu" style="border-color: rgba(255,112,67,0.3); background: rgba(255,112,67,0.05);">
+              <div class="flow-gpu-label" style="color: var(--red);">GPU 0</div>
+              <div class="flow-gpu-content">W[0:k]</div>
+            </div>
+            <div class="flow-gpu" style="border-color: rgba(255,112,67,0.3); background: rgba(255,112,67,0.05);">
+              <div class="flow-gpu-label" style="color: var(--red);">GPU 1</div>
+              <div class="flow-gpu-content">W[k:2k]</div>
+            </div>
+            <div class="flow-gpu" style="border-color: rgba(255,112,67,0.3); background: rgba(255,112,67,0.05);">
+              <div class="flow-gpu-label" style="color: var(--red);">GPU 2</div>
+              <div class="flow-gpu-content">W[2k:3k]</div>
+            </div>
+            <div class="flow-gpu" style="border-color: rgba(255,112,67,0.3); background: rgba(255,112,67,0.05);">
+              <div class="flow-gpu-label" style="color: var(--red);">GPU 3</div>
+              <div class="flow-gpu-content">W[3k:4k]</div>
+            </div>
+          </div>
+          <div style="text-align:center; font-size: 0.75rem; color: var(--red); font-weight: 600;">
+            &darr; Each GPU must receive ALL other shards &darr;
+          </div>
+          <div style="text-align:center; margin-top: 8px;">
+            <span style="font-family: var(--font-mono); font-size: 0.82rem; color: var(--red); font-weight: 700;">
+              ~200 MB per layer
+            </span>
+            <br>
+            <span style="font-size: 0.72rem; color: var(--fg-muted);">
+              O(d_model &times; d_ff) = O(8192 &times; 28672) parameters
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="border-color: rgba(0,212,106,0.3);">
+        <h3 style="color: var(--primary);">TP: Communicates Activations</h3>
+        <div class="comm-visual" style="margin-top: 12px;">
+          <div class="flow-title" style="color: var(--primary);">All-Reduce per Layer</div>
+          <div class="flow-gpu-row">
+            <div class="flow-gpu" style="border-color: rgba(0,212,106,0.3); background: rgba(0,212,106,0.05);">
+              <div class="flow-gpu-label" style="color: var(--primary);">GPU 0</div>
+              <div class="flow-gpu-content">Y_partial[0]</div>
+            </div>
+            <div class="flow-gpu" style="border-color: rgba(0,212,106,0.3); background: rgba(0,212,106,0.05);">
+              <div class="flow-gpu-label" style="color: var(--primary);">GPU 1</div>
+              <div class="flow-gpu-content">Y_partial[1]</div>
+            </div>
+            <div class="flow-gpu" style="border-color: rgba(0,212,106,0.3); background: rgba(0,212,106,0.05);">
+              <div class="flow-gpu-label" style="color: var(--primary);">GPU 2</div>
+              <div class="flow-gpu-content">Y_partial[2]</div>
+            </div>
+            <div class="flow-gpu" style="border-color: rgba(0,212,106,0.3); background: rgba(0,212,106,0.05);">
+              <div class="flow-gpu-label" style="color: var(--primary);">GPU 3</div>
+              <div class="flow-gpu-content">Y_partial[3]</div>
+            </div>
+          </div>
+          <div style="text-align:center; font-size: 0.75rem; color: var(--primary); font-weight: 600;">
+            &darr; Sum partial results across GPUs &darr;
+          </div>
+          <div style="text-align:center; margin-top: 8px;">
+            <span style="font-family: var(--font-mono); font-size: 0.82rem; color: var(--primary); font-weight: 700;">
+              ~16 KB per layer
+            </span>
+            <br>
+            <span style="font-size: 0.72rem; color: var(--fg-muted);">
+              O(batch &times; seq &times; d_model) = O(1 &times; 1 &times; 8192) floats
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bar chart comparison -->
+    <div class="chart-container fade-in" style="margin-top: 32px;">
+      <h4>Communication Volume per Layer (Single Token Decoding)</h4>
+      <div class="chart-subtitle">Llama 70B on 8 GPUs — logarithmic scale comparison</div>
+      <div class="model-tabs" id="model-tabs">
+        <button class="model-tab active" onclick="updateVolChart('7b')">Llama 7B</button>
+        <button class="model-tab" onclick="updateVolChart('13b')">Llama 13B</button>
+        <button class="model-tab" onclick="updateVolChart('70b')">Llama 70B</button>
+      </div>
+      <div class="vol-chart" id="vol-chart">
+        <!-- Generated by JS -->
+      </div>
+      <div style="text-align:center; font-size: 0.78rem; color: var(--fg-muted); margin-top: 8px;">
+        <span class="num-red">ZeRO-3</span> communicates weight matrices &mdash;
+        <span class="num-green">TP</span> communicates activation vectors
+      </div>
+    </div>
+
+    <!-- Comparison table -->
+    <div class="comp-table-wrap fade-in" style="margin-top: 32px;">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>ZeRO-3</th>
+            <th>Tensor Parallelism</th>
+            <th>Ratio</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>What is communicated</td>
+            <td class="val-bad">Weight matrices</td>
+            <td class="val-good">Activation vectors</td>
+            <td>&mdash;</td>
+          </tr>
+          <tr>
+            <td>Data size per layer (70B, B=1, S=1)</td>
+            <td class="val-bad">~200 MB</td>
+            <td class="val-good">~16 KB</td>
+            <td class="val-great">~12,500&times;</td>
+          </tr>
+          <tr>
+            <td>Collective operation</td>
+            <td>All-Gather</td>
+            <td>All-Reduce</td>
+            <td>&mdash;</td>
+          </tr>
+          <tr>
+            <td>Total per token (80 layers)</td>
+            <td class="val-bad">~16 GB</td>
+            <td class="val-good">~2.5 MB</td>
+            <td class="val-great">~6,400&times;</td>
+          </tr>
+          <tr>
+            <td>Communication latency (NVLink 600 GB/s)</td>
+            <td class="val-bad">~27 ms</td>
+            <td class="val-good">~0.004 ms</td>
+            <td class="val-great">~6,750&times;</td>
+          </tr>
+          <tr>
+            <td>Weights resident in GPU memory?</td>
+            <td class="val-bad">No (must gather)</td>
+            <td class="val-good">Yes (always hot)</td>
+            <td>&mdash;</td>
+          </tr>
+          <tr>
+            <td>Scales with batch size?</td>
+            <td class="val-ok">No (fixed weight size)</td>
+            <td class="val-good">Yes (activation grows with B)</td>
+            <td>&mdash;</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ======== SECTION 5: WHY ZERO WORKS FOR TRAINING ======== -->
+<section class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Context Matters</div>
+      <h2><span class="gradient-text">Why ZeRO Works for Training</span></h2>
+      <p class="section-subtitle">
+        ZeRO isn't a bad idea — it's brilliant for training. The communication cost
+        gets amortized over massive compute budgets that don't exist during inference.
+      </p>
+    </div>
+
+    <div class="grid-3 fade-in">
+      <div class="card">
+        <div class="card-icon" style="color: var(--blue);">&#128200;</div>
+        <h3>Large Batch Amortization</h3>
+        <p>With batch size 32 and sequence length 2048, each layer does
+        <code>2&times;32&times;2048&times;d&times;d_ff</code> FLOPs. The all-gather cost
+        of ~200 MB per layer becomes a small fraction of total time.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon" style="color: var(--accent);">&#128260;</div>
+        <h3>Backward Pass Overlap</h3>
+        <p>During training, you also do backward passes and gradient syncs. ZeRO-3 can
+        overlap next-layer weight gathers with current-layer backward computation,
+        hiding much of the communication latency.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon" style="color: var(--primary);">&#128190;</div>
+        <h3>Memory Savings</h3>
+        <p>ZeRO's key advantage is memory: each GPU only stores 1/N of parameters,
+        gradients, and optimizer states. This lets you train models that wouldn't
+        fit on a single GPU — a trade-off that makes sense when you're throughput-bound.</p>
+      </div>
+    </div>
+
+    <!-- Compute-to-communication ratio visual -->
+    <div class="chart-container fade-in" style="margin-top: 32px;">
+      <h4>Compute-to-Communication Ratio</h4>
+      <div class="chart-subtitle">How the ratio changes between training and inference for ZeRO-3</div>
+      <div class="ratio-vis" id="ratio-vis">
+        <div class="ratio-circle-wrap">
+          <div class="ratio-circle" style="background: conic-gradient(var(--blue) 0deg 342deg, var(--red) 342deg 360deg);">
+            <div class="ratio-circle-inner" style="background: var(--bg-card); width: 100px; height: 100px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-direction: column;">
+              <span style="color: var(--blue); font-size: 1.1rem;">95%</span>
+              <span style="font-size: 0.6rem; color: var(--fg-muted);">compute</span>
+            </div>
+          </div>
+          <div class="ratio-label">Training</div>
+          <div class="ratio-sublabel">B=32, S=2048</div>
+        </div>
+        <div style="display: flex; align-items: center; font-size: 1.5rem; color: var(--fg-muted);">&rarr;</div>
+        <div class="ratio-circle-wrap">
+          <div class="ratio-circle" style="background: conic-gradient(var(--blue) 0deg 61deg, var(--red) 61deg 360deg);">
+            <div class="ratio-circle-inner" style="background: var(--bg-card); width: 100px; height: 100px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-direction: column;">
+              <span style="color: var(--red); font-size: 1.1rem;">83%</span>
+              <span style="font-size: 0.6rem; color: var(--fg-muted);">communication</span>
+            </div>
+          </div>
+          <div class="ratio-label">Inference (Decoding)</div>
+          <div class="ratio-sublabel">B=1, S=1</div>
+        </div>
+      </div>
+      <div class="callout callout-info" style="margin-top: 16px;">
+        <strong>The same all-gather cost</strong> that represents ~5% overhead during training
+        becomes ~83% of total time during single-token decoding. The communication is
+        constant; only the compute shrinks.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======== SECTION 6: INTERACTIVE EXPLORER ======== -->
+<section id="interactive" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Interactive Explorer</div>
+      <h2><span class="gradient-text">See the Numbers Yourself</span></h2>
+      <p class="section-subtitle">
+        Adjust model size, GPU count, and batch size to see how communication volumes
+        and latencies change for each strategy.
+      </p>
+    </div>
+
+    <div class="chart-container fade-in">
+      <h4>Communication Volume & Latency Calculator</h4>
+      <div class="chart-subtitle">Adjust parameters and watch the numbers update in real-time</div>
+
+      <div class="slider-group">
+        <label>Hidden Dim (d_model):</label>
+        <input type="range" id="slider-dmodel" min="2048" max="16384" step="1024" value="8192">
+        <span class="slider-val" id="val-dmodel">8192</span>
+      </div>
+      <div class="slider-group">
+        <label>FFN Dim (d_ff):</label>
+        <input type="range" id="slider-dff" min="5504" max="53248" step="1024" value="28672">
+        <span class="slider-val" id="val-dff">28672</span>
+      </div>
+      <div class="slider-group">
+        <label>Num Layers:</label>
+        <input type="range" id="slider-layers" min="16" max="128" step="4" value="80">
+        <span class="slider-val" id="val-layers">80</span>
+      </div>
+      <div class="slider-group">
+        <label>Num GPUs:</label>
+        <input type="range" id="slider-gpus" min="2" max="16" step="2" value="8">
+        <span class="slider-val" id="val-gpus">8</span>
+      </div>
+      <div class="slider-group">
+        <label>Batch Size:</label>
+        <input type="range" id="slider-batch" min="1" max="64" step="1" value="1">
+        <span class="slider-val" id="val-batch">1</span>
+      </div>
+      <div class="slider-group">
+        <label>NVLink BW (GB/s):</label>
+        <input type="range" id="slider-bw" min="100" max="900" step="50" value="600">
+        <span class="slider-val" id="val-bw">600</span>
+      </div>
+
+      <div class="grid-2" style="margin-top: 24px;" id="calc-results">
+        <!-- Updated by JS -->
+      </div>
+
+      <!-- Speed comparison bar -->
+      <div style="margin-top: 24px;">
+        <h4 style="font-size: 0.92rem; margin-bottom: 12px; text-align: center;">Communication Time Comparison</h4>
+        <div class="speed-indicator">
+          <span class="speed-label" style="color: var(--red);">ZeRO-3</span>
+          <div class="speed-bar-track">
+            <div class="speed-bar-fill" id="speed-zero" style="background: var(--red); width: 100%;"></div>
+          </div>
+          <span class="speed-value" id="speed-zero-val" style="color: var(--red);">27 ms</span>
+        </div>
+        <div class="speed-indicator">
+          <span class="speed-label" style="color: var(--primary);">TP</span>
+          <div class="speed-bar-track">
+            <div class="speed-bar-fill" id="speed-tp" style="background: var(--primary); width: 0.5%;"></div>
+          </div>
+          <span class="speed-value" id="speed-tp-val" style="color: var(--primary);">0.004 ms</span>
+        </div>
+        <div style="text-align: center; margin-top: 8px;">
+          <span style="font-family: var(--font-mono); font-size: 1.2rem; font-weight: 700;" id="speedup-label">
+            <span class="gradient-text">6,750&times; less communication latency with TP</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======== SECTION 7: MEMORY ACCESS PATTERNS ======== -->
+<section class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Memory Access</div>
+      <h2><span class="gradient-text">Hot vs. Cold Weights</span></h2>
+      <p class="section-subtitle">
+        Beyond communication volume, there's a fundamental difference in how weights
+        live in GPU memory between the two approaches.
+      </p>
+    </div>
+
+    <div class="grid-2 fade-in">
+      <div class="card" style="border-color: rgba(0,212,106,0.3);">
+        <h3 style="color: var(--primary);">TP: Weights Always Hot</h3>
+        <div style="margin: 16px 0;">
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <div style="flex:1; min-width: 60px; padding: 8px; background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3); border-radius: 8px; text-align: center;">
+              <div style="font-size: 0.72rem; font-weight: 700; color: var(--primary);">Layer 1</div>
+              <div style="font-size: 0.6rem; color: var(--fg-muted);">W shard</div>
+              <div style="font-size: 0.6rem; color: var(--primary);">RESIDENT</div>
+            </div>
+            <div style="flex:1; min-width: 60px; padding: 8px; background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3); border-radius: 8px; text-align: center;">
+              <div style="font-size: 0.72rem; font-weight: 700; color: var(--primary);">Layer 2</div>
+              <div style="font-size: 0.6rem; color: var(--fg-muted);">W shard</div>
+              <div style="font-size: 0.6rem; color: var(--primary);">RESIDENT</div>
+            </div>
+            <div style="flex:1; min-width: 60px; padding: 8px; background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3); border-radius: 8px; text-align: center;">
+              <div style="font-size: 0.72rem; font-weight: 700; color: var(--primary);">Layer N</div>
+              <div style="font-size: 0.6rem; color: var(--fg-muted);">W shard</div>
+              <div style="font-size: 0.6rem; color: var(--primary);">RESIDENT</div>
+            </div>
+          </div>
+        </div>
+        <p>All weight shards live permanently in HBM. When a layer needs to compute,
+        the weights are <strong style="color:var(--fg)">already there</strong> — zero fetch latency.
+        Memory bandwidth is used only for the actual matmul reads.</p>
+      </div>
+      <div class="card" style="border-color: rgba(255,112,67,0.3);">
+        <h3 style="color: var(--red);">ZeRO-3: Weights Constantly Churning</h3>
+        <div style="margin: 16px 0;">
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <div style="flex:1; min-width: 60px; padding: 8px; background: rgba(255,112,67,0.1); border: 1px solid rgba(255,112,67,0.3); border-radius: 8px; text-align: center;">
+              <div style="font-size: 0.72rem; font-weight: 700; color: var(--red);">Layer K</div>
+              <div style="font-size: 0.6rem; color: var(--fg-muted);">Full W</div>
+              <div style="font-size: 0.6rem; color: var(--red);">GATHERED</div>
+            </div>
+            <div style="flex:1; min-width: 60px; padding: 8px; background: rgba(255,255,255,0.02); border: 1px dashed var(--border); border-radius: 8px; text-align: center;">
+              <div style="font-size: 0.72rem; font-weight: 700; color: var(--fg-muted);">Layer K-1</div>
+              <div style="font-size: 0.6rem; color: var(--fg-muted);">Full W</div>
+              <div style="font-size: 0.6rem; color: var(--red);">DISCARDED</div>
+            </div>
+            <div style="flex:1; min-width: 60px; padding: 8px; background: rgba(255,255,255,0.02); border: 1px dashed var(--border); border-radius: 8px; text-align: center;">
+              <div style="font-size: 0.72rem; font-weight: 700; color: var(--fg-muted);">Layer K+1</div>
+              <div style="font-size: 0.6rem; color: var(--fg-muted);">Full W</div>
+              <div style="font-size: 0.6rem; color: var(--orange);">PENDING</div>
+            </div>
+          </div>
+        </div>
+        <p>Only the current layer's weights are fully present. Previous layers are discarded after use,
+        next layers haven't been gathered yet. Each layer requires a <strong style="color:var(--fg)">network round-trip</strong>
+        before any computation can start.</p>
+      </div>
+    </div>
+
+    <div class="callout callout-purple fade-in" style="margin-top: 20px;">
+      <strong>The caching paradox:</strong> ZeRO-3 <em>could</em> cache gathered weights to avoid re-gathering
+      per token — but then you'd be storing full model weights on every GPU, which completely
+      defeats ZeRO's purpose of saving memory through sharding. You'd end up with the worst
+      of both worlds: ZeRO's complexity with no memory savings.
+    </div>
+  </div>
+</section>
+
+<!-- ======== SECTION 8: PRACTICAL DEPLOYMENT ======== -->
+<section class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">In Practice</div>
+      <h2><span class="gradient-text">How Production Systems Deploy</span></h2>
+      <p class="section-subtitle">
+        Modern inference frameworks use TP within a node and pipeline parallelism across
+        nodes — ZeRO is reserved for training.
+      </p>
+    </div>
+
+    <div class="grid-2 fade-in">
+      <div class="card">
+        <h3>Inference (vLLM, TGI, TensorRT-LLM)</h3>
+        <ul style="list-style: none; padding: 0; margin-top: 12px;">
+          <li style="padding: 6px 0; border-bottom: 1px solid var(--border);">
+            <span class="num-green">TP within a node</span> — exploits fast NVLink
+          </li>
+          <li style="padding: 6px 0; border-bottom: 1px solid var(--border);">
+            <span class="num-blue">Pipeline Parallelism across nodes</span> — when model spans nodes
+          </li>
+          <li style="padding: 6px 0; border-bottom: 1px solid var(--border);">
+            <span class="num-cyan">KV Cache</span> — stores key/value states, no recomputation
+          </li>
+          <li style="padding: 6px 0;">
+            <span style="color: var(--fg-muted);">ZeRO?</span> — <span class="num-red">Never used for inference</span>
+          </li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Training (DeepSpeed, FSDP, Megatron)</h3>
+        <ul style="list-style: none; padding: 0; margin-top: 12px;">
+          <li style="padding: 6px 0; border-bottom: 1px solid var(--border);">
+            <span class="num-green">ZeRO-1/2/3</span> — saves memory for large batches
+          </li>
+          <li style="padding: 6px 0; border-bottom: 1px solid var(--border);">
+            <span class="num-blue">TP + PP</span> — for very large models (Megatron-LM)
+          </li>
+          <li style="padding: 6px 0; border-bottom: 1px solid var(--border);">
+            <span class="num-cyan">Data Parallelism</span> — scales across nodes
+          </li>
+          <li style="padding: 6px 0;">
+            <span class="num-orange">Communication amortized</span> — large batches + backward pass
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout callout-green fade-in" style="margin-top: 20px;">
+      <strong>Rule of thumb:</strong> If your workload is <em>latency-sensitive</em> (inference, interactive chat),
+      use <span class="num-green">Tensor Parallelism</span>. If your workload is <em>throughput-bound</em>
+      (training, fine-tuning), <span class="num-blue">ZeRO</span> is perfectly valid and often preferred
+      for its memory efficiency.
+    </div>
+  </div>
+</section>
+
+<!-- ======== SECTION 9: ANIMATED STEP-BY-STEP ======== -->
+<section class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Step by Step</div>
+      <h2><span class="gradient-text">One Token, Two Strategies</span></h2>
+      <p class="section-subtitle">
+        Step through how a single token is processed by each strategy.
+        Click "Next Step" to advance the animation.
+      </p>
+    </div>
+
+    <div class="grid-2 fade-in">
+      <!-- ZeRO Animation -->
+      <div class="data-flow-container" id="zero-anim">
+        <div class="flow-title" style="color: var(--red);">ZeRO-3 Processing Token</div>
+        <div class="flow-gpu-row" id="zero-gpus">
+          <div class="flow-gpu" style="border-color: rgba(255,112,67,0.3); background: rgba(255,112,67,0.05);">
+            <div class="flow-gpu-label" style="color: var(--red);">GPU 0</div>
+            <div class="flow-gpu-content" id="zero-gpu0">W_shard</div>
+          </div>
+          <div class="flow-gpu" style="border-color: rgba(255,112,67,0.3); background: rgba(255,112,67,0.05);">
+            <div class="flow-gpu-label" style="color: var(--red);">GPU 1</div>
+            <div class="flow-gpu-content" id="zero-gpu1">W_shard</div>
+          </div>
+          <div class="flow-gpu" style="border-color: rgba(255,112,67,0.3); background: rgba(255,112,67,0.05);">
+            <div class="flow-gpu-label" style="color: var(--red);">GPU 2</div>
+            <div class="flow-gpu-content" id="zero-gpu2">W_shard</div>
+          </div>
+          <div class="flow-gpu" style="border-color: rgba(255,112,67,0.3); background: rgba(255,112,67,0.05);">
+            <div class="flow-gpu-label" style="color: var(--red);">GPU 3</div>
+            <div class="flow-gpu-content" id="zero-gpu3">W_shard</div>
+          </div>
+        </div>
+        <div class="flow-step-indicator" id="zero-step-text" style="color: var(--red);">Ready — click Next Step</div>
+        <div class="flow-controls">
+          <button class="flow-btn" onclick="zeroNextStep()">Next Step</button>
+          <button class="flow-btn" onclick="zeroReset()">Reset</button>
+        </div>
+      </div>
+
+      <!-- TP Animation -->
+      <div class="data-flow-container" id="tp-anim">
+        <div class="flow-title" style="color: var(--primary);">TP Processing Token</div>
+        <div class="flow-gpu-row" id="tp-gpus">
+          <div class="flow-gpu" style="border-color: rgba(0,212,106,0.3); background: rgba(0,212,106,0.05);">
+            <div class="flow-gpu-label" style="color: var(--primary);">GPU 0</div>
+            <div class="flow-gpu-content" id="tp-gpu0">All layers (col 0)</div>
+          </div>
+          <div class="flow-gpu" style="border-color: rgba(0,212,106,0.3); background: rgba(0,212,106,0.05);">
+            <div class="flow-gpu-label" style="color: var(--primary);">GPU 1</div>
+            <div class="flow-gpu-content" id="tp-gpu1">All layers (col 1)</div>
+          </div>
+          <div class="flow-gpu" style="border-color: rgba(0,212,106,0.3); background: rgba(0,212,106,0.05);">
+            <div class="flow-gpu-label" style="color: var(--primary);">GPU 2</div>
+            <div class="flow-gpu-content" id="tp-gpu2">All layers (col 2)</div>
+          </div>
+          <div class="flow-gpu" style="border-color: rgba(0,212,106,0.3); background: rgba(0,212,106,0.05);">
+            <div class="flow-gpu-label" style="color: var(--primary);">GPU 3</div>
+            <div class="flow-gpu-content" id="tp-gpu3">All layers (col 3)</div>
+          </div>
+        </div>
+        <div class="flow-step-indicator" id="tp-step-text" style="color: var(--primary);">Ready — click Next Step</div>
+        <div class="flow-controls">
+          <button class="flow-btn" onclick="tpNextStep()">Next Step</button>
+          <button class="flow-btn" onclick="tpReset()">Reset</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======== SECTION 10: KEY TAKEAWAYS ======== -->
+<section id="takeaways" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Key Takeaways</div>
+      <h2><span class="gradient-text">The Bottom Line</span></h2>
+    </div>
+
+    <div class="grid-3 fade-in">
+      <div class="takeaway-card">
+        <div class="takeaway-num">01</div>
+        <h3>Communication Type Matters</h3>
+        <p>ZeRO-3 communicates <strong style="color:var(--red)">weight matrices</strong> (~200 MB/layer).
+        TP communicates <strong style="color:var(--primary)">activation vectors</strong> (~16 KB/layer).
+        That's a ~10,000&times; difference per layer during single-token decoding.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">02</div>
+        <h3>Compute-to-Comm Ratio Flips</h3>
+        <p>During training, compute dominates (~95% of time). During decoding,
+        ZeRO-3's communication dominates (~83% of time). The all-gather cost is
+        constant, but the compute per token shrinks by ~65,000&times;.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">03</div>
+        <h3>Weights Should Stay Put</h3>
+        <p>TP keeps weights permanently resident in GPU memory — always hot and ready.
+        ZeRO-3 must fetch them from other GPUs for every layer, every token.
+        For latency-sensitive workloads, this is unacceptable.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">04</div>
+        <h3>Use TP + NVLink for Inference</h3>
+        <p>Production inference systems (vLLM, TGI, TensorRT-LLM) use TP within a node,
+        exploiting NVLink's high bandwidth for tiny activation all-reduces. ZeRO
+        is never used for inference.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">05</div>
+        <h3>ZeRO Shines in Training</h3>
+        <p>ZeRO's memory efficiency lets you train models that wouldn't fit otherwise.
+        The communication cost is amortized over large batches, long sequences,
+        and backward passes. It's the right tool for a different job.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">06</div>
+        <h3>Match Strategy to Workload</h3>
+        <p>Latency-sensitive (inference, chat)? Use <strong style="color:var(--primary)">TP</strong>.
+        Throughput-bound (training, fine-tuning)? Use <strong style="color:var(--blue)">ZeRO</strong>.
+        The best strategy depends on your compute-to-communication ratio.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======== FOOTER ======== -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">&#9889; ShallowSpeed</div>
+      <p>TP vs ZeRO for Inference — Visual Deep Dive</p>
+      <p class="footer-muted">Built with first principles, no external dependencies.</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ========================================
+   INTERSECTION OBSERVER — Scroll Reveal
+   ======================================== */
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+/* ========================================
+   GPU DIAGRAM — ZeRO-3
+   ======================================== */
+(function() {
+  const container = document.getElementById('zero-gpu-diagram');
+  const gpus = 4;
+  const colors = ['#FF7043', '#FF8A65', '#FFAB91', '#FFE0B2'];
+  let html = '';
+  for (let i = 0; i < gpus; i++) {
+    html += `<div class="gpu-box">
+      <div class="gpu-label">GPU ${i}</div>
+      <div class="gpu-mem-bar">`;
+    // Each GPU only holds 1/4 shard of params — show small colored segment
+    for (let l = 0; l < 4; l++) {
+      const opacity = l === i ? 1 : 0.15;
+      html += `<div class="gpu-mem-seg" style="height: 25%; background: rgba(255,112,67,${opacity});">
+        ${l === i ? 'L' + (l+1) : ''}
+      </div>`;
+    }
+    html += `</div>
+      <div class="gpu-caption">Shard ${i+1}/4 only</div>
+    </div>`;
+  }
+  container.innerHTML = html;
+})();
+
+/* ========================================
+   GPU DIAGRAM — TP
+   ======================================== */
+(function() {
+  const container = document.getElementById('tp-gpu-diagram');
+  const gpus = 4;
+  let html = '';
+  for (let i = 0; i < gpus; i++) {
+    html += `<div class="gpu-box" style="border-color: rgba(0,212,106,0.2);">
+      <div class="gpu-label">GPU ${i}</div>
+      <div class="gpu-mem-bar" style="border-color: rgba(0,212,106,0.3);">`;
+    // Each GPU holds ALL layers but column-sharded
+    for (let l = 0; l < 4; l++) {
+      const shade = [0.9, 0.7, 0.5, 0.35][l];
+      html += `<div class="gpu-mem-seg" style="height: 25%; background: rgba(0,212,106,${shade});">
+        L${l+1}
+      </div>`;
+    }
+    html += `</div>
+      <div class="gpu-caption">Col ${i} of ALL layers</div>
+    </div>`;
+  }
+  container.innerHTML = html;
+})();
+
+/* ========================================
+   VOLUME BAR CHART
+   ======================================== */
+const modelConfigs = {
+  '7b': { name: 'Llama 7B', d: 4096, dff: 11008, layers: 32, params_per_layer_mb: 50 },
+  '13b': { name: 'Llama 13B', d: 5120, dff: 13824, layers: 40, params_per_layer_mb: 80 },
+  '70b': { name: 'Llama 70B', d: 8192, dff: 28672, layers: 80, params_per_layer_mb: 200 }
+};
+
+function updateVolChart(modelKey) {
+  // Update tabs
+  document.querySelectorAll('.model-tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+
+  const cfg = modelConfigs[modelKey];
+  const container = document.getElementById('vol-chart');
+
+  // ZeRO: all-gather weights per layer
+  const zeroMB = cfg.params_per_layer_mb;
+  // TP: all-reduce activations per layer (B=1, S=1, d_model, fp16)
+  const tpKB = (cfg.d * 2 * 2) / 1024; // 2 all-reduces, 2 bytes per fp16
+
+  const maxHeight = 220;
+  const zeroHeight = maxHeight;
+  const tpHeight = Math.max(8, (tpKB / 1000 / zeroMB) * maxHeight * 500); // Scale up for visibility
+
+  container.innerHTML = `
+    <div class="vol-bar-wrap">
+      <div class="vol-bar" style="height: ${zeroHeight}px; background: linear-gradient(180deg, #FF7043 0%, #FF5722 100%); color: #fff;">
+        <span class="vol-inner-label" style="color: var(--red);">${zeroMB} MB</span>
+      </div>
+      <div class="vol-bar-label" style="color: var(--red);">ZeRO-3</div>
+      <div class="vol-bar-sublabel">All-Gather (weights)</div>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
+      <span style="font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700; color: var(--secondary);">
+        ${Math.round(zeroMB * 1024 / tpKB).toLocaleString()}&times;
+      </span>
+      <span style="font-size: 0.72rem; color: var(--fg-muted);">difference</span>
+    </div>
+    <div class="vol-bar-wrap">
+      <div class="vol-bar" style="height: ${Math.max(12, tpHeight)}px; background: linear-gradient(180deg, #00d46a 0%, #00a854 100%); color: #fff;">
+        <span class="vol-inner-label" style="color: var(--primary);">${tpKB.toFixed(0)} KB</span>
+      </div>
+      <div class="vol-bar-label" style="color: var(--primary);">TP</div>
+      <div class="vol-bar-sublabel">All-Reduce (activations)</div>
+    </div>
+  `;
+}
+
+// Initialize
+updateVolChart('70b');
+// Fix: re-select the 70b tab since the event.target won't work on init
+document.querySelectorAll('.model-tab').forEach(t => t.classList.remove('active'));
+document.querySelectorAll('.model-tab')[2].classList.add('active');
+
+/* ========================================
+   INTERACTIVE CALCULATOR
+   ======================================== */
+function updateCalc() {
+  const d = parseInt(document.getElementById('slider-dmodel').value);
+  const dff = parseInt(document.getElementById('slider-dff').value);
+  const layers = parseInt(document.getElementById('slider-layers').value);
+  const gpus = parseInt(document.getElementById('slider-gpus').value);
+  const batch = parseInt(document.getElementById('slider-batch').value);
+  const bw = parseInt(document.getElementById('slider-bw').value); // GB/s
+
+  // Update display values
+  document.getElementById('val-dmodel').textContent = d.toLocaleString();
+  document.getElementById('val-dff').textContent = dff.toLocaleString();
+  document.getElementById('val-layers').textContent = layers;
+  document.getElementById('val-gpus').textContent = gpus;
+  document.getElementById('val-batch').textContent = batch;
+  document.getElementById('val-bw').textContent = bw;
+
+  // ZeRO-3: all-gather weight params per layer
+  // Each linear layer has d*dff params. There are ~3 major weight matrices per transformer layer
+  // (QKV projection, output projection, 2 FFN layers ~ simplified to d*dff + d*d for attention)
+  const paramsPerLayer = (d * dff * 2) + (d * d * 2); // rough: 2 FFN matrices + 2 attn matrices
+  const bytesPerParam = 2; // fp16
+  const zeroPerLayerBytes = paramsPerLayer * bytesPerParam;
+  const zeroTotalBytes = zeroPerLayerBytes * layers;
+  const zeroPerLayerMB = zeroPerLayerBytes / (1024 * 1024);
+  const zeroTotalMB = zeroTotalBytes / (1024 * 1024);
+  const zeroTotalGB = zeroTotalMB / 1024;
+  const zeroTimeMs = (zeroTotalBytes / (bw * 1e9)) * 1000;
+
+  // TP: all-reduce activations per layer
+  // 2 all-reduces per transformer layer (after attention, after FFN)
+  // Each all-reduce: batch * 1 * d * 2 bytes (fp16)
+  // All-reduce sends 2*(N-1)/N * data volume total (ring all-reduce)
+  const tpPerReduceBytes = batch * 1 * d * bytesPerParam;
+  const tpPerLayerBytes = tpPerReduceBytes * 2; // 2 all-reduces
+  const tpTotalBytes = tpPerLayerBytes * layers;
+  const tpPerLayerKB = tpPerLayerBytes / 1024;
+  const tpTotalKB = tpTotalBytes / 1024;
+  const tpTotalMB = tpTotalKB / 1024;
+  const tpTimeMs = (tpTotalBytes / (bw * 1e9)) * 1000;
+
+  const ratio = Math.round(zeroTotalBytes / tpTotalBytes);
+
+  const results = document.getElementById('calc-results');
+  results.innerHTML = `
+    <div class="card" style="border-color: rgba(255,112,67,0.3);">
+      <h3 style="color: var(--red);">ZeRO-3 Communication</h3>
+      <div style="margin-top: 12px;">
+        <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border);">
+          <span style="font-size: 0.82rem; color: var(--fg-muted);">Per layer</span>
+          <span class="num-red">${zeroPerLayerMB.toFixed(1)} MB</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border);">
+          <span style="font-size: 0.82rem; color: var(--fg-muted);">Total (${layers} layers)</span>
+          <span class="num-red">${zeroTotalGB >= 1 ? zeroTotalGB.toFixed(2) + ' GB' : zeroTotalMB.toFixed(1) + ' MB'}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: 6px 0;">
+          <span style="font-size: 0.82rem; color: var(--fg-muted);">Comm latency</span>
+          <span class="num-red">${zeroTimeMs >= 1 ? zeroTimeMs.toFixed(1) + ' ms' : (zeroTimeMs * 1000).toFixed(1) + ' \u00B5s'}</span>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="border-color: rgba(0,212,106,0.3);">
+      <h3 style="color: var(--primary);">TP Communication</h3>
+      <div style="margin-top: 12px;">
+        <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border);">
+          <span style="font-size: 0.82rem; color: var(--fg-muted);">Per layer</span>
+          <span class="num-green">${tpPerLayerKB.toFixed(1)} KB</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border);">
+          <span style="font-size: 0.82rem; color: var(--fg-muted);">Total (${layers} layers)</span>
+          <span class="num-green">${tpTotalMB >= 1 ? tpTotalMB.toFixed(2) + ' MB' : tpTotalKB.toFixed(1) + ' KB'}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: 6px 0;">
+          <span style="font-size: 0.82rem; color: var(--fg-muted);">Comm latency</span>
+          <span class="num-green">${tpTimeMs >= 0.001 ? tpTimeMs.toFixed(4) + ' ms' : (tpTimeMs * 1000).toFixed(3) + ' \u00B5s'}</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Speed bars
+  const maxBarPct = 100;
+  const tpPct = Math.max(0.3, (tpTimeMs / zeroTimeMs) * maxBarPct);
+  document.getElementById('speed-zero').style.width = maxBarPct + '%';
+  document.getElementById('speed-tp').style.width = tpPct + '%';
+  document.getElementById('speed-zero-val').textContent = zeroTimeMs >= 1 ? zeroTimeMs.toFixed(1) + ' ms' : (zeroTimeMs * 1000).toFixed(0) + ' \u00B5s';
+  document.getElementById('speed-tp-val').textContent = tpTimeMs >= 0.001 ? tpTimeMs.toFixed(4) + ' ms' : (tpTimeMs * 1000).toFixed(3) + ' \u00B5s';
+  document.getElementById('speedup-label').innerHTML = `<span class="gradient-text">${ratio.toLocaleString()}&times; less communication with TP</span>`;
+}
+
+// Attach slider listeners
+['slider-dmodel', 'slider-dff', 'slider-layers', 'slider-gpus', 'slider-batch', 'slider-bw'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updateCalc);
+});
+updateCalc();
+
+/* ========================================
+   STEP-BY-STEP ANIMATION — ZeRO-3
+   ======================================== */
+let zeroStep = 0;
+const zeroSteps = [
+  { text: 'Layer 1: All-gather weights from all GPUs...', gpus: ['Sending W_shard', 'Sending W_shard', 'Sending W_shard', 'Sending W_shard'], color: '#FF7043' },
+  { text: 'Layer 1: Full weights reconstructed. Computing matmul...', gpus: ['Full W \u2192 Y=Wx', 'Full W \u2192 Y=Wx', 'Full W \u2192 Y=Wx', 'Full W \u2192 Y=Wx'], color: '#42A5F5' },
+  { text: 'Layer 1: Done. Discard gathered weights to save memory.', gpus: ['Discard full W', 'Discard full W', 'Discard full W', 'Discard full W'], color: '#FF7043' },
+  { text: 'Layer 2: All-gather weights again...', gpus: ['Sending W_shard', 'Sending W_shard', 'Sending W_shard', 'Sending W_shard'], color: '#FF7043' },
+  { text: 'Layer 2: Weights ready. Computing...', gpus: ['Full W \u2192 Y=Wx', 'Full W \u2192 Y=Wx', 'Full W \u2192 Y=Wx', 'Full W \u2192 Y=Wx'], color: '#42A5F5' },
+  { text: 'Layer 2: Discard. Repeat for all 80 layers... \uD83D\uDE2B', gpus: ['Discard full W', 'Discard full W', 'Discard full W', 'Discard full W'], color: '#FF7043' },
+];
+
+function zeroNextStep() {
+  if (zeroStep >= zeroSteps.length) { zeroReset(); return; }
+  const step = zeroSteps[zeroStep];
+  document.getElementById('zero-step-text').textContent = `Step ${zeroStep + 1}: ${step.text}`;
+  document.getElementById('zero-step-text').style.color = step.color;
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('zero-gpu' + i).textContent = step.gpus[i];
+  }
+  zeroStep++;
+}
+
+function zeroReset() {
+  zeroStep = 0;
+  document.getElementById('zero-step-text').textContent = 'Ready \u2014 click Next Step';
+  document.getElementById('zero-step-text').style.color = 'var(--red)';
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('zero-gpu' + i).textContent = 'W_shard';
+  }
+}
+
+/* ========================================
+   STEP-BY-STEP ANIMATION — TP
+   ======================================== */
+let tpStep = 0;
+const tpSteps = [
+  { text: 'Layer 1: Weights already resident! Compute partial Y...', gpus: ['Y_part = W_col0 \u00D7 x', 'Y_part = W_col1 \u00D7 x', 'Y_part = W_col2 \u00D7 x', 'Y_part = W_col3 \u00D7 x'], color: '#42A5F5' },
+  { text: 'Layer 1: All-reduce (sum) partial results. ~16 KB!', gpus: ['Y = \u2211 Y_parts', 'Y = \u2211 Y_parts', 'Y = \u2211 Y_parts', 'Y = \u2211 Y_parts'], color: '#00d46a' },
+  { text: 'Layer 2: Weights still resident! Compute immediately...', gpus: ['Y_part = W_col0 \u00D7 x', 'Y_part = W_col1 \u00D7 x', 'Y_part = W_col2 \u00D7 x', 'Y_part = W_col3 \u00D7 x'], color: '#42A5F5' },
+  { text: 'Layer 2: All-reduce partial results. Tiny!', gpus: ['Y = \u2211 Y_parts', 'Y = \u2211 Y_parts', 'Y = \u2211 Y_parts', 'Y = \u2211 Y_parts'], color: '#00d46a' },
+  { text: 'All 80 layers done! No weight fetching needed. \u26A1', gpus: ['All layers (col 0)', 'All layers (col 1)', 'All layers (col 2)', 'All layers (col 3)'], color: '#00d46a' },
+];
+
+function tpNextStep() {
+  if (tpStep >= tpSteps.length) { tpReset(); return; }
+  const step = tpSteps[tpStep];
+  document.getElementById('tp-step-text').textContent = `Step ${tpStep + 1}: ${step.text}`;
+  document.getElementById('tp-step-text').style.color = step.color;
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('tp-gpu' + i).textContent = step.gpus[i];
+  }
+  tpStep++;
+}
+
+function tpReset() {
+  tpStep = 0;
+  document.getElementById('tp-step-text').textContent = 'Ready \u2014 click Next Step';
+  document.getElementById('tp-step-text').style.color = 'var(--primary)';
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('tp-gpu' + i).textContent = 'All layers (col ' + i + ')';
+  }
+}
+</script>
+</body>
+</html>
