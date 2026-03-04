@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Parallelism — Interactive Visual Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #121212;
+  --bg-card-hover: #1a1a1a;
+  --bg-section-alt: #0f0f0f;
+  --fg: #f2f2f2;
+  --fg-muted: #a3a3a3;
+  --border: #262626;
+  --border-light: #333;
+  --primary: #00d46a;
+  --primary-dim: #00a854;
+  --secondary: #00c8e6;
+  --accent: #a78bfa;
+  --red: #FF7043;
+  --orange: #FF9800;
+  --yellow: #FFCA28;
+  --blue: #42A5F5;
+  --green: #66BB6A;
+  --pink: #F06292;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --max-w: 1280px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-sans);
+  line-height: 1.7; -webkit-font-smoothing: antialiased; overflow-x: hidden;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: var(--font-mono); }
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+
+/* NAVBAR */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,10,0.85); backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.1rem; }
+.nav-brand img { width: 28px; height: 28px; object-fit: contain; }
+.brand-tag {
+  font-size: 0.7rem; background: var(--primary); color: #000;
+  padding: 2px 8px; border-radius: 9999px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+/* HERO */
+.hero {
+  position: relative; padding: 120px 24px 60px; overflow: hidden;
+  text-align: center;
+}
+.hero-bg-orbs { position: absolute; inset: 0; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.10; }
+.orb-1 { width: 500px; height: 500px; background: #ff9500; top: 10%; left: 5%; animation: float-slow 20s ease-in-out infinite; }
+.orb-2 { width: 400px; height: 400px; background: #00e5ff; top: 30%; right: 5%; animation: float-slow 25s ease-in-out infinite reverse; }
+.orb-3 { width: 350px; height: 350px; background: #bf5af2; bottom: 5%; left: 30%; animation: float-slow 22s ease-in-out infinite; }
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(30px, -20px); }
+  50% { transform: translate(-20px, 30px); }
+  75% { transform: translate(20px, 20px); }
+}
+.hero::before {
+  content: ''; position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,149,0,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,149,0,0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+}
+.hero-content { position: relative; z-index: 1; max-width: 800px; margin: 0 auto; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(255,149,0,0.08); border: 1px solid rgba(255,149,0,0.25);
+  border-radius: 9999px; padding: 6px 20px; font-size: 0.82rem;
+  font-weight: 500; color: #ff9500; margin-bottom: 24px;
+}
+.pulse-dot { width: 8px; height: 8px; background: #ff9500; border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }
+.hero h1 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2.2rem, 5vw, 3.5rem); font-weight: 400;
+  line-height: 1.15; margin-bottom: 16px;
+}
+.hero-subtitle {
+  font-size: 1rem; color: var(--fg-muted); line-height: 1.7;
+  max-width: 620px; margin: 0 auto 32px;
+}
+.hero-stats {
+  display: flex; justify-content: center; gap: 32px; flex-wrap: wrap;
+}
+.hero-stat { text-align: center; }
+.hero-stat-val {
+  font-size: 1.8rem; font-weight: 800; font-family: var(--font-mono);
+  background: linear-gradient(135deg, #ff9500, #00e5ff);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.hero-stat-desc { font-size: 0.75rem; color: var(--fg-muted); margin-top: 2px; }
+
+/* SECTIONS */
+.section { padding: 60px 0; position: relative; }
+.section-dark { background: var(--bg-section-alt); }
+.section-heading { text-align: center; margin-bottom: 40px; }
+.section-label {
+  display: inline-block; font-size: 0.78rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px;
+  color: #ff9500;
+}
+.section-heading h2 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(1.8rem, 4vw, 2.6rem); font-weight: 400; line-height: 1.2;
+  margin-bottom: 12px;
+}
+.section-subtitle { color: var(--fg-muted); font-size: 0.95rem; max-width: 600px; margin: 0 auto; }
+
+/* 3D PARALLELISM APP */
+#app { max-width: 960px; margin: 0 auto; }
+
+/* Filter buttons */
+.filter-row { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
+.filter-btn {
+  background: rgba(255,255,255,0.04); border: 1.5px solid rgba(255,255,255,0.12);
+  border-radius: 8px; padding: 8px 14px; cursor: pointer;
+  color: rgba(255,255,255,0.6); font-size: 11px; font-family: var(--font-mono);
+  letter-spacing: 0.5px; transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+}
+.filter-btn:hover { border-color: rgba(255,255,255,0.3); }
+.filter-btn.active-tp { background: rgba(0,229,255,0.08); border-color: #00e5ff; color: #00e5ff; }
+.filter-btn.active-pp { background: rgba(255,149,0,0.08); border-color: #ff9500; color: #ff9500; }
+.filter-btn.active-dp { background: rgba(191,90,242,0.08); border-color: #bf5af2; color: #bf5af2; }
+
+.filter-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.filter-dot-tp { background: #00e5ff; }
+.filter-dot-pp { background: #ff9500; }
+.filter-dot-dp { background: #bf5af2; }
+
+.hint-box {
+  font-size: 11px; display: flex; align-items: center; padding: 8px 14px;
+  border-radius: 8px; letter-spacing: 0.5px; font-family: var(--font-mono);
+}
+
+/* Grid layout */
+.main-label { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; font-weight: 700; margin-bottom: 4px; }
+.main-sublabel { font-size: 10px; color: rgba(255,255,255,0.3); margin-bottom: 6px; }
+
+.stage-headers { display: flex; gap: 0; padding-left: 110px; margin-bottom: 4px; }
+.stage-header { width: 224px; text-align: center; }
+
+.pp-arrows { display: flex; align-items: center; padding-left: 110px; margin-bottom: 10px; }
+.pp-arrow-seg { display: flex; align-items: center; }
+.pp-arrow-line { width: 164px; height: 1px; background: rgba(255,149,0,0.25); }
+.pp-arrow-tip { font-size: 16px; color: #ff9500; opacity: 0.6; }
+.pp-arrow-gap { width: 38px; }
+
+.replica-row { display: flex; align-items: stretch; margin-bottom: 14px; }
+.replica-label { width: 100px; display: flex; flex-direction: column; justify-content: center; padding-right: 12px; }
+.replica-label-tag { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; font-weight: 700; margin-bottom: 2px; }
+.replica-label-num { font-size: 22px; font-weight: 800; opacity: 0.7; }
+.replica-label-node { font-size: 10px; color: rgba(255,255,255,0.25); margin-top: 2px; }
+
+.stage-box {
+  width: 224px; border-radius: 10px; padding: 14px 16px; margin-right: 8px;
+  position: relative; border: 1px solid;
+}
+.stage-tp-label {
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+  margin-bottom: 10px; opacity: 0.7; color: #00e5ff;
+}
+
+.gpu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.gpu-box {
+  width: 52px; height: 52px; border-radius: 8px;
+  border: 1.5px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.2s; position: relative; margin: 0 auto;
+}
+.gpu-box:hover { box-shadow: 0 0 16px rgba(255,255,255,0.1); }
+.gpu-box .gpu-label { font-size: 9px; color: rgba(255,255,255,0.4); font-family: var(--font-mono); letter-spacing: 0.5px; margin-bottom: 2px; }
+.gpu-box .gpu-id { font-size: 14px; font-weight: 700; color: rgba(255,255,255,0.75); font-family: var(--font-mono); }
+
+.nvlink-label {
+  margin-top: 8px; display: flex; justify-content: center;
+  font-size: 11px; letter-spacing: 1px; font-family: var(--font-mono);
+}
+
+/* DP arrow between replicas */
+.dp-arrow-row {
+  margin-left: 100px; margin-top: 4px; margin-bottom: 8px;
+  padding-left: 24px; font-size: 11px; letter-spacing: 1px;
+  font-family: var(--font-mono);
+}
+
+/* Comm summary cards */
+.comm-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 32px; }
+.comm-card { border-radius: 10px; padding: 16px 18px; border: 1px solid; }
+.comm-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.comm-card-icon { font-size: 18px; }
+.comm-card-title { font-size: 12px; font-weight: 700; letter-spacing: 0.5px; }
+.comm-row { display: flex; gap: 8px; margin-bottom: 5px; font-size: 10px; }
+.comm-row-key { color: rgba(255,255,255,0.3); width: 34px; flex-shrink: 0; }
+.comm-row-val { color: rgba(255,255,255,0.65); }
+
+/* Insight box */
+.insight-box {
+  margin-top: 20px; padding: 14px 18px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px; font-size: 11px; color: rgba(255,255,255,0.45);
+  line-height: 1.7;
+}
+.insight-key { color: #4a9eff; font-weight: 700; }
+
+/* FOOTER */
+.footer {
+  padding: 60px 0 40px; border-top: 1px solid var(--border); text-align: center;
+}
+.footer-logo { width: 36px; height: 36px; object-fit: contain; margin-bottom: 10px; }
+.footer-brand {
+  font-size: 1.2rem; font-weight: 700; margin-bottom: 8px;
+  background: linear-gradient(135deg, #ff9500, #00e5ff);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  display: inline-block;
+}
+.footer p { font-size: 0.82rem; color: var(--fg-muted); }
+.footer-muted { font-size: 0.75rem !important; color: rgba(163,163,163,0.4) !important; margin-top: 12px; }
+.footer-links { display: flex; gap: 20px; justify-content: center; margin-top: 16px; }
+.footer-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; }
+.footer-links a:hover { color: var(--primary); }
+
+/* Fade-in animation */
+.fade-in { opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease, transform 0.7s ease; }
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+
+/* Responsive */
+@media (max-width: 900px) {
+  .comm-grid { grid-template-columns: 1fr; }
+  .stage-headers, .pp-arrows { display: none; }
+  .replica-row { flex-direction: column; gap: 12px; }
+  .replica-label { width: auto; flex-direction: row; gap: 12px; align-items: center; padding-bottom: 8px; }
+  .stage-box { width: 100%; margin-right: 0; margin-bottom: 8px; }
+  .gpu-grid { grid-template-columns: repeat(4, 1fr); }
+  #app { padding: 0 8px; }
+  .filter-row { gap: 6px; }
+}
+@media (max-width: 600px) {
+  .hero h1 { font-size: 1.8rem; }
+  .hero-stats { gap: 16px; }
+  .nav-links { display: none; }
+}
+
+::selection { background: rgba(255,149,0,0.3); color: #fff; }
+</style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <img src="vizlogo.png" alt="Vizuara">
+      <span>Vizuara</span>
+      <span class="brand-tag">5D Parallelism</span>
+    </div>
+    <div class="nav-links">
+      <a href="index.html">All Guides</a>
+      <a href="data-parallelism.html">Data Parallel</a>
+      <a href="tp-vs-zero-inference.html">Tensor Parallel</a>
+      <a href="https://github.com/VizuaraAI/5d-parallelism-visual-guide" target="_blank">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge"><span class="pulse-dot"></span> Megatron-LM &middot; 24 GPUs</div>
+    <h1><span class="gradient-text">3D Parallelism</span></h1>
+    <p class="hero-subtitle">Interactive visualization of how Tensor, Pipeline, and Data parallelism combine across 24 GPUs &mdash; hover to explore communication groups.</p>
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <div class="hero-stat-val">TP=4</div>
+        <div class="hero-stat-desc">Tensor Parallel</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-val">PP=3</div>
+        <div class="hero-stat-desc">Pipeline Stages</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-val">DP=2</div>
+        <div class="hero-stat-desc">Data Replicas</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-val">24</div>
+        <div class="hero-stat-desc">Total GPUs</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MAIN INTERACTIVE SECTION -->
+<section class="section" id="interactive">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Interactive Explorer</div>
+      <h2><span class="gradient-text">GPU Communication Map</span></h2>
+      <p class="section-subtitle">Click a parallelism type below, then hover over any GPU to see its communication group light up.</p>
+    </div>
+
+    <div id="app" class="fade-in"></div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <img src="vizlogo.png" alt="Vizuara" class="footer-logo">
+    <div class="footer-brand">Vizuara 5D Parallelism Workshop</div>
+    <p>Interactive visual guides for distributed GPU training</p>
+    <div class="footer-links">
+      <a href="index.html">All Guides</a>
+      <a href="https://github.com/VizuaraAI/5d-parallelism-visual-guide" target="_blank">GitHub</a>
+      <a href="https://vizuara.ai" target="_blank">Vizuara</a>
+    </div>
+    <p class="footer-muted">Built with pure HTML/CSS/JS &mdash; no frameworks, no dependencies</p>
+  </div>
+</footer>
+
+<script>
+// ============================================================
+// 3D PARALLELISM INTERACTIVE APP — Vanilla JS
+// ============================================================
+
+const GPU_DATA = {
+  replicas: [
+    {
+      stages: [
+        { label: "Stage 0\nLayers 0-N/3", gpus: [0, 1, 2, 3] },
+        { label: "Stage 1\nLayers N/3-2N/3", gpus: [4, 5, 6, 7] },
+        { label: "Stage 2\nLayers 2N/3-N", gpus: [8, 9, 10, 11] },
+      ]
+    },
+    {
+      stages: [
+        { label: "Stage 0\nLayers 0-N/3", gpus: [12, 13, 14, 15] },
+        { label: "Stage 1\nLayers N/3-2N/3", gpus: [16, 17, 18, 19] },
+        { label: "Stage 2\nLayers 2N/3-N", gpus: [20, 21, 22, 23] },
+      ]
+    }
+  ]
+};
+
+const COMM_TYPES = {
+  tp: { color: "#00e5ff", label: "Tensor Parallel (NVLink)", desc: "All-Reduce per layer - intra-node, ~600GB/s" },
+  pp: { color: "#ff9500", label: "Pipeline Parallel (InfiniBand)", desc: "Point-to-point activations - inter-node" },
+  dp: { color: "#bf5af2", label: "Data Parallel (InfiniBand)", desc: "All-Reduce gradients - inter-node, once per step" },
+};
+
+const STAGE_ACCENT = ["#00e5ff", "#ff9500", "#39d353"];
+
+let highlight = null;
+let hoveredGpu = null;
+
+function findGpu(id) {
+  for (let ri = 0; ri < GPU_DATA.replicas.length; ri++) {
+    for (let si = 0; si < GPU_DATA.replicas[ri].stages.length; si++) {
+      if (GPU_DATA.replicas[ri].stages[si].gpus.includes(id)) return [ri, si];
+    }
+  }
+  return [-1, -1];
+}
+
+function getGpuHighlight(gpuId, ri, si) {
+  if (!highlight || hoveredGpu === null) return false;
+
+  if (highlight === "tp") {
+    const [hr, hs] = findGpu(hoveredGpu);
+    return hr === ri && hs === si;
+  }
+  if (highlight === "pp") {
+    const [hr, hs] = findGpu(hoveredGpu);
+    const hti = GPU_DATA.replicas[hr].stages[hs].gpus.indexOf(hoveredGpu);
+    const ti = GPU_DATA.replicas[ri].stages[si].gpus.indexOf(gpuId);
+    return hr === ri && ti === hti;
+  }
+  if (highlight === "dp") {
+    const [hr, hs] = findGpu(hoveredGpu);
+    const hti = GPU_DATA.replicas[hr].stages[hs].gpus.indexOf(hoveredGpu);
+    const ti = GPU_DATA.replicas[ri].stages[si].gpus.indexOf(gpuId);
+    return hs === si && ti === hti;
+  }
+  return false;
+}
+
+function render() {
+  const app = document.getElementById('app');
+
+  // Build filter row
+  let filterHtml = '<div class="filter-row">';
+  for (const [key, val] of Object.entries(COMM_TYPES)) {
+    const isActive = highlight === key;
+    const cls = isActive ? `filter-btn active-${key}` : 'filter-btn';
+    filterHtml += `<button class="${cls}" data-filter="${key}">
+      <span class="filter-dot filter-dot-${key}"></span>
+      ${val.label}
+    </button>`;
+  }
+  // Hint
+  if (highlight) {
+    const c = COMM_TYPES[highlight].color;
+    let hintText = '';
+    if (highlight === 'tp') hintText = 'Hover over a GPU to see its TP group (same box)';
+    if (highlight === 'pp') hintText = 'Hover to see its pipeline chain (same column across stages)';
+    if (highlight === 'dp') hintText = 'Hover to see its DP counterpart in the other replica';
+    filterHtml += `<div class="hint-box" style="color:${c}; background:${c}11; border:1px dashed ${c}44;">${hintText}</div>`;
+  }
+  filterHtml += '</div>';
+
+  // Stage headers
+  let headersHtml = '<div class="stage-headers">';
+  const stageNames = ["Stage 0", "Stage 1", "Stage 2"];
+  const layerNames = ["Layers 0 &rarr; N/3", "Layers N/3 &rarr; 2N/3", "Layers 2N/3 &rarr; N"];
+  for (let i = 0; i < 3; i++) {
+    headersHtml += `<div class="stage-header">
+      <div class="main-label" style="color:${STAGE_ACCENT[i]}">${stageNames[i]}</div>
+      <div class="main-sublabel">${layerNames[i]}</div>
+    </div>`;
+  }
+  headersHtml += '</div>';
+
+  // PP arrows
+  let ppArrowsHtml = '<div class="pp-arrows">';
+  for (let i = 0; i < 2; i++) {
+    ppArrowsHtml += `<div class="pp-arrow-seg"><div class="pp-arrow-line"></div><div class="pp-arrow-tip">&rarr;</div><div class="pp-arrow-gap"></div></div>`;
+  }
+  ppArrowsHtml += '</div>';
+
+  // Replicas
+  let replicasHtml = '';
+  for (let ri = 0; ri < GPU_DATA.replicas.length; ri++) {
+    const replica = GPU_DATA.replicas[ri];
+    const nodeLabel = ri === 0 ? "Node 0-1" : "Node 2-3";
+
+    replicasHtml += '<div class="replica-row">';
+
+    // Label
+    replicasHtml += `<div class="replica-label">
+      <div class="replica-label-tag" style="color:#bf5af2">DP Replica</div>
+      <div class="replica-label-num" style="color:#bf5af2">${ri}</div>
+      <div class="replica-label-node">${nodeLabel}</div>
+    </div>`;
+
+    // Stages
+    for (let si = 0; si < replica.stages.length; si++) {
+      const stage = replica.stages[si];
+      const accent = STAGE_ACCENT[si];
+
+      replicasHtml += `<div class="stage-box" style="background:${accent}08; border-color:${accent}22;">
+        <div class="stage-tp-label">TP group &larr; All-Reduce</div>
+        <div class="gpu-grid">`;
+
+      for (const gid of stage.gpus) {
+        const isHov = hoveredGpu === gid;
+        const isHl = getGpuHighlight(gid, ri, si);
+        const active = isHov || isHl;
+        const borderColor = active ? accent : 'rgba(255,255,255,0.12)';
+        const bgColor = active ? `${accent}22` : 'rgba(255,255,255,0.04)';
+        const idColor = active ? accent : 'rgba(255,255,255,0.75)';
+        const shadow = isHov ? `box-shadow:0 0 16px ${accent}55;` : '';
+
+        replicasHtml += `<div class="gpu-box" data-gpu="${gid}" style="border-color:${borderColor}; background:${bgColor}; ${shadow}">
+          <div class="gpu-label">GPU</div>
+          <div class="gpu-id" style="color:${idColor}">${gid}</div>
+        </div>`;
+      }
+
+      replicasHtml += `</div>
+        <div class="nvlink-label" style="color:${COMM_TYPES.tp.color}88">&larr;&mdash;&mdash;&mdash; NVLink &mdash;&mdash;&mdash;&rarr;</div>
+      </div>`;
+    }
+
+    replicasHtml += '</div>';
+  }
+
+  // DP arrow
+  let dpArrowHtml = `<div class="dp-arrow-row" style="color:${COMM_TYPES.dp.color}; opacity:0.7;">
+    &UpDownArrow; DP All-Reduce (InfiniBand) &mdash; gradient sync once per step
+  </div>`;
+
+  // Communication summary cards
+  const commData = [
+    {
+      type: "tp", title: "Tensor Parallel", icon: "&#8862;",
+      rows: [
+        ["What", "Weight matrix shards"],
+        ["When", "Every forward + backward layer"],
+        ["Where", "Intra-box (NVLink)"],
+        ["Cost", "2x All-Reduce / layer"],
+        ["BW", "~600 GB/s"],
+      ]
+    },
+    {
+      type: "pp", title: "Pipeline Parallel", icon: "&rarr;",
+      rows: [
+        ["What", "Activations (fwd) / Gradients (bwd)"],
+        ["When", "Between each pipeline stage"],
+        ["Where", "Stage &rarr; Stage (IB)"],
+        ["Cost", "P2P send/recv"],
+        ["BW", "~200 Gb/s"],
+      ]
+    },
+    {
+      type: "dp", title: "Data Parallel", icon: "&#8661;",
+      rows: [
+        ["What", "Full gradient tensors"],
+        ["When", "Once per optimizer step"],
+        ["Where", "Replica 0 &harr; Replica 1 (IB)"],
+        ["Cost", "All-Reduce ~O(P)"],
+        ["BW", "~200 Gb/s"],
+      ]
+    },
+  ];
+
+  let commHtml = '<div class="comm-grid">';
+  for (const c of commData) {
+    const col = COMM_TYPES[c.type].color;
+    commHtml += `<div class="comm-card" style="background:${col}0a; border-color:${col}33;">
+      <div class="comm-card-header">
+        <span class="comm-card-icon">${c.icon}</span>
+        <span class="comm-card-title" style="color:${col}">${c.title}</span>
+      </div>`;
+    for (const [k, v] of c.rows) {
+      commHtml += `<div class="comm-row"><span class="comm-row-key">${k}</span><span class="comm-row-val">${v}</span></div>`;
+    }
+    commHtml += '</div>';
+  }
+  commHtml += '</div>';
+
+  // Insight box
+  let insightHtml = `<div class="insight-box">
+    <span class="insight-key">Key insight: </span>
+    Each communication type is deliberately matched to the network it runs on. TP stays on NVLink (fast, low-latency) inside the node.
+    PP and DP cross nodes via InfiniBand &mdash; but PP sends small activations P2P, while DP does a bulk All-Reduce only once per step, overlapped with the backward pass.
+  </div>`;
+
+  app.innerHTML = filterHtml + headersHtml + ppArrowsHtml + replicasHtml + dpArrowHtml + commHtml + insightHtml;
+
+  // Attach event listeners
+  document.querySelectorAll('[data-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.filter;
+      highlight = (highlight === key) ? null : key;
+      hoveredGpu = null;
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-gpu]').forEach(box => {
+    box.addEventListener('mouseenter', () => {
+      hoveredGpu = parseInt(box.dataset.gpu);
+      render();
+    });
+    box.addEventListener('mouseleave', () => {
+      hoveredGpu = null;
+      render();
+    });
+  });
+}
+
+// Initial render
+render();
+
+// Scroll reveal
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); } });
+}, { threshold: 0.08 });
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>
