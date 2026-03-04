@@ -1,0 +1,1783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Advanced Pipeline Schedules — Visual Deep Dive</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* ========================================
+   CSS Variables — design system
+   ======================================== */
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #121212;
+  --bg-card-hover: #1a1a1a;
+  --bg-section-alt: #0f0f0f;
+  --fg: #f2f2f2;
+  --fg-muted: #a3a3a3;
+  --border: #262626;
+  --border-light: #333;
+  --primary: #00d46a;
+  --primary-dim: #00a854;
+  --secondary: #00c8e6;
+  --accent: #a78bfa;
+  --red: #FF7043;
+  --orange: #FF9800;
+  --yellow: #FFCA28;
+  --blue: #42A5F5;
+  --green: #66BB6A;
+  --pink: #F06292;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --max-w: 1280px;
+  --glow-opacity: 0.15;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: var(--font-mono); }
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ========================================
+   NAVBAR
+   ======================================== */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,10,0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.1rem; }
+.brand-icon { font-size: 1.3rem; }
+.brand-tag {
+  font-size: 0.7rem; background: var(--primary); color: #000;
+  padding: 2px 8px; border-radius: 9999px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+/* ========================================
+   HERO
+   ======================================== */
+.hero {
+  position: relative; min-height: 100vh; display: flex;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 120px 24px 80px; overflow: hidden;
+}
+.hero-bg-orbs { position: absolute; inset: 0; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.12; }
+.orb-green { width: 500px; height: 500px; background: var(--primary); top: 10%; left: 10%; animation: float-slow 20s ease-in-out infinite; }
+.orb-cyan { width: 400px; height: 400px; background: var(--secondary); top: 40%; right: 5%; animation: float-slow 25s ease-in-out infinite reverse; }
+.orb-purple { width: 350px; height: 350px; background: var(--accent); bottom: 10%; left: 30%; animation: float-slow 22s ease-in-out infinite; }
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(30px, -20px); }
+  50% { transform: translate(-20px, 30px); }
+  75% { transform: translate(20px, 20px); }
+}
+.hero-content { position: relative; z-index: 1; max-width: 800px; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3);
+  border-radius: 9999px; padding: 6px 18px; font-size: 0.82rem;
+  font-weight: 500; color: var(--primary); margin-bottom: 24px;
+}
+.pulse-dot { width: 8px; height: 8px; background: var(--primary); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }
+.hero h1 { font-family: var(--font-serif); font-style: italic; font-size: clamp(2.5rem, 7vw, 4.5rem); font-weight: 400; line-height: 1.1; margin-bottom: 20px; }
+.hero-subtitle { font-size: 1.15rem; color: var(--fg-muted); line-height: 1.7; max-width: 600px; margin: 0 auto 40px; }
+.hero-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.hero-stat-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 12px; transition: border-color 0.3s, transform 0.2s;
+}
+.hero-stat-card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-2px); }
+.stat-number {
+  font-size: 1.8rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.stat-label { font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* ========================================
+   SECTIONS
+   ======================================== */
+.section { padding: 100px 0; position: relative; }
+.section-dark { background: var(--bg-section-alt); }
+.section-heading { text-align: center; margin-bottom: 60px; }
+.section-label {
+  display: inline-block; font-size: 0.78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.5px; color: var(--primary); margin-bottom: 12px;
+}
+.section-heading h2 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; line-height: 1.2; margin-bottom: 16px;
+}
+.section-subtitle { color: var(--fg-muted); font-size: 1.05rem; max-width: 650px; margin: 0 auto; }
+
+/* ========================================
+   CARDS
+   ======================================== */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; transition: border-color 0.3s, transform 0.2s;
+}
+.card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-3px); }
+.card h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; }
+.card p, .card li { font-size: 0.88rem; color: var(--fg-muted); line-height: 1.6; }
+.card code {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-size: 0.82rem; color: var(--secondary);
+}
+.card-icon { font-size: 2rem; margin-bottom: 12px; display: block; }
+
+/* ========================================
+   GRIDS
+   ======================================== */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 900px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+
+/* ========================================
+   EQUATION BOX
+   ======================================== */
+.equation-box {
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 24px; margin: 16px 0; text-align: center;
+  font-family: var(--font-mono); font-size: 0.92rem; color: var(--secondary);
+  line-height: 2;
+}
+.equation-box .eq-label {
+  display: block; font-family: var(--font-sans); font-size: 0.72rem;
+  color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 8px; font-weight: 600;
+}
+.equation-box .eq-highlight { color: var(--primary); font-weight: 600; }
+
+/* ========================================
+   CALLOUTS
+   ======================================== */
+.callout {
+  border-radius: 10px; padding: 16px 20px; font-size: 0.85rem; line-height: 1.6; margin: 16px 0;
+}
+.callout-info { background: rgba(66,165,245,0.08); border: 1px solid rgba(66,165,245,0.2); color: var(--fg-muted); }
+.callout-green { background: rgba(0,212,106,0.08); border: 1px solid rgba(0,212,106,0.2); color: var(--fg-muted); }
+.callout-warn { background: rgba(255,112,67,0.08); border: 1px solid rgba(255,112,67,0.2); color: var(--fg-muted); }
+.callout-purple { background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); color: var(--fg-muted); }
+.callout strong { color: var(--fg); }
+.callout code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; color: var(--secondary); }
+
+/* ========================================
+   PIPELINE VISUAL
+   ======================================== */
+.pipeline-visual {
+  display: flex; flex-direction: column; gap: 2px;
+  background: rgba(0,0,0,0.2); border-radius: 12px; padding: 20px; margin: 16px 0;
+  overflow-x: auto;
+}
+.pipe-row { display: flex; align-items: center; gap: 2px; min-width: max-content; }
+.pipe-label {
+  width: 90px; min-width: 90px; font-size: 0.72rem; font-weight: 600;
+  color: var(--fg-muted); text-align: right; padding-right: 8px;
+}
+.pipe-block {
+  padding: 6px 4px; border-radius: 4px; font-size: 0.62rem; font-weight: 600;
+  text-align: center; min-width: 38px; color: #fff; transition: transform 0.2s;
+}
+.pipe-block:hover { transform: scale(1.1); z-index: 10; position: relative; }
+.pipe-fwd { background: #1565C0; }
+.pipe-bwd { background: #42A5F5; }
+.pipe-bwd-b { background: #1E88E5; }
+.pipe-bwd-w { background: #7E57C2; }
+.pipe-idle { background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.1); color: rgba(255,255,255,0.15); }
+.pipe-fwd-v2 { background: #00897B; }
+.pipe-bwd-v2 { background: #4DB6AC; }
+
+/* ========================================
+   COMPARISON TABLE
+   ======================================== */
+.comp-table-wrap {
+  overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); margin: 20px 0;
+}
+.comp-table {
+  width: 100%; border-collapse: collapse; font-size: 0.85rem;
+}
+.comp-table thead { background: #1a1a2e; }
+.comp-table th {
+  padding: 14px 16px; text-align: left; font-size: 0.75rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px; color: var(--fg-muted);
+  border-bottom: 1px solid var(--border);
+}
+.comp-table td {
+  padding: 12px 16px; border-bottom: 1px solid rgba(38,38,38,0.5);
+  color: var(--fg-muted); font-size: 0.82rem;
+}
+.comp-table td code {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-size: 0.78rem; color: var(--secondary);
+}
+.val-good { color: var(--primary) !important; font-weight: 600; }
+.val-great { color: var(--secondary) !important; font-weight: 600; }
+.val-bad { color: var(--red) !important; font-weight: 600; }
+.val-ok { color: var(--orange) !important; font-weight: 600; }
+
+/* ========================================
+   INTERACTIVE CONTROLS
+   ======================================== */
+.controls-row {
+  display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;
+  align-items: center; justify-content: center;
+}
+.control-group { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.control-label { font-size: 0.72rem; color: var(--fg-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+.control-value {
+  font-family: var(--font-mono); font-size: 1.4rem; font-weight: 700;
+  color: var(--primary);
+}
+
+input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  width: 140px; height: 6px; border-radius: 3px;
+  background: var(--border); outline: none; cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--primary); cursor: pointer;
+  border: 2px solid var(--bg);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--primary); cursor: pointer;
+  border: 2px solid var(--bg);
+}
+
+.strategy-selector {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; justify-content: center;
+}
+.strategy-btn {
+  padding: 8px 18px; border-radius: 9999px; font-size: 0.82rem; font-weight: 500;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--fg-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.strategy-btn:hover { border-color: rgba(0,212,106,0.3); color: var(--fg); }
+.strategy-btn.active {
+  background: rgba(0,212,106,0.1); border-color: var(--primary); color: var(--primary); font-weight: 600;
+}
+
+/* ========================================
+   BUBBLE METER
+   ======================================== */
+.bubble-meter {
+  max-width: 500px; margin: 24px auto; padding: 24px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+}
+.bubble-bar-outer {
+  height: 40px; background: rgba(255,255,255,0.05); border-radius: 8px;
+  overflow: hidden; position: relative; margin: 12px 0;
+}
+.bubble-bar-fill {
+  height: 100%; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  font-size: 0.82rem; font-weight: 700; color: #fff;
+  transition: width 0.5s ease, background 0.5s ease;
+}
+.bubble-labels { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--fg-muted); }
+
+/* ========================================
+   TIMELINE / SCHEDULE VIS
+   ======================================== */
+.schedule-vis {
+  background: rgba(0,0,0,0.25); border-radius: 12px; padding: 20px;
+  border: 1px solid var(--border); margin: 20px 0; overflow-x: auto;
+}
+.schedule-title {
+  font-size: 0.88rem; font-weight: 600; margin-bottom: 16px;
+  display: flex; align-items: center; gap: 8px;
+}
+.schedule-badge {
+  font-size: 0.65rem; padding: 2px 8px; border-radius: 9999px;
+  font-weight: 600; text-transform: uppercase;
+}
+.badge-green { background: rgba(0,212,106,0.15); color: var(--primary); border: 1px solid rgba(0,212,106,0.3); }
+.badge-blue { background: rgba(66,165,245,0.15); color: var(--blue); border: 1px solid rgba(66,165,245,0.3); }
+.badge-purple { background: rgba(167,139,250,0.15); color: var(--accent); border: 1px solid rgba(167,139,250,0.3); }
+.badge-cyan { background: rgba(0,200,230,0.15); color: var(--secondary); border: 1px solid rgba(0,200,230,0.3); }
+
+/* ========================================
+   LAYER MAP
+   ======================================== */
+.layer-map {
+  display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+  margin: 24px 0;
+}
+.gpu-col {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px; min-width: 120px; text-align: center;
+}
+.gpu-col-header {
+  font-size: 0.78rem; font-weight: 600; color: var(--fg); margin-bottom: 12px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.layer-chip {
+  padding: 6px 12px; border-radius: 6px; font-size: 0.72rem; font-weight: 600;
+  margin: 4px 0; text-align: center;
+}
+.chunk-label {
+  font-size: 0.62rem; font-weight: 500; color: var(--fg-muted);
+  margin-top: 8px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+/* ========================================
+   B/W DECOMPOSITION VISUAL
+   ======================================== */
+.bw-visual {
+  display: flex; flex-direction: column; gap: 16px; margin: 20px 0;
+}
+.bw-row {
+  display: flex; align-items: center; gap: 12px;
+}
+.bw-label {
+  width: 140px; min-width: 140px; font-size: 0.78rem; font-weight: 600;
+  color: var(--fg-muted);
+}
+.bw-blocks {
+  display: flex; gap: 4px; align-items: center;
+}
+.bw-block {
+  padding: 10px 16px; border-radius: 8px; font-size: 0.78rem; font-weight: 600;
+  text-align: center; min-width: 70px;
+}
+.bw-fwd { background: rgba(21,101,192,0.3); border: 1px solid rgba(21,101,192,0.5); color: #90CAF9; }
+.bw-b { background: rgba(30,136,229,0.3); border: 1px solid rgba(30,136,229,0.5); color: #64B5F6; }
+.bw-w { background: rgba(126,87,194,0.3); border: 1px solid rgba(126,87,194,0.5); color: #B39DDB; }
+.bw-arrow { color: var(--fg-muted); font-size: 1rem; }
+
+/* ========================================
+   DUALPIPE VISUAL
+   ======================================== */
+.dualpipe-container {
+  position: relative; padding: 20px;
+  background: rgba(0,0,0,0.2); border-radius: 12px;
+  border: 1px solid var(--border); margin: 20px 0;
+}
+.stream-label {
+  font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 1px; margin-bottom: 8px;
+}
+.stream-fwd { color: var(--primary); }
+.stream-bwd { color: var(--secondary); }
+
+/* ========================================
+   CHART
+   ======================================== */
+.chart-container {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px; margin: 24px 0;
+}
+.chart-container h4 { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.chart-container .chart-subtitle { font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 20px; }
+.bar-chart {
+  display: flex; align-items: flex-end; gap: 12px; height: 280px;
+  padding: 0 0 30px; position: relative;
+}
+.bar-group {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-end; height: 100%; position: relative;
+}
+.bar-fill {
+  width: 100%; max-width: 60px; border-radius: 4px 4px 0 0;
+  transition: height 0.5s ease; display: flex; align-items: flex-end;
+  justify-content: center; padding-bottom: 8px;
+  font-size: 0.68rem; font-weight: 700; color: #fff;
+}
+.bar-x-label {
+  position: absolute; bottom: 0; font-size: 0.68rem;
+  color: var(--fg-muted); font-family: var(--font-mono);
+  white-space: nowrap; text-align: center;
+}
+
+/* ========================================
+   FOOTER
+   ======================================== */
+.footer {
+  border-top: 1px solid var(--border); padding: 40px 0; text-align: center;
+}
+.footer-inner { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.footer-brand { font-size: 1.1rem; font-weight: 600; }
+.footer p { font-size: 0.85rem; color: var(--fg-muted); }
+.footer-muted { font-size: 0.78rem !important; color: rgba(163,163,163,0.5) !important; }
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+.fade-in {
+  opacity: 0; transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+.stagger-1 { transition-delay: 0.1s; }
+.stagger-2 { transition-delay: 0.2s; }
+.stagger-3 { transition-delay: 0.3s; }
+.stagger-4 { transition-delay: 0.4s; }
+
+/* ========================================
+   TAKEAWAY CARDS
+   ======================================== */
+.takeaway-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; position: relative; overflow: hidden;
+}
+.takeaway-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+}
+.takeaway-num {
+  font-family: var(--font-mono); font-size: 2rem; font-weight: 700;
+  color: rgba(0,212,106,0.15); position: absolute; top: 12px; right: 16px;
+}
+.takeaway-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+.takeaway-card p { font-size: 0.85rem; color: var(--fg-muted); line-height: 1.6; }
+
+/* Number highlights */
+.num-green { color: var(--primary); font-weight: 700; font-family: var(--font-mono); }
+.num-blue { color: var(--blue); font-weight: 700; font-family: var(--font-mono); }
+.num-orange { color: var(--orange); font-weight: 700; font-family: var(--font-mono); }
+.num-red { color: var(--red); font-weight: 700; font-family: var(--font-mono); }
+.num-cyan { color: var(--secondary); font-weight: 700; font-family: var(--font-mono); }
+.num-purple { color: var(--accent); font-weight: 700; font-family: var(--font-mono); }
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+@media (max-width: 768px) {
+  .hero-cards { grid-template-columns: repeat(2, 1fr); }
+  .nav-links { display: none; }
+  .hero h1 { font-size: 2.2rem; }
+  .section { padding: 60px 0; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .controls-row { flex-direction: column; }
+  .bw-row { flex-direction: column; }
+  .bw-label { width: auto; text-align: center; }
+  .layer-map { flex-direction: column; align-items: center; }
+}
+
+::selection { background: rgba(0,212,106,0.3); color: #fff; }
+
+/* Animated highlight */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 5px rgba(0,212,106,0.2); }
+  50% { box-shadow: 0 0 20px rgba(0,212,106,0.4); }
+}
+.glow-highlight { animation: glow-pulse 2s ease-in-out infinite; }
+
+/* Flow arrow animation */
+@keyframes flow-right {
+  0% { transform: translateX(-5px); opacity: 0.3; }
+  50% { transform: translateX(5px); opacity: 1; }
+  100% { transform: translateX(-5px); opacity: 0.3; }
+}
+.flow-arrow { animation: flow-right 1.5s ease-in-out infinite; display: inline-block; }
+</style>
+</head>
+<body>
+
+<!-- ========================================
+     NAVBAR
+     ======================================== -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <span class="brand-icon">&#9881;</span>
+      <span>ShallowSpeed</span>
+      <span class="brand-tag">Pipeline</span>
+    </div>
+    <div class="nav-links">
+      <a href="#recap">1F1B Recap</a>
+      <a href="#interleaved">Interleaved</a>
+      <a href="#calculator">Calculator</a>
+      <a href="#scheduling">Scheduling</a>
+      <a href="#zero-bubble">Zero Bubble</a>
+      <a href="#dualpipe">DualPipe</a>
+      <a href="#comparison">Compare</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ========================================
+     HERO
+     ======================================== -->
+<section class="hero">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-green"></div>
+    <div class="orb orb-cyan"></div>
+    <div class="orb orb-purple"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="pulse-dot"></span>
+      Pipeline Parallelism - Advanced Schedules
+    </div>
+    <h1><span class="gradient-text">Beyond 1F1B</span></h1>
+    <p class="hero-subtitle">
+      From interleaved stages that shrink the bubble by a factor of <code>v</code>,
+      to zero-bubble schedules that decompose backward passes into B and W operations,
+      to DualPipe's dual-stream design used in DeepSeek-V3. The frontier of pipeline parallelism.
+    </p>
+    <div class="hero-cards">
+      <div class="hero-stat-card fade-in stagger-1">
+        <div class="stat-number">3</div>
+        <div class="stat-label">Advanced Schedules</div>
+      </div>
+      <div class="hero-stat-card fade-in stagger-2">
+        <div class="stat-number">~0%</div>
+        <div class="stat-label">Bubble (Zero Bubble)</div>
+      </div>
+      <div class="hero-stat-card fade-in stagger-3">
+        <div class="stat-number">1/v</div>
+        <div class="stat-label">Bubble Reduction Factor</div>
+      </div>
+      <div class="hero-stat-card fade-in stagger-4">
+        <div class="stat-number">671B</div>
+        <div class="stat-label">DeepSeek-V3 Params</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     SECTION 1: 1F1B RECAP
+     ======================================== -->
+<section id="recap" class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">The Starting Point</div>
+      <h2><span class="gradient-text">Where 1F1B Left Us</span></h2>
+      <p class="section-subtitle">
+        1F1B improved memory by limiting in-flight micro-batches, but the pipeline bubble remained stubbornly large.
+      </p>
+    </div>
+
+    <div class="grid-3 fade-in">
+      <div class="card">
+        <span class="card-icon">&#128200;</span>
+        <h3>1F1B Bubble</h3>
+        <p>The bubble fraction with standard 1F1B is <code>(p-1)/m</code> where <code>p</code> = number of pipeline stages and <code>m</code> = number of micro-batches.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">&#128268;</span>
+        <h3>Memory Win</h3>
+        <p>1F1B limits peak activations to just <code>p</code> micro-batches in flight (vs. <code>m</code> in GPipe), but the <strong>idle time</strong> stays the same.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">&#10067;</span>
+        <h3>Can We Do Better?</h3>
+        <p>Yes! By slicing the model differently across GPUs and being clever about backward pass decomposition, we can push the bubble toward zero.</p>
+      </div>
+    </div>
+
+    <div class="equation-box fade-in" style="margin-top: 32px;">
+      <span class="eq-label">Standard 1F1B Bubble Fraction</span>
+      r<sub>bubble</sub> = <span class="eq-highlight">(p - 1)</span> / m
+      <br>
+      <span style="font-size: 0.78rem; color: var(--fg-muted);">For p=4, m=8: bubble = 3/8 = <span class="eq-highlight">37.5%</span></span>
+    </div>
+
+    <div class="callout callout-info fade-in" style="margin-top: 16px;">
+      <strong>The challenge:</strong> Adding more micro-batches <code>m</code> reduces the bubble but increases memory.
+      Is there another knob we can turn? Enter <strong>interleaved stages</strong>.
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     SECTION 2: INTERLEAVED STAGES
+     ======================================== -->
+<section id="interleaved" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Schedule #1</div>
+      <h2><span class="gradient-text">Interleaved Stages</span></h2>
+      <p class="section-subtitle">
+        Instead of assigning consecutive layers to each GPU, spread them out.
+        Each GPU holds <code>v</code> non-contiguous chunks, creating a "looping pipeline."
+      </p>
+    </div>
+
+    <!-- Standard vs Interleaved layer assignment -->
+    <h3 class="fade-in" style="text-align: center; margin-bottom: 24px; font-size: 1.1rem;">
+      How layers are assigned to GPUs
+    </h3>
+
+    <div class="grid-2 fade-in">
+      <!-- Standard -->
+      <div>
+        <div class="schedule-vis">
+          <div class="schedule-title">
+            Standard Assignment <span class="schedule-badge badge-blue">v = 1</span>
+          </div>
+          <div class="layer-map" id="standard-layer-map">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </div>
+      <!-- Interleaved -->
+      <div>
+        <div class="schedule-vis">
+          <div class="schedule-title">
+            Interleaved Assignment <span class="schedule-badge badge-green">v = 2</span>
+          </div>
+          <div class="layer-map" id="interleaved-layer-map">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-green fade-in" style="margin-top: 20px;">
+      <strong>The "looping" idea:</strong> With interleaved stages, a micro-batch visits each GPU <strong>multiple times</strong>.
+      In a standard setup with <code>v=1</code>, micro-batch goes GPU0 &rarr; GPU1 &rarr; GPU2 &rarr; GPU3.
+      With <code>v=2</code>, it goes GPU0 &rarr; GPU1 &rarr; GPU2 &rarr; GPU3 &rarr; GPU0 &rarr; GPU1 &rarr; GPU2 &rarr; GPU3.
+      Each pass through a GPU is faster (fewer layers), enabling better interleaving.
+    </div>
+
+    <!-- Why it helps -->
+    <div class="grid-2 fade-in" style="margin-top: 32px;">
+      <div class="card">
+        <h3>Why does this reduce the bubble?</h3>
+        <p>Each forward and backward pass on a GPU takes <code>1/v</code> the time of the standard case. This means the "warmup" and "cooldown" phases of the pipeline are <code>v</code> times shorter, directly shrinking the bubble.</p>
+        <div class="equation-box" style="margin-top: 16px;">
+          <span class="eq-label">Interleaved Bubble Time</span>
+          t<sub>pb</sub> = (p - 1) &times; (t<sub>f</sub> + t<sub>b</sub>) / <span class="eq-highlight">v</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3>The trade-off: more communication</h3>
+        <p>Since each micro-batch visits every GPU <code>v</code> times instead of once, the number of point-to-point communications increases by a factor of <code>v</code>.</p>
+        <div style="margin-top: 16px; padding: 12px; background: rgba(255,112,67,0.08); border-radius: 8px; border: 1px solid rgba(255,112,67,0.2);">
+          <span style="font-size: 0.82rem; color: var(--fg-muted);">
+            <strong style="color: var(--red);">Communication overhead:</strong>
+            Standard = <code>2(p-1)</code> sends per micro-batch<br>
+            Interleaved = <code>2v(p-1)</code> sends per micro-batch
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interleaved pipeline diagram -->
+    <h3 class="fade-in" style="text-align: center; margin: 40px 0 16px; font-size: 1.1rem;">
+      Interleaved 1F1B Schedule (p=4, v=2)
+    </h3>
+    <div class="pipeline-visual fade-in" id="interleaved-pipeline">
+      <!-- Filled by JS -->
+    </div>
+    <div style="text-align: center; margin-top: 8px;">
+      <span style="font-size: 0.72rem; color: var(--fg-muted);">
+        Dark blue = chunk 1 (early layers), Teal = chunk 2 (late layers).
+        Each forward/backward is half the width of standard.
+      </span>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     SECTION 3: INTERACTIVE BUBBLE CALCULATOR
+     ======================================== -->
+<section id="calculator" class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Interactive</div>
+      <h2><span class="gradient-text">Bubble Fraction Calculator</span></h2>
+      <p class="section-subtitle">
+        Explore how pipeline stages (p), micro-batches (m), and interleaved chunks (v)
+        affect the bubble. Drag the sliders to see the formula in action.
+      </p>
+    </div>
+
+    <div class="chart-container fade-in">
+      <div class="controls-row">
+        <div class="control-group">
+          <span class="control-label">Pipeline stages (p)</span>
+          <span class="control-value" id="p-val">4</span>
+          <input type="range" id="p-slider" min="2" max="16" value="4" step="1">
+        </div>
+        <div class="control-group">
+          <span class="control-label">Micro-batches (m)</span>
+          <span class="control-value" id="m-val">8</span>
+          <input type="range" id="m-slider" min="1" max="32" value="8" step="1">
+        </div>
+        <div class="control-group">
+          <span class="control-label">Chunks per GPU (v)</span>
+          <span class="control-value" id="v-val">1</span>
+          <input type="range" id="v-slider" min="1" max="8" value="1" step="1">
+        </div>
+      </div>
+
+      <div class="equation-box">
+        <span class="eq-label">Bubble Fraction Formula</span>
+        r<sub>bubble</sub> = (p - 1) / (v &times; m) =
+        <span id="formula-display">(<span class="eq-highlight">3</span>) / (<span class="eq-highlight">1</span> &times; <span class="eq-highlight">8</span>) = <span class="eq-highlight">37.5%</span></span>
+      </div>
+
+      <div class="grid-3" style="margin-top: 24px;">
+        <div class="bubble-meter" id="meter-standard">
+          <div style="font-size: 0.82rem; font-weight: 600; margin-bottom: 4px;">Standard (v=1)</div>
+          <div class="bubble-bar-outer">
+            <div class="bubble-bar-fill" id="bar-standard" style="width: 37.5%; background: var(--red);">37.5%</div>
+          </div>
+          <div class="bubble-labels"><span>0%</span><span>Bubble</span><span>100%</span></div>
+        </div>
+        <div class="bubble-meter" id="meter-interleaved">
+          <div style="font-size: 0.82rem; font-weight: 600; margin-bottom: 4px;">Interleaved (v=<span id="meter-v">1</span>)</div>
+          <div class="bubble-bar-outer">
+            <div class="bubble-bar-fill" id="bar-interleaved" style="width: 37.5%; background: var(--primary);">37.5%</div>
+          </div>
+          <div class="bubble-labels"><span>0%</span><span>Bubble</span><span>100%</span></div>
+        </div>
+        <div class="bubble-meter">
+          <div style="font-size: 0.82rem; font-weight: 600; margin-bottom: 4px;">Reduction</div>
+          <div style="text-align: center; margin-top: 16px;">
+            <span id="reduction-val" style="font-family: var(--font-mono); font-size: 2rem; font-weight: 700; color: var(--primary);">1x</span>
+            <div style="font-size: 0.72rem; color: var(--fg-muted); margin-top: 4px;">smaller bubble</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bar chart: bubble for different configs -->
+    <div class="chart-container fade-in">
+      <h4>Bubble Fraction for p=8 Across Configurations</h4>
+      <div class="chart-subtitle">Special case m=1, v=1 is Naive PP. v=1 cases are standard 1F1B. v&gt;1 are interleaved.</div>
+      <div class="bar-chart" id="config-chart">
+        <!-- Filled by JS -->
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 8px;">
+        <span style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);">
+          <span style="width: 12px; height: 12px; border-radius: 3px; background: var(--red); display: inline-block;"></span> Bubble &gt; 50%
+        </span>
+        <span style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);">
+          <span style="width: 12px; height: 12px; border-radius: 3px; background: var(--orange); display: inline-block;"></span> Bubble 20-50%
+        </span>
+        <span style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);">
+          <span style="width: 12px; height: 12px; border-radius: 3px; background: var(--primary); display: inline-block;"></span> Bubble &lt; 20%
+        </span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     SECTION 4: DEPTH-FIRST vs BREADTH-FIRST
+     ======================================== -->
+<section id="scheduling" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Scheduling Strategies</div>
+      <h2><span class="gradient-text">Depth-First vs Breadth-First</span></h2>
+      <p class="section-subtitle">
+        With interleaved stages, a GPU must decide: process later layers of earlier micro-batches (depth-first),
+        or earlier layers of later micro-batches (breadth-first)?
+      </p>
+    </div>
+
+    <div class="grid-2 fade-in">
+      <div class="card" style="border-top: 3px solid var(--primary);">
+        <h3 style="color: var(--primary);">Depth-First</h3>
+        <p style="margin-bottom: 12px;"><strong>Priority:</strong> Get each micro-batch through the full model as fast as possible.</p>
+        <ul style="list-style: none; padding: 0;">
+          <li style="padding: 6px 0; border-bottom: 1px solid var(--border);">
+            <span class="num-green">+</span> Lower latency per micro-batch
+          </li>
+          <li style="padding: 6px 0; border-bottom: 1px solid var(--border);">
+            <span class="num-green">+</span> Fewer activations stored simultaneously
+          </li>
+          <li style="padding: 6px 0; border-bottom: 1px solid var(--border);">
+            <span class="num-green">+</span> Memory efficient
+          </li>
+          <li style="padding: 6px 0;">
+            <span class="num-red">-</span> May leave more bubble gaps
+          </li>
+        </ul>
+      </div>
+      <div class="card" style="border-top: 3px solid var(--secondary);">
+        <h3 style="color: var(--secondary);">Breadth-First</h3>
+        <p style="margin-bottom: 12px;"><strong>Priority:</strong> Fill the pipeline as quickly as possible with many micro-batches.</p>
+        <ul style="list-style: none; padding: 0;">
+          <li style="padding: 6px 0; border-bottom: 1px solid var(--border);">
+            <span class="num-green">+</span> Better pipeline utilization
+          </li>
+          <li style="padding: 6px 0; border-bottom: 1px solid var(--border);">
+            <span class="num-green">+</span> Smaller total bubble
+          </li>
+          <li style="padding: 6px 0; border-bottom: 1px solid var(--border);">
+            <span class="num-red">-</span> Higher peak memory (more in-flight micro-batches)
+          </li>
+          <li style="padding: 6px 0;">
+            <span class="num-red">-</span> Higher latency per individual micro-batch
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout callout-purple fade-in" style="margin-top: 24px;">
+      <strong>Llama 3.1:</strong> Meta's Llama 3.1 uses a 1F1B schedule with interleaved stages and
+      a tunable priority setting between depth-first and breadth-first. The optimal setting depends
+      on the specific model size, cluster topology, and memory constraints.
+    </div>
+
+    <!-- Interactive depth-first vs breadth-first demo -->
+    <div class="chart-container fade-in" style="margin-top: 32px;">
+      <h4>Scheduling Order Visualization (p=4, v=2, m=4)</h4>
+      <div class="chart-subtitle">Watch how micro-batches flow through the pipeline under each strategy</div>
+      <div class="strategy-selector" id="schedule-strategy">
+        <button class="strategy-btn active" onclick="setStrategy('depth')">Depth-First</button>
+        <button class="strategy-btn" onclick="setStrategy('breadth')">Breadth-First</button>
+      </div>
+      <div class="pipeline-visual" id="strategy-pipeline">
+        <!-- Filled by JS -->
+      </div>
+      <div id="strategy-explanation" class="callout callout-info" style="margin-top: 12px;">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     SECTION 5: ZERO BUBBLE
+     ======================================== -->
+<section id="zero-bubble" class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Schedule #2</div>
+      <h2><span class="gradient-text">Zero Bubble Pipeline</span></h2>
+      <p class="section-subtitle">
+        The key insight: the backward pass through a matrix multiplication involves two separate operations
+        that can be scheduled independently.
+      </p>
+    </div>
+
+    <!-- B/W Decomposition -->
+    <h3 class="fade-in" style="text-align: center; margin-bottom: 24px; font-size: 1.1rem;">
+      Decomposing the Backward Pass
+    </h3>
+
+    <div class="grid-2 fade-in">
+      <div class="card" style="border-left: 3px solid #1E88E5;">
+        <h3 style="color: #64B5F6;">B: Backward for Inputs</h3>
+        <p>Computes gradients with respect to the <strong>inputs</strong> of a layer.
+        This is needed by the preceding stage to continue its backward pass.</p>
+        <div style="margin-top: 12px; padding: 8px 12px; background: rgba(30,136,229,0.1); border-radius: 6px; font-size: 0.82rem;">
+          <strong style="color: #64B5F6;">Must run before:</strong> The B operation of the previous stage
+        </div>
+      </div>
+      <div class="card" style="border-left: 3px solid #7E57C2;">
+        <h3 style="color: #B39DDB;">W: Backward for Weights</h3>
+        <p>Computes gradients with respect to the <strong>weights</strong> of a layer.
+        This is only needed before the optimizer step, not by other stages.</p>
+        <div style="margin-top: 12px; padding: 8px 12px; background: rgba(126,87,194,0.1); border-radius: 6px; font-size: 0.82rem;">
+          <strong style="color: #B39DDB;">Can run anytime:</strong> After its corresponding B, before optimizer step
+        </div>
+      </div>
+    </div>
+
+    <!-- Visual: Standard vs Decomposed backward -->
+    <div class="schedule-vis fade-in" style="margin-top: 32px;">
+      <div class="schedule-title">
+        Standard Backward <span class="schedule-badge badge-blue">Coarse-grained</span>
+      </div>
+      <div class="bw-visual">
+        <div class="bw-row">
+          <div class="bw-label">Layer computation:</div>
+          <div class="bw-blocks">
+            <div class="bw-block bw-fwd">F (Forward)</div>
+            <span class="bw-arrow flow-arrow">&rarr;</span>
+            <div class="bw-block" style="background: rgba(66,165,245,0.3); border: 1px solid rgba(66,165,245,0.5); color: #90CAF9; min-width: 140px;">
+              B (Full Backward)
+            </div>
+          </div>
+        </div>
+        <div style="font-size: 0.78rem; color: var(--fg-muted); padding-left: 152px;">
+          B computes <em>both</em> input gradients and weight gradients together
+        </div>
+      </div>
+    </div>
+
+    <div class="schedule-vis fade-in">
+      <div class="schedule-title">
+        Decomposed Backward <span class="schedule-badge badge-purple">Fine-grained</span>
+      </div>
+      <div class="bw-visual">
+        <div class="bw-row">
+          <div class="bw-label">Layer computation:</div>
+          <div class="bw-blocks">
+            <div class="bw-block bw-fwd">F (Forward)</div>
+            <span class="bw-arrow flow-arrow">&rarr;</span>
+            <div class="bw-block bw-b">B (Input grad)</div>
+            <span class="bw-arrow flow-arrow">&rarr;</span>
+            <div class="bw-block bw-w">W (Weight grad)</div>
+          </div>
+        </div>
+        <div style="font-size: 0.78rem; color: var(--fg-muted); padding-left: 152px;">
+          B must run in order (needed by previous stage). <strong>W can be deferred!</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-green fade-in">
+      <strong>The magic:</strong> Since W can be flexibly scheduled anywhere after its corresponding B
+      (and before the optimizer step), we can strategically place W operations to <strong>fill the pipeline bubbles</strong>.
+      This is the core insight behind zero-bubble schedules.
+    </div>
+
+    <!-- 1F1B vs ZB-H1 vs ZB-H2 pipeline diagrams -->
+    <h3 class="fade-in" style="text-align: center; margin: 40px 0 16px; font-size: 1.1rem;">
+      Schedules Compared (p=4, m=4)
+    </h3>
+
+    <div class="strategy-selector fade-in" id="zb-selector">
+      <button class="strategy-btn active" onclick="setZBSchedule('1f1b')">Standard 1F1B</button>
+      <button class="strategy-btn" onclick="setZBSchedule('zbh1')">ZB-H1</button>
+      <button class="strategy-btn" onclick="setZBSchedule('zbh2')">ZB-H2 (Zero Bubble)</button>
+    </div>
+
+    <div class="schedule-vis fade-in" id="zb-pipeline-container">
+      <div class="schedule-title" id="zb-schedule-title">
+        Standard 1F1B <span class="schedule-badge badge-blue">Baseline</span>
+      </div>
+      <div class="pipeline-visual" id="zb-pipeline">
+        <!-- Filled by JS -->
+      </div>
+      <div id="zb-stats" style="display: flex; gap: 16px; justify-content: center; margin-top: 16px; flex-wrap: wrap;">
+      </div>
+    </div>
+
+    <div class="callout callout-info fade-in" id="zb-explanation" style="margin-top: 16px;">
+    </div>
+
+    <!-- ILP note -->
+    <div class="card fade-in" style="margin-top: 24px; border-left: 3px solid var(--accent);">
+      <h3>Solving for the Optimal Schedule</h3>
+      <p>In practice, fully optimizing these fine-grained schedules involves:</p>
+      <ol style="margin-top: 8px; padding-left: 20px;">
+        <li style="color: var(--fg-muted); font-size: 0.88rem; margin-bottom: 4px;">Carefully profiling the duration of F, B, and W operations</li>
+        <li style="color: var(--fg-muted); font-size: 0.88rem; margin-bottom: 4px;">Formulating an <strong style="color: var(--accent);">Integer Linear Programming (ILP)</strong> problem</li>
+        <li style="color: var(--fg-muted); font-size: 0.88rem; margin-bottom: 4px;">Minimizing total bubble time subject to dependency constraints</li>
+        <li style="color: var(--fg-muted); font-size: 0.88rem;">Applying heuristics when exact ILP solutions are too costly</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     SECTION 6: DUALPIPE
+     ======================================== -->
+<section id="dualpipe" class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Schedule #3</div>
+      <h2><span class="gradient-text">DualPipe</span></h2>
+      <p class="section-subtitle">
+        DeepSeek-V3/R1's pipeline schedule: two micro-batch streams propagating from
+        both ends of the pipeline, interleaved to minimize idle time.
+      </p>
+    </div>
+
+    <div class="grid-3 fade-in">
+      <div class="card">
+        <span class="card-icon">&#128640;</span>
+        <h3>Dual Streams</h3>
+        <p>One stream of micro-batches enters from GPU 0 (left), another from GPU p-1 (right). They meet in the middle, maximizing utilization.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">&#9986;</span>
+        <h3>B/W Decomposition</h3>
+        <p>Like Zero Bubble, DualPipe splits backward into B (input grad) and W (weight grad), gaining scheduling flexibility.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">&#127919;</span>
+        <h3>Near-Zero Overhead</h3>
+        <p>DeepSeek-V3 achieved <strong>"near-zero all-to-all communication overhead"</strong> using this schedule with 671B parameters.</p>
+      </div>
+    </div>
+
+    <!-- DualPipe visual -->
+    <h3 class="fade-in" style="text-align: center; margin: 40px 0 16px; font-size: 1.1rem;">
+      DualPipe Schedule Visualization
+    </h3>
+
+    <div class="dualpipe-container fade-in">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
+        <div>
+          <span class="stream-label stream-fwd">Stream A &rarr;</span>
+          <span style="font-size: 0.72rem; color: var(--fg-muted);">Micro-batches entering from left</span>
+        </div>
+        <div style="text-align: right;">
+          <span class="stream-label stream-bwd">&larr; Stream B</span>
+          <span style="font-size: 0.72rem; color: var(--fg-muted);">Micro-batches entering from right</span>
+        </div>
+      </div>
+
+      <div class="pipeline-visual" id="dualpipe-pipeline">
+        <!-- Filled by JS -->
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; margin-top: 16px;">
+        <span style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);">
+          <span style="width: 16px; height: 12px; border-radius: 3px; background: #1565C0; display: inline-block;"></span> F (Stream A)
+        </span>
+        <span style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);">
+          <span style="width: 16px; height: 12px; border-radius: 3px; background: #00897B; display: inline-block;"></span> F (Stream B)
+        </span>
+        <span style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);">
+          <span style="width: 16px; height: 12px; border-radius: 3px; background: #1E88E5; display: inline-block;"></span> B (Input grad)
+        </span>
+        <span style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);">
+          <span style="width: 16px; height: 12px; border-radius: 3px; background: #7E57C2; display: inline-block;"></span> W (Weight grad)
+        </span>
+        <span style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--fg-muted);">
+          <span style="width: 16px; height: 12px; border-radius: 3px; background: rgba(255,255,255,0.05); border: 1px dashed rgba(255,255,255,0.2); display: inline-block;"></span> Idle
+        </span>
+      </div>
+    </div>
+
+    <div class="callout callout-info fade-in" style="margin-top: 16px;">
+      <strong>How it works:</strong> By sending micro-batches from both ends simultaneously,
+      GPUs in the middle of the pipeline always have work from one stream when the other would leave a gap.
+      Combined with B/W decomposition, DualPipe achieves near-complete overlap of computation and communication.
+    </div>
+
+    <div class="equation-box fade-in" style="margin-top: 16px;">
+      <span class="eq-label">DeepSeek-V3 Setup</span>
+      671B parameters &times; 2048 pipeline stages &times; DualPipe
+      <br>
+      <span style="font-size: 0.78rem; color: var(--fg-muted);">Result: <span class="eq-highlight">near-zero</span> all-to-all communication overhead</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     SECTION 7: COMPARISON
+     ======================================== -->
+<section id="comparison" class="section">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Side by Side</div>
+      <h2><span class="gradient-text">Schedule Comparison</span></h2>
+      <p class="section-subtitle">
+        How do all the advanced pipeline schedules stack up against each other?
+      </p>
+    </div>
+
+    <div class="comp-table-wrap fade-in">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Property</th>
+            <th>Interleaved 1F1B</th>
+            <th>Zero Bubble (ZB-H2)</th>
+            <th>DualPipe</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Bubble Fraction</strong></td>
+            <td class="val-ok"><code>(p-1)/(v*m)</code></td>
+            <td class="val-great">~0% (theoretical)</td>
+            <td class="val-great">~0% (practical)</td>
+          </tr>
+          <tr>
+            <td><strong>Key Technique</strong></td>
+            <td>v model chunks per GPU</td>
+            <td>B/W decomposition</td>
+            <td>Dual streams + B/W decomposition</td>
+          </tr>
+          <tr>
+            <td><strong>Communication</strong></td>
+            <td class="val-ok">v&times; more p2p sends</td>
+            <td class="val-good">Same as 1F1B</td>
+            <td class="val-great">Near-zero overhead</td>
+          </tr>
+          <tr>
+            <td><strong>Scheduling Complexity</strong></td>
+            <td class="val-good">Moderate</td>
+            <td class="val-ok">High (ILP solver)</td>
+            <td class="val-bad">Very High</td>
+          </tr>
+          <tr>
+            <td><strong>Memory Overhead</strong></td>
+            <td class="val-good">Same as 1F1B</td>
+            <td class="val-ok">Slightly higher (deferred W)</td>
+            <td class="val-ok">Higher (dual streams)</td>
+          </tr>
+          <tr>
+            <td><strong>Backward Granularity</strong></td>
+            <td>Coarse (full backward)</td>
+            <td class="val-great">Fine (B + W split)</td>
+            <td class="val-great">Fine (B + W split)</td>
+          </tr>
+          <tr>
+            <td><strong>Used In</strong></td>
+            <td><strong>Llama 3.1</strong> (Meta)</td>
+            <td>Sea AI Lab research</td>
+            <td><strong>DeepSeek-V3/R1</strong></td>
+          </tr>
+          <tr>
+            <td><strong>Year Introduced</strong></td>
+            <td>2021 (Megatron-LM)</td>
+            <td>2023 (Sea AI Lab)</td>
+            <td>2024 (DeepSeek)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Evolution timeline -->
+    <h3 class="fade-in" style="text-align: center; margin: 40px 0 24px; font-size: 1.1rem;">
+      Evolution of Pipeline Schedules
+    </h3>
+    <div class="fade-in" style="display: flex; align-items: center; justify-content: center; gap: 0; flex-wrap: wrap; margin-bottom: 40px;">
+      <div style="text-align: center; padding: 16px 20px;">
+        <div style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--fg-muted);">2019</div>
+        <div style="font-size: 0.88rem; font-weight: 600; color: var(--fg);">GPipe</div>
+        <div style="font-size: 0.72rem; color: var(--red);">High bubble</div>
+      </div>
+      <span class="flow-arrow" style="color: var(--border-light); font-size: 1.2rem;">&rarr;</span>
+      <div style="text-align: center; padding: 16px 20px;">
+        <div style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--fg-muted);">2019</div>
+        <div style="font-size: 0.88rem; font-weight: 600; color: var(--fg);">1F1B</div>
+        <div style="font-size: 0.72rem; color: var(--orange);">Better memory</div>
+      </div>
+      <span class="flow-arrow" style="color: var(--border-light); font-size: 1.2rem;">&rarr;</span>
+      <div style="text-align: center; padding: 16px 20px;">
+        <div style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--fg-muted);">2021</div>
+        <div style="font-size: 0.88rem; font-weight: 600; color: var(--primary);">Interleaved</div>
+        <div style="font-size: 0.72rem; color: var(--primary);">1/v bubble</div>
+      </div>
+      <span class="flow-arrow" style="color: var(--border-light); font-size: 1.2rem;">&rarr;</span>
+      <div style="text-align: center; padding: 16px 20px;">
+        <div style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--fg-muted);">2023</div>
+        <div style="font-size: 0.88rem; font-weight: 600; color: var(--secondary);">Zero Bubble</div>
+        <div style="font-size: 0.72rem; color: var(--secondary);">~0% bubble</div>
+      </div>
+      <span class="flow-arrow" style="color: var(--border-light); font-size: 1.2rem;">&rarr;</span>
+      <div style="text-align: center; padding: 16px 20px;">
+        <div style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--fg-muted);">2024</div>
+        <div style="font-size: 0.88rem; font-weight: 600; color: var(--accent);">DualPipe</div>
+        <div style="font-size: 0.72rem; color: var(--accent);">Near-zero overhead</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     SECTION 8: KEY TAKEAWAYS
+     ======================================== -->
+<section class="section section-dark">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Summary</div>
+      <h2><span class="gradient-text">Key Takeaways</span></h2>
+    </div>
+
+    <div class="grid-3 fade-in">
+      <div class="takeaway-card">
+        <span class="takeaway-num">01</span>
+        <h3>Interleaved = v&times; Smaller Bubble</h3>
+        <p>By assigning v non-contiguous model chunks to each GPU, the bubble shrinks by factor v.
+        Trade-off: v&times; more communication.</p>
+      </div>
+      <div class="takeaway-card">
+        <span class="takeaway-num">02</span>
+        <h3>B/W Decomposition Unlocks Flexibility</h3>
+        <p>Splitting backward into input-gradient (B) and weight-gradient (W) lets us schedule W
+        to fill bubbles. This is the key to zero-bubble schedules.</p>
+      </div>
+      <div class="takeaway-card">
+        <span class="takeaway-num">03</span>
+        <h3>DualPipe: State of the Art</h3>
+        <p>DeepSeek-V3/R1's DualPipe combines dual streams from both pipeline ends with B/W decomposition,
+        achieving near-zero overhead at 671B parameter scale.</p>
+      </div>
+      <div class="takeaway-card">
+        <span class="takeaway-num">04</span>
+        <h3>Depth vs Breadth Trade-off</h3>
+        <p>Interleaved schedules must choose between processing micro-batches deep (lower memory)
+        or wide (better utilization). Llama 3.1 makes this tunable.</p>
+      </div>
+      <div class="takeaway-card">
+        <span class="takeaway-num">05</span>
+        <h3>ILP for Optimal Schedules</h3>
+        <p>Finding the mathematically optimal schedule requires solving an Integer Linear Programming
+        problem. In practice, heuristics are used.</p>
+      </div>
+      <div class="takeaway-card">
+        <span class="takeaway-num">06</span>
+        <h3>Complexity Increases</h3>
+        <p>Each advancement brings more scheduling complexity. The implementation effort grows from
+        simple 1F1B to the highly engineered DualPipe.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     FOOTER
+     ======================================== -->
+<footer class="footer">
+  <div class="container footer-inner">
+    <div class="footer-brand">&#9881; ShallowSpeed</div>
+    <p>Advanced Pipeline Schedules &mdash; Visual Deep Dive</p>
+    <p class="footer-muted">Interleaved Stages &bull; Zero Bubble &bull; DualPipe</p>
+  </div>
+</footer>
+
+<!-- ========================================
+     JAVASCRIPT
+     ======================================== -->
+<script>
+// ========================================
+// SCROLL REVEAL
+// ========================================
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// ========================================
+// LAYER MAP VISUALIZATION
+// ========================================
+function buildLayerMaps() {
+  const p = 4; // 4 GPUs
+  const totalLayers = 16;
+  const layersPerGPU = totalLayers / p;
+
+  const colors = ['#1565C0', '#00897B', '#7E57C2', '#FF7043'];
+  const colorsDim = ['rgba(21,101,192,0.2)', 'rgba(0,137,123,0.2)', 'rgba(126,87,194,0.2)', 'rgba(255,112,67,0.2)'];
+  const colorsBorder = ['rgba(21,101,192,0.5)', 'rgba(0,137,123,0.5)', 'rgba(126,87,194,0.5)', 'rgba(255,112,67,0.5)'];
+  const colorsText = ['#90CAF9', '#80CBC4', '#B39DDB', '#FFAB91'];
+
+  // Standard: consecutive layers
+  const standardMap = document.getElementById('standard-layer-map');
+  standardMap.innerHTML = '';
+  for (let g = 0; g < p; g++) {
+    const col = document.createElement('div');
+    col.className = 'gpu-col';
+    col.innerHTML = `<div class="gpu-col-header">GPU ${g}</div>`;
+    for (let l = 0; l < layersPerGPU; l++) {
+      const layerNum = g * layersPerGPU + l + 1;
+      const chip = document.createElement('div');
+      chip.className = 'layer-chip';
+      chip.style.background = colorsDim[g];
+      chip.style.border = `1px solid ${colorsBorder[g]}`;
+      chip.style.color = colorsText[g];
+      chip.textContent = `Layer ${layerNum}`;
+      col.appendChild(chip);
+    }
+    standardMap.appendChild(col);
+  }
+
+  // Interleaved: odd/even-ish distribution (v=2)
+  const interleavedMap = document.getElementById('interleaved-layer-map');
+  interleavedMap.innerHTML = '';
+  const v = 2;
+  const layersPerChunk = totalLayers / (p * v);
+
+  for (let g = 0; g < p; g++) {
+    const col = document.createElement('div');
+    col.className = 'gpu-col';
+    col.innerHTML = `<div class="gpu-col-header">GPU ${g}</div>`;
+
+    for (let chunk = 0; chunk < v; chunk++) {
+      const label = document.createElement('div');
+      label.className = 'chunk-label';
+      label.textContent = `Chunk ${chunk + 1}`;
+      col.appendChild(label);
+
+      for (let l = 0; l < layersPerChunk; l++) {
+        const layerNum = chunk * p * layersPerChunk + g * layersPerChunk + l + 1;
+        const chip = document.createElement('div');
+        chip.className = 'layer-chip';
+        const colorIdx = chunk === 0 ? 0 : 2; // blue for chunk 1, purple for chunk 2
+        chip.style.background = chunk === 0 ? 'rgba(21,101,192,0.2)' : 'rgba(0,137,123,0.2)';
+        chip.style.border = `1px solid ${chunk === 0 ? 'rgba(21,101,192,0.5)' : 'rgba(0,137,123,0.5)'}`;
+        chip.style.color = chunk === 0 ? '#90CAF9' : '#80CBC4';
+        chip.textContent = `Layer ${layerNum}`;
+        col.appendChild(chip);
+      }
+    }
+    interleavedMap.appendChild(col);
+  }
+}
+buildLayerMaps();
+
+// ========================================
+// INTERLEAVED PIPELINE DIAGRAM
+// ========================================
+function buildInterleavedPipeline() {
+  const container = document.getElementById('interleaved-pipeline');
+  container.innerHTML = '';
+
+  const p = 4;
+  const m = 8;
+  const v = 2;
+  const timeSlots = 24;
+
+  // Simplified interleaved schedule (conceptual)
+  // Each GPU has 2 chunks. Forward for chunk1 is half the time of standard.
+  const schedules = [
+    // GPU 0: F1,F2,F3,F4 (chunk1), F1,F2,F3,F4 (chunk2), then backward
+    { label: 'GPU 0', slots: ['F1','F2','F3','F4','f1','f2','f3','f4','','B4','B3','b4','b3','B2','B1','b2','b1','','','','','','',''] },
+    { label: 'GPU 1', slots: ['','F1','F2','F3','','f1','f2','f3','f4','','B4','b4','B3','b3','B2','b2','B1','b1','','','','','',''] },
+    { label: 'GPU 2', slots: ['','','F1','F2','F3','','f1','f2','f3','f4','','B4','b4','B3','b3','B2','b2','B1','b1','','','','',''] },
+    { label: 'GPU 3', slots: ['','','','F1','F2','F3','','f1','f2','f3','f4','b4','B4','b3','B3','b2','B2','b1','B1','','','','',''] },
+  ];
+
+  schedules.forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'pipe-row';
+
+    const label = document.createElement('div');
+    label.className = 'pipe-label';
+    label.textContent = s.label;
+    row.appendChild(label);
+
+    s.slots.forEach(slot => {
+      const block = document.createElement('div');
+      block.className = 'pipe-block';
+
+      if (slot === '') {
+        block.classList.add('pipe-idle');
+        block.textContent = '';
+        block.style.minWidth = '28px';
+      } else if (slot.startsWith('F') || slot.startsWith('f')) {
+        const isChunk2 = slot.startsWith('f');
+        block.classList.add(isChunk2 ? 'pipe-fwd-v2' : 'pipe-fwd');
+        block.textContent = slot.toUpperCase().replace('F','');
+        block.title = `Forward micro-batch ${slot.replace(/[fF]/,'')} (chunk ${isChunk2 ? 2 : 1})`;
+      } else if (slot.startsWith('B') || slot.startsWith('b')) {
+        const isChunk2 = slot.startsWith('b');
+        block.classList.add(isChunk2 ? 'pipe-bwd-v2' : 'pipe-bwd');
+        block.textContent = slot.toUpperCase().replace('B','');
+        block.title = `Backward micro-batch ${slot.replace(/[bB]/,'')} (chunk ${isChunk2 ? 2 : 1})`;
+      }
+
+      row.appendChild(block);
+    });
+
+    container.appendChild(row);
+  });
+}
+buildInterleavedPipeline();
+
+// ========================================
+// BUBBLE CALCULATOR
+// ========================================
+const pSlider = document.getElementById('p-slider');
+const mSlider = document.getElementById('m-slider');
+const vSlider = document.getElementById('v-slider');
+
+function updateCalculator() {
+  const p = parseInt(pSlider.value);
+  const m = parseInt(mSlider.value);
+  const v = parseInt(vSlider.value);
+
+  document.getElementById('p-val').textContent = p;
+  document.getElementById('m-val').textContent = m;
+  document.getElementById('v-val').textContent = v;
+
+  const bubbleStandard = Math.min(((p - 1) / m) * 100, 100);
+  const bubbleInterleaved = Math.min(((p - 1) / (v * m)) * 100, 100);
+
+  // Formula display
+  document.getElementById('formula-display').innerHTML =
+    `(<span class="eq-highlight">${p - 1}</span>) / (<span class="eq-highlight">${v}</span> &times; <span class="eq-highlight">${m}</span>) = <span class="eq-highlight">${bubbleInterleaved.toFixed(1)}%</span>`;
+
+  // Bars
+  const barStd = document.getElementById('bar-standard');
+  barStd.style.width = Math.max(bubbleStandard, 5) + '%';
+  barStd.textContent = bubbleStandard.toFixed(1) + '%';
+  barStd.style.background = bubbleStandard > 50 ? 'var(--red)' : bubbleStandard > 20 ? 'var(--orange)' : 'var(--primary)';
+
+  const barInt = document.getElementById('bar-interleaved');
+  barInt.style.width = Math.max(bubbleInterleaved, 5) + '%';
+  barInt.textContent = bubbleInterleaved.toFixed(1) + '%';
+  barInt.style.background = bubbleInterleaved > 50 ? 'var(--red)' : bubbleInterleaved > 20 ? 'var(--orange)' : 'var(--primary)';
+
+  document.getElementById('meter-v').textContent = v;
+
+  const reduction = v;
+  document.getElementById('reduction-val').textContent = reduction + 'x';
+}
+
+pSlider.addEventListener('input', updateCalculator);
+mSlider.addEventListener('input', updateCalculator);
+vSlider.addEventListener('input', updateCalculator);
+updateCalculator();
+
+// ========================================
+// CONFIG CHART (p=8, various m and v)
+// ========================================
+function buildConfigChart() {
+  const chart = document.getElementById('config-chart');
+  chart.innerHTML = '';
+
+  const p = 8;
+  const configs = [
+    { m: 1, v: 1, label: 'm=1\nv=1' },
+    { m: 4, v: 1, label: 'm=4\nv=1' },
+    { m: 8, v: 1, label: 'm=8\nv=1' },
+    { m: 16, v: 1, label: 'm=16\nv=1' },
+    { m: 8, v: 2, label: 'm=8\nv=2' },
+    { m: 8, v: 4, label: 'm=8\nv=4' },
+    { m: 16, v: 2, label: 'm=16\nv=2' },
+    { m: 16, v: 4, label: 'm=16\nv=4' },
+  ];
+
+  const maxBubble = 100;
+
+  configs.forEach(cfg => {
+    const bubble = Math.min(((p - 1) / (cfg.v * cfg.m)) * 100, 100);
+    const group = document.createElement('div');
+    group.className = 'bar-group';
+
+    const fill = document.createElement('div');
+    fill.className = 'bar-fill';
+    fill.style.height = (bubble / maxBubble * 100) + '%';
+    fill.style.background = bubble > 50 ? 'var(--red)' : bubble > 20 ? 'var(--orange)' : 'var(--primary)';
+    fill.textContent = bubble.toFixed(1) + '%';
+
+    const xLabel = document.createElement('div');
+    xLabel.className = 'bar-x-label';
+    xLabel.innerHTML = cfg.label.replace('\n', '<br>');
+
+    group.appendChild(fill);
+    group.appendChild(xLabel);
+    chart.appendChild(group);
+  });
+}
+buildConfigChart();
+
+// ========================================
+// DEPTH-FIRST vs BREADTH-FIRST
+// ========================================
+function setStrategy(strategy) {
+  const btns = document.querySelectorAll('#schedule-strategy .strategy-btn');
+  btns.forEach(b => b.classList.remove('active'));
+  if (strategy === 'depth') btns[0].classList.add('active');
+  else btns[1].classList.add('active');
+
+  const container = document.getElementById('strategy-pipeline');
+  container.innerHTML = '';
+
+  const explanation = document.getElementById('strategy-explanation');
+
+  if (strategy === 'depth') {
+    // Depth-first: complete each micro-batch through all chunks before starting next
+    const schedules = [
+      { label: 'GPU 0', slots: ['F1','f1','F2','f2','F3','f3','F4','f4','b4','B4','b3','B3','b2','B2','b1','B1'] },
+      { label: 'GPU 1', slots: ['','F1','f1','F2','f2','F3','f3','F4','f4','b4','B4','b3','B3','b2','B2','b1','B1'] },
+      { label: 'GPU 2', slots: ['','','F1','f1','F2','f2','F3','f3','F4','','f4','b4','B4','b3','B3','b2','B2','b1','B1'] },
+      { label: 'GPU 3', slots: ['','','','F1','f1','F2','f2','F3','f3','F4','','f4','b4','B4','b3','B3','b2','B2','b1','B1'] },
+    ];
+    renderStrategyPipeline(container, schedules);
+    explanation.innerHTML = '<strong>Depth-first:</strong> Each micro-batch completes chunk 1 then immediately chunk 2 on the same GPU before the next micro-batch starts chunk 1. This means micro-batch 1 finishes its full forward pass before micro-batch 2 even enters chunk 2. <strong>Benefit:</strong> fewer activations stored at any time.';
+  } else {
+    // Breadth-first: fill all micro-batches in chunk 1 first, then chunk 2
+    const schedules = [
+      { label: 'GPU 0', slots: ['F1','F2','F3','F4','f1','f2','f3','f4','b4','B4','b3','B3','b2','B2','b1','B1'] },
+      { label: 'GPU 1', slots: ['','F1','F2','F3','F4','f1','f2','f3','f4','b4','B4','b3','B3','b2','B2','b1','B1'] },
+      { label: 'GPU 2', slots: ['','','F1','F2','F3','F4','','f1','f2','f3','f4','b4','B4','b3','B3','b2','B2','b1','B1'] },
+      { label: 'GPU 3', slots: ['','','','F1','F2','F3','F4','','f1','f2','f3','f4','b4','B4','b3','B3','b2','B2','b1','B1'] },
+    ];
+    renderStrategyPipeline(container, schedules);
+    explanation.innerHTML = '<strong>Breadth-first:</strong> All micro-batches complete chunk 1 across all GPUs first, then all start chunk 2. The pipeline fills more uniformly. <strong>Benefit:</strong> better pipeline utilization, smaller total bubble. <strong>Cost:</strong> more activations stored simultaneously.';
+  }
+}
+
+function renderStrategyPipeline(container, schedules) {
+  schedules.forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'pipe-row';
+
+    const label = document.createElement('div');
+    label.className = 'pipe-label';
+    label.textContent = s.label;
+    row.appendChild(label);
+
+    s.slots.forEach(slot => {
+      const block = document.createElement('div');
+      block.className = 'pipe-block';
+
+      if (slot === '') {
+        block.classList.add('pipe-idle');
+        block.style.minWidth = '28px';
+      } else if (slot.startsWith('F') || slot.startsWith('f')) {
+        block.classList.add(slot.startsWith('f') ? 'pipe-fwd-v2' : 'pipe-fwd');
+        block.textContent = slot.replace(/[fF]/,'');
+      } else if (slot.startsWith('B') || slot.startsWith('b')) {
+        block.classList.add(slot.startsWith('b') ? 'pipe-bwd-v2' : 'pipe-bwd');
+        block.textContent = slot.replace(/[bB]/,'');
+      }
+
+      row.appendChild(block);
+    });
+
+    container.appendChild(row);
+  });
+}
+
+setStrategy('depth');
+
+// ========================================
+// ZERO BUBBLE SCHEDULES
+// ========================================
+function setZBSchedule(schedule) {
+  const btns = document.querySelectorAll('#zb-selector .strategy-btn');
+  btns.forEach(b => b.classList.remove('active'));
+  if (schedule === '1f1b') btns[0].classList.add('active');
+  else if (schedule === 'zbh1') btns[1].classList.add('active');
+  else btns[2].classList.add('active');
+
+  const container = document.getElementById('zb-pipeline');
+  const titleEl = document.getElementById('zb-schedule-title');
+  const statsEl = document.getElementById('zb-stats');
+  const explEl = document.getElementById('zb-explanation');
+  container.innerHTML = '';
+
+  if (schedule === '1f1b') {
+    titleEl.innerHTML = 'Standard 1F1B <span class="schedule-badge badge-blue">Baseline</span>';
+
+    const schedules = [
+      { label: 'GPU 0', slots: ['F1','F2','F3','F4','B4','F5','B3','F6','B2','F7','B1','F8','B8','B7','B6','B5','','','',''] },
+      { label: 'GPU 1', slots: ['','F1','F2','F3','F4','B4','F5','B3','F6','B2','F7','B1','F8','B8','B7','B6','B5','','',''] },
+      { label: 'GPU 2', slots: ['','','F1','F2','F3','F4','B4','F5','B3','F6','B2','F7','B1','F8','B8','B7','B6','B5','',''] },
+      { label: 'GPU 3', slots: ['','','','F1','F2','F3','F4','B4','F5','B3','F6','B2','F7','B1','F8','B8','B7','B6','B5',''] },
+    ];
+
+    renderZBPipeline(container, schedules, 'standard');
+    statsEl.innerHTML = `
+      <div style="text-align: center; padding: 8px 16px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+        <div style="font-size: 0.72rem; color: var(--fg-muted);">Bubble</div>
+        <div style="font-family: var(--font-mono); font-size: 1.2rem; font-weight: 700; color: var(--orange);">37.5%</div>
+      </div>
+      <div style="text-align: center; padding: 8px 16px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+        <div style="font-size: 0.72rem; color: var(--fg-muted);">Backward</div>
+        <div style="font-family: var(--font-mono); font-size: 1.2rem; font-weight: 700; color: var(--blue);">Coarse</div>
+      </div>
+    `;
+    explEl.innerHTML = '<strong>Standard 1F1B:</strong> Forward and backward passes are interleaved after warmup, but the backward pass is a single coarse-grained operation. The bubble from warmup/cooldown remains at <code>(p-1)/m = 3/8 = 37.5%</code>.';
+
+  } else if (schedule === 'zbh1') {
+    titleEl.innerHTML = 'ZB-H1 <span class="schedule-badge badge-purple">B/W Split</span>';
+
+    const schedules = [
+      { label: 'GPU 0', slots: ['F1','F2','F3','F4','B4','F5','B3','F6','B2','F7','B1','F8','B8','B7','B6','B5','W4','W3','W2','W1','W8','W7','W6','W5'] },
+      { label: 'GPU 1', slots: ['','F1','F2','F3','F4','B4','F5','B3','F6','B2','F7','B1','F8','B8','B7','B6','B5','W4','W3','W2','W1','W8','W7','W6','W5'] },
+      { label: 'GPU 2', slots: ['','','F1','F2','F3','F4','B4','F5','B3','F6','B2','F7','B1','F8','B8','B7','B6','B5','W4','W3','W2','W1','W8','W7','W6','W5'] },
+      { label: 'GPU 3', slots: ['','','','F1','F2','F3','F4','B4','F5','B3','F6','B2','F7','B1','F8','B8','B7','B6','B5','W4','W3','W2','W1','W8','W7','W6','W5'] },
+    ];
+
+    renderZBPipeline(container, schedules, 'zbh1');
+    statsEl.innerHTML = `
+      <div style="text-align: center; padding: 8px 16px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+        <div style="font-size: 0.72rem; color: var(--fg-muted);">Bubble</div>
+        <div style="font-family: var(--font-mono); font-size: 1.2rem; font-weight: 700; color: var(--orange);">~25%</div>
+      </div>
+      <div style="text-align: center; padding: 8px 16px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+        <div style="font-size: 0.72rem; color: var(--fg-muted);">Backward</div>
+        <div style="font-family: var(--font-mono); font-size: 1.2rem; font-weight: 700; color: var(--accent);">B + W</div>
+      </div>
+    `;
+    explEl.innerHTML = '<strong>ZB-H1:</strong> The backward pass is split into <span style="color: #64B5F6; font-weight: 600;">B</span> (input gradients) and <span style="color: #B39DDB; font-weight: 600;">W</span> (weight gradients). B runs in the normal pipeline order, but W is deferred to fill some bubbles. Reduces bubble compared to standard 1F1B.';
+
+  } else {
+    titleEl.innerHTML = 'ZB-H2 <span class="schedule-badge badge-cyan">Zero Bubble</span>';
+
+    const schedules = [
+      { label: 'GPU 0', slots: ['F1','F2','F3','F4','B4','W4','F5','B3','W3','F6','B2','W2','F7','B1','W1','F8','B8','W8','B7','W7','B6','W6','B5','W5'] },
+      { label: 'GPU 1', slots: ['','F1','F2','F3','W_','F4','B4','W4','F5','B3','W3','F6','B2','W2','F7','B1','W1','F8','B8','W8','B7','W7','B6','W6','B5','W5'] },
+      { label: 'GPU 2', slots: ['','','F1','F2','W_','W_','F3','F4','B4','W4','B3','W3','F5','B2','W2','F6','B1','W1','F7','F8','B8','W8','B7','W7','B6','W6','B5','W5'] },
+      { label: 'GPU 3', slots: ['','','','F1','W_','W_','W_','F2','F3','F4','B4','W4','B3','W3','B2','W2','F5','B1','W1','F6','F7','F8','B8','W8','B7','W7','B6','W6','B5','W5'] },
+    ];
+
+    renderZBPipeline(container, schedules, 'zbh2');
+    statsEl.innerHTML = `
+      <div style="text-align: center; padding: 8px 16px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+        <div style="font-size: 0.72rem; color: var(--fg-muted);">Bubble</div>
+        <div style="font-family: var(--font-mono); font-size: 1.2rem; font-weight: 700; color: var(--primary);">~0%</div>
+      </div>
+      <div style="text-align: center; padding: 8px 16px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+        <div style="font-size: 0.72rem; color: var(--fg-muted);">Backward</div>
+        <div style="font-family: var(--font-mono); font-size: 1.2rem; font-weight: 700; color: var(--accent);">B + W</div>
+      </div>
+      <div style="text-align: center; padding: 8px 16px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+        <div style="font-size: 0.72rem; color: var(--fg-muted);">Memory</div>
+        <div style="font-family: var(--font-mono); font-size: 1.2rem; font-weight: 700; color: var(--orange);">Higher</div>
+      </div>
+    `;
+    explEl.innerHTML = '<strong>ZB-H2 (Zero Bubble):</strong> By strategically interleaving <span style="color: #90CAF9; font-weight: 600;">F</span>, <span style="color: #64B5F6; font-weight: 600;">B</span>, and <span style="color: #B39DDB; font-weight: 600;">W</span> operations, the bubble is theoretically eliminated. <span style="color: #B39DDB; font-weight: 600;">W</span> operations (shown in purple) are placed exactly where bubbles would have been. The trade-off is slightly higher memory since weight gradients accumulate longer.';
+  }
+}
+
+function renderZBPipeline(container, schedules, mode) {
+  schedules.forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'pipe-row';
+
+    const label = document.createElement('div');
+    label.className = 'pipe-label';
+    label.textContent = s.label;
+    row.appendChild(label);
+
+    s.slots.forEach(slot => {
+      const block = document.createElement('div');
+      block.className = 'pipe-block';
+
+      if (slot === '' || slot === 'W_') {
+        block.classList.add('pipe-idle');
+        block.style.minWidth = slot === 'W_' ? '28px' : '28px';
+        block.textContent = '';
+      } else if (slot.startsWith('F')) {
+        block.classList.add('pipe-fwd');
+        block.textContent = slot.replace('F','');
+        block.title = `Forward micro-batch ${slot.replace('F','')}`;
+      } else if (slot.startsWith('B')) {
+        if (mode === 'standard') {
+          block.classList.add('pipe-bwd');
+          block.textContent = slot.replace('B','');
+        } else {
+          block.classList.add('pipe-bwd-b');
+          block.textContent = 'B' + slot.replace('B','');
+          block.style.fontSize = '0.55rem';
+        }
+      } else if (slot.startsWith('W')) {
+        block.classList.add('pipe-bwd-w');
+        block.textContent = 'W' + slot.replace('W','');
+        block.style.fontSize = '0.55rem';
+      }
+
+      row.appendChild(block);
+    });
+
+    container.appendChild(row);
+  });
+}
+
+setZBSchedule('1f1b');
+
+// ========================================
+// DUALPIPE VISUALIZATION
+// ========================================
+function buildDualPipe() {
+  const container = document.getElementById('dualpipe-pipeline');
+  container.innerHTML = '';
+
+  // Simplified DualPipe: 4 GPUs, showing dual streams
+  // Stream A enters from left (GPU 0), Stream B enters from right (GPU 3)
+  const schedules = [
+    { label: 'GPU 0', slots: [
+      {t:'Fa1',c:'pipe-fwd'},{t:'Fa2',c:'pipe-fwd'},{t:'Fb1',c:'pipe-fwd-v2'},{t:'Fa3',c:'pipe-fwd'},
+      {t:'Fb2',c:'pipe-fwd-v2'},{t:'Ba2',c:'pipe-bwd-b'},{t:'Fa4',c:'pipe-fwd'},{t:'Bb1',c:'pipe-bwd-b'},
+      {t:'Ba3',c:'pipe-bwd-b'},{t:'Wa2',c:'pipe-bwd-w'},{t:'Ba4',c:'pipe-bwd-b'},{t:'Bb2',c:'pipe-bwd-b'},
+      {t:'Wa3',c:'pipe-bwd-w'},{t:'Wa4',c:'pipe-bwd-w'},{t:'Wb1',c:'pipe-bwd-w'},{t:'Ba1',c:'pipe-bwd-b'},
+      {t:'Wa1',c:'pipe-bwd-w'},{t:'Wb2',c:'pipe-bwd-w'}
+    ]},
+    { label: 'GPU 1', slots: [
+      {t:'',c:'pipe-idle'},{t:'Fa1',c:'pipe-fwd'},{t:'Fa2',c:'pipe-fwd'},{t:'Fb1',c:'pipe-fwd-v2'},
+      {t:'Fa3',c:'pipe-fwd'},{t:'Fb2',c:'pipe-fwd-v2'},{t:'Ba3',c:'pipe-bwd-b'},{t:'Fa4',c:'pipe-fwd'},
+      {t:'Bb1',c:'pipe-bwd-b'},{t:'Wa3',c:'pipe-bwd-w'},{t:'Ba4',c:'pipe-bwd-b'},{t:'Bb2',c:'pipe-bwd-b'},
+      {t:'Wa4',c:'pipe-bwd-w'},{t:'Ba2',c:'pipe-bwd-b'},{t:'Wb1',c:'pipe-bwd-w'},{t:'Ba1',c:'pipe-bwd-b'},
+      {t:'Wa2',c:'pipe-bwd-w'},{t:'Wa1',c:'pipe-bwd-w'},{t:'Wb2',c:'pipe-bwd-w'}
+    ]},
+    { label: 'GPU 2', slots: [
+      {t:'Fb1',c:'pipe-fwd-v2'},{t:'',c:'pipe-idle'},{t:'Fa1',c:'pipe-fwd'},{t:'Fb2',c:'pipe-fwd-v2'},
+      {t:'Fa2',c:'pipe-fwd'},{t:'Fa3',c:'pipe-fwd'},{t:'Bb1',c:'pipe-bwd-b'},{t:'Fb3',c:'pipe-fwd-v2'},
+      {t:'Fa4',c:'pipe-fwd'},{t:'Bb2',c:'pipe-bwd-b'},{t:'Ba4',c:'pipe-bwd-b'},{t:'Wb1',c:'pipe-bwd-w'},
+      {t:'Ba3',c:'pipe-bwd-b'},{t:'Wa4',c:'pipe-bwd-w'},{t:'Wb2',c:'pipe-bwd-w'},{t:'Ba2',c:'pipe-bwd-b'},
+      {t:'Wa3',c:'pipe-bwd-w'},{t:'Ba1',c:'pipe-bwd-b'},{t:'Wa2',c:'pipe-bwd-w'},{t:'Wa1',c:'pipe-bwd-w'}
+    ]},
+    { label: 'GPU 3', slots: [
+      {t:'Fb1',c:'pipe-fwd-v2'},{t:'Fb2',c:'pipe-fwd-v2'},{t:'',c:'pipe-idle'},{t:'Fa1',c:'pipe-fwd'},
+      {t:'Fb3',c:'pipe-fwd-v2'},{t:'Fa2',c:'pipe-fwd'},{t:'Bb1',c:'pipe-bwd-b'},{t:'Fa3',c:'pipe-fwd'},
+      {t:'Bb2',c:'pipe-bwd-b'},{t:'Wb1',c:'pipe-bwd-w'},{t:'Fa4',c:'pipe-fwd'},{t:'Bb3',c:'pipe-bwd-b'},
+      {t:'Wb2',c:'pipe-bwd-w'},{t:'Ba4',c:'pipe-bwd-b'},{t:'Wb3',c:'pipe-bwd-w'},{t:'Ba3',c:'pipe-bwd-b'},
+      {t:'Wa4',c:'pipe-bwd-w'},{t:'Ba2',c:'pipe-bwd-b'},{t:'Wa3',c:'pipe-bwd-w'},{t:'Ba1',c:'pipe-bwd-b'},
+      {t:'Wa2',c:'pipe-bwd-w'},{t:'Wa1',c:'pipe-bwd-w'}
+    ]},
+  ];
+
+  schedules.forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'pipe-row';
+
+    const label = document.createElement('div');
+    label.className = 'pipe-label';
+    label.textContent = s.label;
+    row.appendChild(label);
+
+    s.slots.forEach(slot => {
+      const block = document.createElement('div');
+      block.className = 'pipe-block ' + slot.c;
+
+      if (slot.t === '') {
+        block.textContent = '';
+        block.style.minWidth = '28px';
+      } else {
+        // Parse the label
+        const text = slot.t;
+        block.textContent = text;
+        block.style.fontSize = '0.52rem';
+        block.style.minWidth = '34px';
+        block.style.padding = '5px 2px';
+
+        // Tooltips
+        if (text.startsWith('Fa')) block.title = `Forward Stream A, micro-batch ${text.replace('Fa','')}`;
+        else if (text.startsWith('Fb')) block.title = `Forward Stream B, micro-batch ${text.replace('Fb','')}`;
+        else if (text.startsWith('Ba')) block.title = `B (input grad) Stream A, micro-batch ${text.replace('Ba','')}`;
+        else if (text.startsWith('Bb')) block.title = `B (input grad) Stream B, micro-batch ${text.replace('Bb','')}`;
+        else if (text.startsWith('Wa')) block.title = `W (weight grad) Stream A, micro-batch ${text.replace('Wa','')}`;
+        else if (text.startsWith('Wb')) block.title = `W (weight grad) Stream B, micro-batch ${text.replace('Wb','')}`;
+      }
+
+      row.appendChild(block);
+    });
+
+    container.appendChild(row);
+  });
+}
+buildDualPipe();
+</script>
+
+</body>
+</html>
