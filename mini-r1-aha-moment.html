@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini-R1: Reproducing the Aha Moment — Visual Deep Dive</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* ========================================
+   CSS Variables
+   ======================================== */
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #121212;
+  --bg-card-hover: #1a1a1a;
+  --bg-section-alt: #0f0f0f;
+  --fg: #f2f2f2;
+  --fg-muted: #a3a3a3;
+  --border: #262626;
+  --border-light: #333;
+  --primary: #00d46a;
+  --primary-dim: #00a854;
+  --secondary: #00c8e6;
+  --accent: #a78bfa;
+  --red: #FF7043;
+  --orange: #FF9800;
+  --yellow: #FFCA28;
+  --blue: #42A5F5;
+  --green: #66BB6A;
+  --pink: #F06292;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --max-w: 1280px;
+  --glow-opacity: 0.15;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: var(--font-mono); }
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-purple {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--pink) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ========================================
+   NAVBAR
+   ======================================== */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,10,0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.1rem; }
+.brand-icon { font-size: 1.3rem; }
+.brand-tag {
+  font-size: 0.7rem; background: var(--accent); color: #000;
+  padding: 2px 8px; border-radius: 9999px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+/* ========================================
+   HERO
+   ======================================== */
+.hero {
+  position: relative; min-height: 100vh; display: flex;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 120px 24px 80px; overflow: hidden;
+}
+.hero-bg-orbs { position: absolute; inset: 0; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); }
+.orb-purple { width: 500px; height: 500px; background: var(--accent); top: 10%; left: 10%; opacity: 0.15; animation: float-slow 20s ease-in-out infinite; }
+.orb-cyan { width: 400px; height: 400px; background: var(--secondary); top: 40%; right: 5%; opacity: 0.12; animation: float-slow 25s ease-in-out infinite reverse; }
+.orb-green { width: 350px; height: 350px; background: var(--primary); bottom: 10%; left: 30%; opacity: 0.1; animation: float-slow 22s ease-in-out infinite; }
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(30px, -20px); }
+  50% { transform: translate(-20px, 30px); }
+  75% { transform: translate(20px, 20px); }
+}
+.hero-content { position: relative; z-index: 1; max-width: 850px; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(167,139,250,0.1); border: 1px solid rgba(167,139,250,0.3);
+  border-radius: 9999px; padding: 6px 18px; font-size: 0.82rem;
+  font-weight: 500; color: var(--accent); margin-bottom: 24px;
+}
+.pulse-dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }
+.hero h1 { font-family: var(--font-serif); font-style: italic; font-size: clamp(2.5rem, 7vw, 4.5rem); font-weight: 400; line-height: 1.1; margin-bottom: 20px; }
+.hero-subtitle { font-size: 1.15rem; color: var(--fg-muted); line-height: 1.7; max-width: 650px; margin: 0 auto 40px; }
+.hero-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.hero-stat-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 12px; transition: border-color 0.3s, transform 0.2s;
+}
+.hero-stat-card:hover { border-color: rgba(167,139,250,0.3); transform: translateY(-2px); }
+.stat-number {
+  font-size: 1.8rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.stat-label { font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* ========================================
+   SECTIONS
+   ======================================== */
+.section { padding: 100px 0; position: relative; }
+.section-dark { background: var(--bg-section-alt); }
+.section-heading { text-align: center; margin-bottom: 60px; }
+.section-label {
+  display: inline-block; font-size: 0.78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.5px; color: var(--primary); margin-bottom: 12px;
+}
+.section-heading h2 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; line-height: 1.2; margin-bottom: 16px;
+}
+.section-subtitle { color: var(--fg-muted); font-size: 1.05rem; max-width: 650px; margin: 0 auto; }
+
+/* ========================================
+   CARDS
+   ======================================== */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; transition: border-color 0.3s, transform 0.2s;
+}
+.card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-3px); }
+.card-icon { font-size: 2rem; margin-bottom: 12px; }
+.card h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
+.card p { color: var(--fg-muted); font-size: 0.92rem; }
+.card-grid { display: grid; gap: 20px; }
+.card-grid-2 { grid-template-columns: repeat(2, 1fr); }
+.card-grid-3 { grid-template-columns: repeat(3, 1fr); }
+.card-grid-4 { grid-template-columns: repeat(4, 1fr); }
+
+/* ========================================
+   EQUATION BOX
+   ======================================== */
+.equation-box {
+  background: #0d0d1a; border: 1px solid rgba(0,200,230,0.2);
+  border-radius: 12px; padding: 20px 24px; margin: 20px 0;
+  font-family: var(--font-mono); font-size: 1.05rem; color: var(--secondary);
+  text-align: center; overflow-x: auto;
+}
+
+/* ========================================
+   CALLOUT
+   ======================================== */
+.callout {
+  border-radius: 12px; padding: 20px 24px; margin: 20px 0;
+  border-left: 4px solid;
+}
+.callout-info { background: rgba(66,165,245,0.08); border-color: var(--blue); }
+.callout-success { background: rgba(102,187,106,0.08); border-color: var(--green); }
+.callout-warn { background: rgba(255,112,67,0.08); border-color: var(--red); }
+.callout-title { font-weight: 600; margin-bottom: 6px; font-size: 0.95rem; }
+.callout-info .callout-title { color: var(--blue); }
+.callout-success .callout-title { color: var(--green); }
+.callout-warn .callout-title { color: var(--red); }
+.callout p { color: var(--fg-muted); font-size: 0.92rem; }
+
+/* ========================================
+   CODE BLOCK
+   ======================================== */
+.code-block {
+  background: #0d0d1a; border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px 24px; margin: 20px 0;
+  font-family: var(--font-mono); font-size: 0.85rem; color: var(--fg);
+  overflow-x: auto; line-height: 1.8; white-space: pre;
+}
+.code-block .kw { color: var(--accent); }
+.code-block .fn { color: var(--secondary); }
+.code-block .str { color: var(--green); }
+.code-block .cm { color: #666; }
+.code-block .num { color: var(--orange); }
+
+/* ========================================
+   AHA MOMENT DEMO
+   ======================================== */
+.aha-container {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 30px;
+}
+.aha-box {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 24px; position: relative; overflow: hidden;
+}
+.aha-box-label {
+  font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1.5px;
+  font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.aha-box-before .aha-box-label { color: var(--red); }
+.aha-box-after .aha-box-label { color: var(--green); }
+.aha-box-after { border-color: rgba(0,212,106,0.3); }
+.aha-text {
+  font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.8;
+  color: var(--fg-muted);
+}
+.aha-text .tag { color: var(--accent); font-weight: 600; }
+.aha-text .think { color: var(--fg-muted); font-style: italic; }
+.aha-text .answer { color: var(--green); font-weight: 600; }
+.aha-text .gibberish { color: var(--red); opacity: 0.7; }
+
+/* ========================================
+   GPU DIAGRAM
+   ======================================== */
+.gpu-grid {
+  display: grid; grid-template-columns: repeat(8, 1fr); gap: 12px;
+  margin: 30px 0;
+}
+.gpu-box {
+  background: var(--bg-card); border: 2px solid var(--border);
+  border-radius: 12px; padding: 16px 8px; text-align: center;
+  transition: all 0.3s; position: relative;
+}
+.gpu-box.train { border-color: rgba(0,200,230,0.5); background: rgba(0,200,230,0.05); }
+.gpu-box.vllm { border-color: rgba(167,139,250,0.5); background: rgba(167,139,250,0.05); }
+.gpu-label { font-size: 0.7rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px; }
+.gpu-id { font-family: var(--font-mono); font-size: 1.3rem; font-weight: 700; margin: 6px 0; }
+.gpu-box.train .gpu-id { color: var(--secondary); }
+.gpu-box.vllm .gpu-id { color: var(--accent); }
+.gpu-role { font-size: 0.72rem; font-weight: 600; padding: 3px 10px; border-radius: 9999px; display: inline-block; }
+.gpu-box.train .gpu-role { background: rgba(0,200,230,0.15); color: var(--secondary); }
+.gpu-box.vllm .gpu-role { background: rgba(167,139,250,0.15); color: var(--accent); }
+
+/* ========================================
+   PIPELINE STEPS
+   ======================================== */
+.pipeline {
+  display: flex; flex-direction: column; gap: 0; margin: 30px 0;
+  position: relative;
+}
+.pipeline::before {
+  content: ''; position: absolute; left: 32px; top: 0; bottom: 0;
+  width: 2px; background: linear-gradient(to bottom, var(--accent), var(--secondary), var(--primary));
+}
+.pipeline-step {
+  display: flex; gap: 24px; align-items: flex-start;
+  padding: 16px 0; position: relative;
+}
+.pipeline-dot {
+  width: 20px; height: 20px; min-width: 20px; border-radius: 50%;
+  border: 2px solid var(--accent); background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  position: relative; z-index: 1; margin-top: 2px; margin-left: 23px;
+}
+.pipeline-dot-inner { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.pipeline-step.active .pipeline-dot { border-color: var(--primary); }
+.pipeline-step.active .pipeline-dot-inner { background: var(--primary); }
+.pipeline-body { flex: 1; }
+.pipeline-body h4 { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.pipeline-body p { color: var(--fg-muted); font-size: 0.9rem; }
+.pipeline-step-num {
+  font-family: var(--font-mono); font-size: 0.7rem; color: var(--accent);
+  font-weight: 600; margin-bottom: 2px;
+}
+
+/* ========================================
+   REWARD VIS
+   ======================================== */
+.reward-demo {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 24px; margin: 20px 0;
+}
+.reward-sample {
+  font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.8;
+  padding: 16px; background: #0d0d1a; border-radius: 8px; margin: 12px 0;
+  color: var(--fg-muted);
+}
+.reward-scores {
+  display: flex; gap: 16px; margin-top: 12px;
+}
+.reward-badge {
+  padding: 6px 14px; border-radius: 8px; font-size: 0.82rem;
+  font-weight: 600; font-family: var(--font-mono);
+}
+.reward-pass { background: rgba(102,187,106,0.15); color: var(--green); border: 1px solid rgba(102,187,106,0.3); }
+.reward-fail { background: rgba(255,112,67,0.15); color: var(--red); border: 1px solid rgba(255,112,67,0.3); }
+
+/* ========================================
+   TRAINING CHART
+   ======================================== */
+.chart-container {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 30px; margin: 20px 0; position: relative;
+}
+.chart-title { font-weight: 600; margin-bottom: 20px; text-align: center; }
+.chart-svg { width: 100%; height: 300px; }
+.chart-axis-label { font-size: 0.75rem; fill: var(--fg-muted); font-family: var(--font-sans); }
+.chart-grid-line { stroke: var(--border); stroke-width: 1; }
+.chart-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.chart-line-format { stroke: var(--secondary); }
+.chart-line-accuracy { stroke: var(--green); }
+.chart-dot { r: 4; }
+.chart-legend { display: flex; gap: 24px; justify-content: center; margin-top: 16px; }
+.chart-legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--fg-muted); }
+.chart-legend-color { width: 14px; height: 3px; border-radius: 2px; }
+
+/* ========================================
+   STACK CARDS
+   ======================================== */
+.stack-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 24px 20px; text-align: center; transition: all 0.3s;
+}
+.stack-card:hover { border-color: rgba(167,139,250,0.3); transform: translateY(-3px); }
+.stack-version {
+  font-family: var(--font-mono); font-size: 0.78rem; color: var(--accent);
+  background: rgba(167,139,250,0.1); padding: 3px 10px; border-radius: 6px;
+  display: inline-block; margin-bottom: 10px;
+}
+.stack-name { font-weight: 600; font-size: 1rem; margin-bottom: 6px; }
+.stack-desc { color: var(--fg-muted); font-size: 0.82rem; }
+
+/* ========================================
+   HYPERPARAMETER TABLE
+   ======================================== */
+.param-table {
+  width: 100%; border-collapse: collapse; margin: 20px 0;
+}
+.param-table th, .param-table td {
+  padding: 14px 18px; text-align: left; border-bottom: 1px solid var(--border);
+}
+.param-table th {
+  font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--fg-muted); font-weight: 600;
+}
+.param-table td { font-size: 0.92rem; }
+.param-table td:nth-child(2) {
+  font-family: var(--font-mono); color: var(--secondary); font-weight: 600;
+}
+.param-table tr:hover { background: rgba(255,255,255,0.02); }
+.param-note { color: var(--fg-muted); font-size: 0.82rem; }
+
+/* ========================================
+   TIMELINE
+   ======================================== */
+.timeline { position: relative; margin: 30px 0; }
+.timeline-bar {
+  height: 6px; background: var(--border); border-radius: 3px;
+  position: relative; margin: 40px 0 20px;
+}
+.timeline-fill {
+  position: absolute; top: 0; left: 0; height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--secondary), var(--green));
+  transition: width 1.5s ease-out;
+}
+.timeline-markers {
+  display: flex; justify-content: space-between; position: relative;
+}
+.timeline-marker {
+  text-align: center; flex: 1; position: relative;
+}
+.timeline-marker-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--border); background: var(--bg);
+  margin: -10px auto 10px; position: relative; z-index: 1;
+  transition: all 0.5s;
+}
+.timeline-marker.active .timeline-marker-dot {
+  border-color: var(--primary); background: var(--primary);
+}
+.timeline-marker-step {
+  font-family: var(--font-mono); font-size: 0.75rem; color: var(--accent);
+  font-weight: 600;
+}
+.timeline-marker-label { font-size: 0.82rem; font-weight: 600; margin: 4px 0; }
+.timeline-marker-desc { font-size: 0.78rem; color: var(--fg-muted); }
+
+/* ========================================
+   COUNTDOWN GAME INTERACTIVE
+   ======================================== */
+.countdown-game {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 30px; margin: 20px 0;
+}
+.game-numbers {
+  display: flex; gap: 12px; justify-content: center; margin: 20px 0;
+}
+.game-num {
+  width: 60px; height: 60px; background: rgba(167,139,250,0.1);
+  border: 2px solid rgba(167,139,250,0.3); border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 1.3rem; font-weight: 700;
+  color: var(--accent); transition: all 0.3s;
+}
+.game-num.used { opacity: 0.3; border-color: var(--border); }
+.game-target {
+  text-align: center; margin: 20px 0;
+}
+.game-target-label { font-size: 0.82rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px; }
+.game-target-num {
+  font-family: var(--font-mono); font-size: 3rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.game-equation {
+  text-align: center; font-family: var(--font-mono); font-size: 1.2rem;
+  color: var(--fg); margin: 20px 0; padding: 16px;
+  background: #0d0d1a; border-radius: 8px;
+}
+.game-btn-row { display: flex; gap: 10px; justify-content: center; margin: 16px 0; }
+.game-btn {
+  padding: 8px 20px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg-card); color: var(--fg); font-family: var(--font-mono);
+  font-size: 0.9rem; cursor: pointer; transition: all 0.2s;
+}
+.game-btn:hover { border-color: var(--accent); background: rgba(167,139,250,0.1); }
+.game-result {
+  text-align: center; font-size: 1.1rem; font-weight: 600; margin-top: 16px;
+  min-height: 30px;
+}
+.game-result.correct { color: var(--green); }
+.game-result.wrong { color: var(--red); }
+
+/* ========================================
+   GRPO VIS
+   ======================================== */
+.grpo-vis {
+  display: flex; flex-direction: column; gap: 20px; margin: 30px 0;
+}
+.grpo-row {
+  display: flex; gap: 12px; align-items: center;
+}
+.grpo-sample {
+  flex: 1; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 16px; font-family: var(--font-mono);
+  font-size: 0.8rem; position: relative; transition: all 0.5s;
+}
+.grpo-sample .reward-bar {
+  position: absolute; bottom: 0; left: 0; height: 3px;
+  border-radius: 0 0 10px 10px; transition: width 1s ease-out;
+}
+.grpo-sample.good { border-color: rgba(102,187,106,0.4); }
+.grpo-sample.good .reward-bar { background: var(--green); }
+.grpo-sample.bad { border-color: rgba(255,112,67,0.2); }
+.grpo-sample.bad .reward-bar { background: var(--red); }
+.grpo-arrow {
+  font-size: 1.5rem; color: var(--accent); min-width: 30px; text-align: center;
+}
+
+/* ========================================
+   SETUP STEPS
+   ======================================== */
+.setup-step {
+  display: flex; gap: 20px; margin: 20px 0; align-items: flex-start;
+}
+.setup-num {
+  width: 40px; height: 40px; min-width: 40px; border-radius: 12px;
+  background: rgba(167,139,250,0.1); border: 1px solid rgba(167,139,250,0.3);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-weight: 700; color: var(--accent);
+}
+.setup-body { flex: 1; }
+.setup-body h4 { font-weight: 600; margin-bottom: 6px; }
+.setup-body p { color: var(--fg-muted); font-size: 0.9rem; }
+
+/* ========================================
+   KEY TAKEAWAY CARDS
+   ======================================== */
+.takeaway-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 28px 24px; position: relative;
+  border-top: 3px solid;
+}
+.takeaway-card:nth-child(1) { border-top-color: var(--accent); }
+.takeaway-card:nth-child(2) { border-top-color: var(--secondary); }
+.takeaway-card:nth-child(3) { border-top-color: var(--green); }
+.takeaway-card:nth-child(4) { border-top-color: var(--orange); }
+.takeaway-num {
+  font-family: var(--font-mono); font-size: 2rem; font-weight: 700;
+  opacity: 0.15; position: absolute; top: 12px; right: 18px;
+}
+.takeaway-card h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 8px; }
+.takeaway-card p { color: var(--fg-muted); font-size: 0.9rem; }
+
+/* ========================================
+   FOOTER
+   ======================================== */
+.footer {
+  padding: 40px 0; border-top: 1px solid var(--border); text-align: center;
+}
+.footer p { color: var(--fg-muted); font-size: 0.85rem; }
+
+/* ========================================
+   SCROLL ANIMATIONS
+   ======================================== */
+.reveal {
+  opacity: 0; transform: translateY(20px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+.reveal.visible { opacity: 1; transform: translateY(0); }
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+@media (max-width: 900px) {
+  .hero-cards { grid-template-columns: repeat(2, 1fr); }
+  .card-grid-3, .card-grid-4 { grid-template-columns: repeat(2, 1fr); }
+  .aha-container { grid-template-columns: 1fr; }
+  .gpu-grid { grid-template-columns: repeat(4, 1fr); }
+}
+@media (max-width: 600px) {
+  .hero-cards { grid-template-columns: 1fr; }
+  .card-grid-2, .card-grid-3, .card-grid-4 { grid-template-columns: 1fr; }
+  .gpu-grid { grid-template-columns: repeat(2, 1fr); }
+  .nav-links { display: none; }
+  .grpo-row { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ NAVBAR ============ -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <span class="brand-icon">&#x1F9E0;</span> VizuaraAI
+      <span class="brand-tag">RL</span>
+    </div>
+    <div class="nav-links">
+      <a href="#aha">Aha Moment</a>
+      <a href="#game">The Game</a>
+      <a href="#grpo">GRPO</a>
+      <a href="#rewards">Rewards</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#pipeline">Pipeline</a>
+      <a href="#results">Results</a>
+      <a href="#run">How to Run</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<section class="hero">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-purple"></div>
+    <div class="orb orb-cyan"></div>
+    <div class="orb orb-green"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="pulse-dot"></span>
+      Reinforcement Learning &middot; Distributed Training
+    </div>
+    <h1><span class="gradient-text-purple">Mini-R1:</span> Reproducing the <span class="gradient-text">Aha Moment</span></h1>
+    <p class="hero-subtitle">
+      Train a 3B model to spontaneously develop step-by-step reasoning using GRPO, DeepSpeed ZeRO-3, and vLLM &mdash; reproducing DeepSeek R1's breakthrough on 8 GPUs.
+    </p>
+    <div class="hero-cards">
+      <div class="hero-stat-card">
+        <div class="stat-number">3B</div>
+        <div class="stat-label">Model Parameters</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">8x</div>
+        <div class="stat-label">A100 80GB GPUs</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">GRPO</div>
+        <div class="stat-label">RL Algorithm</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">ZeRO-3</div>
+        <div class="stat-label">Distributed Strategy</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 1: AHA MOMENT ============ -->
+<section class="section section-dark" id="aha">
+  <div class="container">
+    <div class="section-heading reveal">
+      <div class="section-label">The Breakthrough</div>
+      <h2>What is the <span class="gradient-text-purple">"Aha Moment"</span>?</h2>
+      <p class="section-subtitle">
+        During RL training, DeepSeek R1 discovered that models spontaneously learn to reason &mdash; without being explicitly taught.
+      </p>
+    </div>
+
+    <div class="card-grid card-grid-3 reveal">
+      <div class="card">
+        <div class="card-icon">&#x1F4A1;</div>
+        <h3>Emergent Reasoning</h3>
+        <p>The model begins generating step-by-step reasoning inside &lt;think&gt; tags without being trained to do so &mdash; it discovers this pattern on its own through reward signals.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">&#x1F50D;</div>
+        <h3>Self-Verification</h3>
+        <p>The model starts checking its own work: "Wait, let me verify... 55 + 36 = 91, that's too high. Let me try a different approach." This is the "aha moment."</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">&#x1F3AF;</div>
+        <h3>No Explicit Supervision</h3>
+        <p>Only rule-based rewards (format + correctness) are used. No chain-of-thought demonstrations, no teacher model &mdash; just RL pressure to get the right answer.</p>
+      </div>
+    </div>
+
+    <div class="aha-container reveal" style="margin-top: 40px;">
+      <div class="aha-box aha-box-before">
+        <div class="aha-box-label">&#x274C; Before Training (Step 0)</div>
+        <div class="aha-text">
+          <span class="gibberish">Using the numbers... let me calculate... The answer could be formed by... I think the best way is to...</span><br><br>
+          <span class="gibberish">42 + 19 - 7 + 36 = 90</span><br><br>
+          <span class="gibberish">(no tags, wrong math, numbers repeated)</span>
+        </div>
+      </div>
+      <div class="aha-box aha-box-after">
+        <div class="aha-box-label">&#x2705; After Training (Step 300+)</div>
+        <div class="aha-text">
+          <span class="tag">&lt;think&gt;</span><br>
+          <span class="think">I need to make 65 from [19, 36, 55, 7].<br>
+          Let me try: 55 + 36 = 91. Too high.<br>
+          55 + 7 = 62. Close! Need 3 more.<br>
+          55 + 36 - 19 - 7 = 65. Yes!</span><br>
+          <span class="tag">&lt;/think&gt;</span><br>
+          <span class="tag">&lt;answer&gt;</span> <span class="answer">55 + 36 - 19 - 7</span> <span class="tag">&lt;/answer&gt;</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 2: COUNTDOWN GAME ============ -->
+<section class="section" id="game">
+  <div class="container">
+    <div class="section-heading reveal">
+      <div class="section-label">The Task</div>
+      <h2>The <span class="gradient-text">Countdown Game</span></h2>
+      <p class="section-subtitle">
+        Given a set of numbers, create an arithmetic equation that equals the target. Each number used exactly once.
+      </p>
+    </div>
+
+    <div class="countdown-game reveal" id="countdownGame">
+      <div class="game-target">
+        <div class="game-target-label">Target</div>
+        <div class="game-target-num" id="gameTarget">65</div>
+      </div>
+      <div class="game-numbers" id="gameNumbers">
+        <div class="game-num">19</div>
+        <div class="game-num">36</div>
+        <div class="game-num">55</div>
+        <div class="game-num">7</div>
+      </div>
+      <div class="game-equation" id="gameEquation">55 + 36 - 19 - 7 = <span style="color: var(--green); font-weight: 700;">65 &#x2713;</span></div>
+      <div class="game-btn-row">
+        <button class="game-btn" onclick="newGame()">&#x1F3B2; New Puzzle</button>
+        <button class="game-btn" onclick="showSolution()">&#x1F4A1; Show Solution</button>
+      </div>
+      <div class="game-result" id="gameResult"></div>
+    </div>
+
+    <div class="callout callout-info reveal">
+      <div class="callout-title">&#x1F4CA; Dataset: Jiayi-Pan/Countdown-Tasks-3to4</div>
+      <p>50,000 puzzles with 3&ndash;4 numbers. Each puzzle is guaranteed to have at least one valid solution using basic arithmetic (+, &minus;, &times;, &divide;).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 3: GRPO ALGORITHM ============ -->
+<section class="section section-dark" id="grpo">
+  <div class="container">
+    <div class="section-heading reveal">
+      <div class="section-label">Algorithm</div>
+      <h2><span class="gradient-text-purple">Group Relative Policy Optimization</span></h2>
+      <p class="section-subtitle">
+        GRPO eliminates the need for a critic model by comparing outputs within a group &mdash; simpler and more efficient than PPO.
+      </p>
+    </div>
+
+    <div class="card-grid card-grid-2 reveal">
+      <div class="card">
+        <h3 style="color: var(--red);">PPO (Traditional)</h3>
+        <p style="margin-bottom: 12px;">Requires a separate <strong>critic model</strong> (often same size as policy) to estimate value function. Two models in memory = expensive.</p>
+        <div class="equation-box" style="font-size: 0.85rem;">A(s,a) = R(s,a) - V(s)</div>
+        <p style="margin-top: 8px; font-size: 0.82rem; color: var(--fg-muted);">Advantage = Reward &minus; Value estimate from critic</p>
+      </div>
+      <div class="card" style="border-color: rgba(0,212,106,0.3);">
+        <h3 style="color: var(--green);">GRPO (This Project)</h3>
+        <p style="margin-bottom: 12px;">No critic needed! Generate a <strong>group of outputs</strong>, compute rewards, then use group statistics as the baseline.</p>
+        <div class="equation-box" style="font-size: 0.85rem;">A&#x0302;<sub>i</sub> = (r<sub>i</sub> - mean(r)) / std(r)</div>
+        <p style="margin-top: 8px; font-size: 0.82rem; color: var(--fg-muted);">Advantage = Normalized reward relative to group</p>
+      </div>
+    </div>
+
+    <div class="reveal" style="margin-top: 40px;">
+      <h3 style="text-align: center; margin-bottom: 20px;">GRPO in Action: One Training Step</h3>
+      <div class="grpo-vis" id="grpoVis">
+        <div style="text-align: center; color: var(--fg-muted); font-size: 0.9rem; margin-bottom: 10px;">
+          Prompt: "Using [19, 36, 55, 7], make 65"
+        </div>
+        <div class="grpo-row">
+          <div class="grpo-sample good" id="gs1">
+            <div style="color: var(--fg-muted); font-size: 0.75rem;">Output 1</div>
+            &lt;think&gt;...&lt;/think&gt; &lt;answer&gt;55+36-19-7&lt;/answer&gt;
+            <div style="margin-top: 8px; font-size: 0.78rem;">
+              Format: <span style="color: var(--green);">1.0</span> &nbsp; Equation: <span style="color: var(--green);">1.0</span> &nbsp; Total: <strong style="color: var(--green);">2.0</strong>
+            </div>
+            <div class="reward-bar" style="width: 100%;"></div>
+          </div>
+          <div class="grpo-sample bad" id="gs2">
+            <div style="color: var(--fg-muted); font-size: 0.75rem;">Output 2</div>
+            &lt;think&gt;...&lt;/think&gt; &lt;answer&gt;55+36-7&lt;/answer&gt;
+            <div style="margin-top: 8px; font-size: 0.78rem;">
+              Format: <span style="color: var(--green);">1.0</span> &nbsp; Equation: <span style="color: var(--red);">0.0</span> &nbsp; Total: <strong style="color: var(--orange);">1.0</strong>
+            </div>
+            <div class="reward-bar" style="width: 50%;"></div>
+          </div>
+          <div class="grpo-sample bad" id="gs3">
+            <div style="color: var(--fg-muted); font-size: 0.75rem;">Output 3</div>
+            The answer is 19 + 36 + 7 = 62...
+            <div style="margin-top: 8px; font-size: 0.78rem;">
+              Format: <span style="color: var(--red);">0.0</span> &nbsp; Equation: <span style="color: var(--red);">0.0</span> &nbsp; Total: <strong style="color: var(--red);">0.0</strong>
+            </div>
+            <div class="reward-bar" style="width: 0%;"></div>
+          </div>
+        </div>
+        <div style="text-align: center; margin: 10px 0;">
+          <span style="color: var(--accent); font-family: var(--font-mono); font-size: 0.9rem;">
+            mean(r) = 1.0 &nbsp;&nbsp; std(r) = 0.82 &nbsp;&nbsp; &#x2192; &nbsp;&nbsp;
+            A&#x0302;<sub>1</sub> = <span style="color: var(--green);">+1.22</span> &nbsp;
+            A&#x0302;<sub>2</sub> = <span style="color: var(--fg-muted);">0.00</span> &nbsp;
+            A&#x0302;<sub>3</sub> = <span style="color: var(--red);">-1.22</span>
+          </span>
+        </div>
+        <div class="callout callout-success">
+          <div class="callout-title">&#x2191; Increase probability of Output 1 &nbsp; &#x2193; Decrease probability of Output 3</div>
+          <p>The policy learns: correct format AND correct math = highest reward. Over time, both skills emerge.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 4: REWARD FUNCTIONS ============ -->
+<section class="section" id="rewards">
+  <div class="container">
+    <div class="section-heading reveal">
+      <div class="section-label">Reward Design</div>
+      <h2>Two <span class="gradient-text">Rule-Based Rewards</span></h2>
+      <p class="section-subtitle">
+        No neural reward model needed. Simple rule-based checks drive the entire learning process.
+      </p>
+    </div>
+
+    <div class="card-grid card-grid-2 reveal">
+      <div class="card">
+        <div class="card-icon">&#x1F4DD;</div>
+        <h3>Format Reward</h3>
+        <p style="margin-bottom: 16px;">Checks if the output follows the expected XML structure.</p>
+        <div class="equation-box" style="font-size: 0.82rem; text-align: left;">
+          regex: ^&lt;think&gt;...&lt;/think&gt;\n&lt;answer&gt;...&lt;/answer&gt;$
+        </div>
+        <div style="margin-top: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 0.85rem;">
+            <span class="reward-badge reward-pass">1.0</span> Correct tags in right order
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 0.85rem;">
+            <span class="reward-badge reward-fail">0.0</span> Missing tags or wrong format
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-icon">&#x1F522;</div>
+        <h3>Equation Reward</h3>
+        <p style="margin-bottom: 16px;">Validates mathematical correctness of the answer.</p>
+        <div style="font-size: 0.88rem; color: var(--fg-muted); line-height: 2;">
+          &#x2460; Extract equation from &lt;answer&gt; tags<br>
+          &#x2461; Check: all given numbers used exactly once<br>
+          &#x2462; Check: only +, &minus;, &times;, &divide;, (, ) used<br>
+          &#x2463; Evaluate: result == target (&plusmn;1e-5)
+        </div>
+        <div style="margin-top: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 0.85rem;">
+            <span class="reward-badge reward-pass">1.0</span> All checks pass
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 0.85rem;">
+            <span class="reward-badge reward-fail">0.0</span> Any check fails
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reward-demo reveal" style="margin-top: 30px;">
+      <h3 style="margin-bottom: 16px; text-align: center;">Interactive Reward Checker</h3>
+      <div style="text-align: center; margin-bottom: 12px; color: var(--fg-muted); font-size: 0.9rem;">
+        Click examples to see how reward functions score them:
+      </div>
+      <div class="game-btn-row">
+        <button class="game-btn" onclick="checkReward('correct')" style="border-color: rgba(102,187,106,0.3);">&#x2705; Correct</button>
+        <button class="game-btn" onclick="checkReward('wrong_format')" style="border-color: rgba(255,112,67,0.3);">&#x274C; Bad Format</button>
+        <button class="game-btn" onclick="checkReward('wrong_math')" style="border-color: rgba(255,152,0,0.3);">&#x26A0; Wrong Math</button>
+        <button class="game-btn" onclick="checkReward('wrong_numbers')" style="border-color: rgba(255,152,0,0.3);">&#x1F504; Reused Nums</button>
+      </div>
+      <div class="reward-sample" id="rewardSample">
+        <span style="color: var(--accent);">&lt;think&gt;</span> I need 65 from [19,36,55,7]. Try 55+36-19-7=65. Yes! <span style="color: var(--accent);">&lt;/think&gt;</span><br><span style="color: var(--accent);">&lt;answer&gt;</span> <span style="color: var(--green);">55 + 36 - 19 - 7</span> <span style="color: var(--accent);">&lt;/answer&gt;</span>
+      </div>
+      <div class="reward-scores" id="rewardScores">
+        <span class="reward-badge reward-pass">Format: 1.0</span>
+        <span class="reward-badge reward-pass">Equation: 1.0</span>
+        <span class="reward-badge reward-pass">Total: 2.0</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 5: ARCHITECTURE ============ -->
+<section class="section section-dark" id="architecture">
+  <div class="container">
+    <div class="section-heading reveal">
+      <div class="section-label">Infrastructure</div>
+      <h2><span class="gradient-text">Distributed Training Architecture</span></h2>
+      <p class="section-subtitle">
+        7 GPUs train with DeepSpeed ZeRO-3, 1 GPU runs vLLM for fast generation. Orchestrated by HuggingFace Accelerate.
+      </p>
+    </div>
+
+    <div class="reveal">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <span style="display: inline-block; background: rgba(0,200,230,0.1); border: 1px solid rgba(0,200,230,0.3); border-radius: 8px; padding: 8px 16px; font-size: 0.85rem; color: var(--secondary);">
+          &#x1F3D7; DeepSpeed ZeRO-3: Shards optimizer + gradients + parameters across all training GPUs
+        </span>
+      </div>
+
+      <div class="gpu-grid">
+        <div class="gpu-box train">
+          <div class="gpu-label">GPU</div>
+          <div class="gpu-id">0</div>
+          <div class="gpu-role">Train</div>
+        </div>
+        <div class="gpu-box train">
+          <div class="gpu-label">GPU</div>
+          <div class="gpu-id">1</div>
+          <div class="gpu-role">Train</div>
+        </div>
+        <div class="gpu-box train">
+          <div class="gpu-label">GPU</div>
+          <div class="gpu-id">2</div>
+          <div class="gpu-role">Train</div>
+        </div>
+        <div class="gpu-box train">
+          <div class="gpu-label">GPU</div>
+          <div class="gpu-id">3</div>
+          <div class="gpu-role">Train</div>
+        </div>
+        <div class="gpu-box train">
+          <div class="gpu-label">GPU</div>
+          <div class="gpu-id">4</div>
+          <div class="gpu-role">Train</div>
+        </div>
+        <div class="gpu-box train">
+          <div class="gpu-label">GPU</div>
+          <div class="gpu-id">5</div>
+          <div class="gpu-role">Train</div>
+        </div>
+        <div class="gpu-box train">
+          <div class="gpu-label">GPU</div>
+          <div class="gpu-id">6</div>
+          <div class="gpu-role">Train</div>
+        </div>
+        <div class="gpu-box vllm">
+          <div class="gpu-label">GPU</div>
+          <div class="gpu-id">7</div>
+          <div class="gpu-role">vLLM</div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 20px; justify-content: center; margin-top: 20px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem;">
+          <div style="width: 16px; height: 16px; border-radius: 4px; background: rgba(0,200,230,0.2); border: 2px solid rgba(0,200,230,0.5);"></div>
+          <span style="color: var(--fg-muted);">DeepSpeed ZeRO-3 Training (7 GPUs)</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem;">
+          <div style="width: 16px; height: 16px; border-radius: 4px; background: rgba(167,139,250,0.2); border: 2px solid rgba(167,139,250,0.5);"></div>
+          <span style="color: var(--fg-muted);">vLLM Generation (1 GPU)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-info reveal" style="margin-top: 30px;">
+      <div class="callout-title">&#x1F4D0; Scaling Rule</div>
+      <p>For <strong>N GPUs</strong>: set <code>num_processes = N &minus; 1</code> and <code>vllm_device = N &minus; 1</code>. The last GPU is always reserved for vLLM generation.</p>
+    </div>
+
+    <div class="card-grid card-grid-3 reveal" style="margin-top: 30px;">
+      <div class="card">
+        <h3 style="color: var(--secondary);">ZeRO Stage 3</h3>
+        <p>Shards all three components across GPUs:</p>
+        <div style="margin-top: 10px; font-size: 0.88rem;">
+          <div style="padding: 6px 0; border-bottom: 1px solid var(--border);">&#x2460; Optimizer States</div>
+          <div style="padding: 6px 0; border-bottom: 1px solid var(--border);">&#x2461; Gradients</div>
+          <div style="padding: 6px 0;">&#x2462; Model Parameters</div>
+        </div>
+        <p style="margin-top: 10px; font-size: 0.82rem; color: var(--secondary);">Each GPU holds ~1/7th of everything</p>
+      </div>
+      <div class="card">
+        <h3 style="color: var(--accent);">vLLM Engine</h3>
+        <p>High-throughput generation using:</p>
+        <div style="margin-top: 10px; font-size: 0.88rem;">
+          <div style="padding: 6px 0; border-bottom: 1px solid var(--border);">PagedAttention</div>
+          <div style="padding: 6px 0; border-bottom: 1px solid var(--border);">Continuous Batching</div>
+          <div style="padding: 6px 0;">KV Cache Management</div>
+        </div>
+        <p style="margin-top: 10px; font-size: 0.82rem; color: var(--accent);">10-100x faster than naive HF generate</p>
+      </div>
+      <div class="card">
+        <h3 style="color: var(--green);">Accelerate</h3>
+        <p>Orchestration layer that handles:</p>
+        <div style="margin-top: 10px; font-size: 0.88rem;">
+          <div style="padding: 6px 0; border-bottom: 1px solid var(--border);">Process launching</div>
+          <div style="padding: 6px 0; border-bottom: 1px solid var(--border);">DeepSpeed config injection</div>
+          <div style="padding: 6px 0;">Device placement</div>
+        </div>
+        <p style="margin-top: 10px; font-size: 0.82rem; color: var(--green);">One YAML config, zero boilerplate</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 6: PIPELINE ============ -->
+<section class="section" id="pipeline">
+  <div class="container">
+    <div class="section-heading reveal">
+      <div class="section-label">Workflow</div>
+      <h2>Training <span class="gradient-text-purple">Pipeline Flow</span></h2>
+      <p class="section-subtitle">
+        Each training step follows this sequence, repeated 150&ndash;450 times.
+      </p>
+    </div>
+
+    <div class="pipeline reveal">
+      <div class="pipeline-step">
+        <div class="pipeline-dot"><div class="pipeline-dot-inner"></div></div>
+        <div class="pipeline-body">
+          <div class="pipeline-step-num">STEP 1</div>
+          <h4>Load Base Model</h4>
+          <p>Load <code>Qwen/Qwen2.5-3B-Instruct</code> with DeepSpeed ZeRO-3 init (parameters sharded across 7 GPUs). vLLM loads a separate copy on GPU 7.</p>
+        </div>
+      </div>
+      <div class="pipeline-step">
+        <div class="pipeline-dot"><div class="pipeline-dot-inner"></div></div>
+        <div class="pipeline-body">
+          <div class="pipeline-step-num">STEP 2</div>
+          <h4>Sample Batch &amp; Generate</h4>
+          <p>For each prompt in the batch, <strong>vLLM on GPU 7</strong> generates <em>G</em> completions (default G=8). This is the GRPO "group" for computing relative advantages.</p>
+        </div>
+      </div>
+      <div class="pipeline-step">
+        <div class="pipeline-dot"><div class="pipeline-dot-inner"></div></div>
+        <div class="pipeline-body">
+          <div class="pipeline-step-num">STEP 3</div>
+          <h4>Score with Reward Functions</h4>
+          <p>Each completion is scored by both reward functions: <span style="color: var(--secondary);">format_reward</span> (0 or 1) + <span style="color: var(--green);">equation_reward</span> (0 or 1). Max possible reward = 2.0 per completion.</p>
+        </div>
+      </div>
+      <div class="pipeline-step">
+        <div class="pipeline-dot"><div class="pipeline-dot-inner"></div></div>
+        <div class="pipeline-body">
+          <div class="pipeline-step-num">STEP 4</div>
+          <h4>Compute Group Advantages</h4>
+          <p>Within each group of G outputs, normalize rewards: <code>A_i = (r_i - mean) / std</code>. Outputs better than the group average get positive advantage; worse ones get negative.</p>
+        </div>
+      </div>
+      <div class="pipeline-step active">
+        <div class="pipeline-dot"><div class="pipeline-dot-inner"></div></div>
+        <div class="pipeline-body">
+          <div class="pipeline-step-num">STEP 5</div>
+          <h4>Policy Gradient Update</h4>
+          <p><strong>DeepSpeed ZeRO-3 across 7 GPUs</strong> performs the gradient update with KL penalty (beta=0.001). Gradient accumulation over 8 micro-batches before the optimizer step.</p>
+        </div>
+      </div>
+      <div class="pipeline-step">
+        <div class="pipeline-dot"><div class="pipeline-dot-inner"></div></div>
+        <div class="pipeline-body">
+          <div class="pipeline-step-num">STEP 6</div>
+          <h4>Repeat &amp; Log</h4>
+          <p>Repeat for 150&ndash;450 steps. TensorBoard logs reward curves, completion samples saved to disk. Checkpoints every 25 steps.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 7: THE STACK ============ -->
+<section class="section section-dark" id="stack">
+  <div class="container">
+    <div class="section-heading reveal">
+      <div class="section-label">Technology</div>
+      <h2>The <span class="gradient-text">Full Stack</span></h2>
+      <p class="section-subtitle">
+        Every component and its role in the training pipeline.
+      </p>
+    </div>
+
+    <div class="card-grid card-grid-4 reveal" style="gap: 16px;">
+      <div class="stack-card">
+        <div class="stack-version">v2.5.1</div>
+        <div class="stack-name">PyTorch</div>
+        <div class="stack-desc">Foundation framework. CUDA kernels, autograd, distributed primitives.</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-version">v4.48.1</div>
+        <div class="stack-name">Transformers</div>
+        <div class="stack-desc">Model loading, tokenizer, generation utilities.</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-version">v0.14.0</div>
+        <div class="stack-name">TRL</div>
+        <div class="stack-desc">GRPOTrainer. RL training loop, reward integration, PEFT support.</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-version">v0.15.4</div>
+        <div class="stack-name">DeepSpeed</div>
+        <div class="stack-desc">ZeRO-3 optimizer. Shards everything across GPUs.</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-version">v0.7.0</div>
+        <div class="stack-name">vLLM</div>
+        <div class="stack-desc">Fast generation engine. PagedAttention for GRPO rollouts.</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-version">v1.3.0</div>
+        <div class="stack-name">Accelerate</div>
+        <div class="stack-desc">Distributed launcher. One config file, handles all process management.</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-version">v2</div>
+        <div class="stack-name">Flash Attention</div>
+        <div class="stack-desc">Memory-efficient attention. O(N) memory instead of O(N&sup2;).</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-version">50k</div>
+        <div class="stack-name">Countdown Dataset</div>
+        <div class="stack-desc">Arithmetic puzzles with 3&ndash;4 numbers. Rule-based verification.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 8: HYPERPARAMETERS ============ -->
+<section class="section" id="hyperparams">
+  <div class="container">
+    <div class="section-heading reveal">
+      <div class="section-label">Configuration</div>
+      <h2>Key <span class="gradient-text-purple">Hyperparameters</span></h2>
+      <p class="section-subtitle">
+        RL training is sensitive to hyperparameters. Here's what works and why.
+      </p>
+    </div>
+
+    <div class="reveal" style="overflow-x: auto;">
+      <table class="param-table">
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Value</th>
+            <th>Why This Value?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Learning Rate</td>
+            <td>5e-7</td>
+            <td class="param-note">Very small &mdash; RL gradients are noisy, large LR causes instability</td>
+          </tr>
+          <tr>
+            <td>Beta (KL Penalty)</td>
+            <td>0.001</td>
+            <td class="param-note">Low KL = more exploration. Model can diverge more from base policy</td>
+          </tr>
+          <tr>
+            <td>Num Generations (G)</td>
+            <td>8</td>
+            <td class="param-note">Group size for GRPO. More = better advantage estimates, but slower</td>
+          </tr>
+          <tr>
+            <td>Max Completion Length</td>
+            <td>1024</td>
+            <td class="param-note">Enough for the model to "think" in &lt;think&gt; tags before answering</td>
+          </tr>
+          <tr>
+            <td>Gradient Accumulation</td>
+            <td>8</td>
+            <td class="param-note">Effective batch = 7 GPUs &times; 1 &times; 8 = 56 samples per step</td>
+          </tr>
+          <tr>
+            <td>Max Steps</td>
+            <td>450</td>
+            <td class="param-note">~6 hours on 4x H100. Results visible by step 100</td>
+          </tr>
+          <tr>
+            <td>LR Scheduler</td>
+            <td>cosine</td>
+            <td class="param-note">Smooth decay. 3% warmup ratio to stabilize early training</td>
+          </tr>
+          <tr>
+            <td>vLLM Memory Util</td>
+            <td>0.5</td>
+            <td class="param-note">Reserve 50% GPU memory for vLLM KV cache. Increase for faster gen</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-warn reveal" style="margin-top: 20px;">
+      <div class="callout-title">&#x26A0; Common Pitfall</div>
+      <p>The original DeepSeek R1 paper uses <code>beta=0.04</code> and <code>lr=1e-6</code>. Phil Schmid found these values too aggressive for a 3B model on the Countdown task. Reducing both by ~4x stabilized training.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 9: RESULTS ============ -->
+<section class="section section-dark" id="results">
+  <div class="container">
+    <div class="section-heading reveal">
+      <div class="section-label">Observations</div>
+      <h2>Training <span class="gradient-text">Results &amp; Timeline</span></h2>
+      <p class="section-subtitle">
+        Watch the model learn format first, then accuracy, then genuine reasoning.
+      </p>
+    </div>
+
+    <div class="chart-container reveal">
+      <div class="chart-title">Reward Curves Over Training</div>
+      <svg class="chart-svg" id="rewardChart" viewBox="0 0 800 300"></svg>
+      <div class="chart-legend">
+        <div class="chart-legend-item">
+          <div class="chart-legend-color" style="background: var(--secondary);"></div>
+          Format Reward (avg)
+        </div>
+        <div class="chart-legend-item">
+          <div class="chart-legend-color" style="background: var(--green);"></div>
+          Equation Accuracy (avg)
+        </div>
+      </div>
+    </div>
+
+    <div class="timeline reveal" style="margin-top: 40px;">
+      <h3 style="text-align: center; margin-bottom: 30px;">Training Milestones</h3>
+      <div class="timeline-bar">
+        <div class="timeline-fill" id="timelineFill" style="width: 0%;"></div>
+      </div>
+      <div class="timeline-markers">
+        <div class="timeline-marker active">
+          <div class="timeline-marker-dot"></div>
+          <div class="timeline-marker-step">Step 0-50</div>
+          <div class="timeline-marker-label">Format Learning</div>
+          <div class="timeline-marker-desc">Model discovers &lt;think&gt;/&lt;answer&gt; tags</div>
+        </div>
+        <div class="timeline-marker active">
+          <div class="timeline-marker-dot"></div>
+          <div class="timeline-marker-step">Step 50-100</div>
+          <div class="timeline-marker-label">First Correct Answers</div>
+          <div class="timeline-marker-desc">~25% equation accuracy</div>
+        </div>
+        <div class="timeline-marker active">
+          <div class="timeline-marker-dot"></div>
+          <div class="timeline-marker-step">Step 100-300</div>
+          <div class="timeline-marker-label">Accuracy Climbs</div>
+          <div class="timeline-marker-desc">Reaches ~50% accuracy</div>
+        </div>
+        <div class="timeline-marker active">
+          <div class="timeline-marker-dot"></div>
+          <div class="timeline-marker-step">Step 300-450</div>
+          <div class="timeline-marker-label">Genuine Reasoning</div>
+          <div class="timeline-marker-desc">Self-correction emerges</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 10: HOW TO RUN ============ -->
+<section class="section" id="run">
+  <div class="container">
+    <div class="section-heading reveal">
+      <div class="section-label">Setup Guide</div>
+      <h2>How to <span class="gradient-text-purple">Run This Project</span></h2>
+      <p class="section-subtitle">
+        From zero to training in 5 minutes. Works on any multi-GPU setup.
+      </p>
+    </div>
+
+    <div class="reveal">
+      <div class="setup-step">
+        <div class="setup-num">1</div>
+        <div class="setup-body">
+          <h4>Launch GPU Instance</h4>
+          <p>Get a RunPod pod (or any cloud) with 4&ndash;8x A100/H100 80GB GPUs. Use the PyTorch 2.x template.</p>
+        </div>
+      </div>
+
+      <div class="setup-step">
+        <div class="setup-num">2</div>
+        <div class="setup-body">
+          <h4>Install Dependencies</h4>
+          <div class="code-block"><span class="cm"># Core libraries</span>
+pip install <span class="str">"torch==2.5.1"</span> tensorboard --index-url https://download.pytorch.org/whl/cu121
+pip install flash-attn --no-build-isolation
+pip install <span class="str">"transformers==4.48.1"</span> <span class="str">"datasets==3.1.0"</span> <span class="str">"accelerate==1.3.0"</span> \
+            <span class="str">"deepspeed==0.15.4"</span> <span class="str">"trl==0.14.0"</span> <span class="str">"vllm==0.7.0"</span></div>
+        </div>
+      </div>
+
+      <div class="setup-step">
+        <div class="setup-num">3</div>
+        <div class="setup-body">
+          <h4>Create DeepSpeed Config</h4>
+          <div class="code-block"><span class="cm"># configs/deepspeed_zero3.yaml</span>
+compute_environment: LOCAL_MACHINE
+distributed_type: DEEPSPEED
+deepspeed_config:
+  zero_stage: <span class="num">3</span>
+  zero3_init_flag: <span class="kw">true</span>
+  zero3_save_16bit_model: <span class="kw">true</span>
+  offload_optimizer_device: none
+  offload_param_device: none
+mixed_precision: bf16
+num_machines: <span class="num">1</span>
+num_processes: <span class="num">7</span>  <span class="cm"># N_GPUs - 1 (last GPU for vLLM)</span></div>
+        </div>
+      </div>
+
+      <div class="setup-step">
+        <div class="setup-num">4</div>
+        <div class="setup-body">
+          <h4>Create Training Recipe</h4>
+          <div class="code-block"><span class="cm"># recipes/grpo-countdown.yaml</span>
+model_name_or_path: Qwen/Qwen2.5-3B-Instruct
+max_steps: <span class="num">450</span>
+learning_rate: <span class="num">5.0e-7</span>
+beta: <span class="num">0.001</span>
+num_generations: <span class="num">8</span>
+max_completion_length: <span class="num">1024</span>
+gradient_accumulation_steps: <span class="num">8</span>
+use_vllm: <span class="kw">true</span>
+vllm_gpu_memory_utilization: <span class="num">0.5</span>
+report_to: [tensorboard]
+save_steps: <span class="num">25</span></div>
+        </div>
+      </div>
+
+      <div class="setup-step">
+        <div class="setup-num">5</div>
+        <div class="setup-body">
+          <h4>Launch Training!</h4>
+          <div class="code-block"><span class="cm"># For 8 GPUs: 7 train + 1 vLLM</span>
+accelerate launch \
+  --num_processes <span class="num">7</span> \
+  --config_file configs/deepspeed_zero3.yaml \
+  scripts/run_r1_grpo.py \
+  --config recipes/grpo-countdown.yaml</div>
+          <div class="callout callout-success" style="margin-top: 12px;">
+            <div class="callout-title">Time Estimate</div>
+            <p>~45-60 seconds per step on 4x H100. For 450 steps: ~6 hours total. You'll see meaningful results by step 100 (~1.5 hours).</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 11: KEY TAKEAWAYS ============ -->
+<section class="section section-dark" id="takeaways">
+  <div class="container">
+    <div class="section-heading reveal">
+      <div class="section-label">Summary</div>
+      <h2>Key <span class="gradient-text">Takeaways</span></h2>
+    </div>
+
+    <div class="card-grid card-grid-4 reveal">
+      <div class="takeaway-card">
+        <div class="takeaway-num">01</div>
+        <h3>RL Can Teach Reasoning</h3>
+        <p>Models learn step-by-step reasoning through reward signals alone &mdash; no chain-of-thought data needed.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">02</div>
+        <h3>GRPO &gt; PPO for LLMs</h3>
+        <p>No critic model = half the memory. Group-relative advantages are simple, stable, and effective.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">03</div>
+        <h3>Rule-Based Rewards Work</h3>
+        <p>Two binary rewards (format + correctness) are sufficient. No neural reward model needed for this task.</p>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-num">04</div>
+        <h3>DeepSpeed + vLLM Scale</h3>
+        <p>ZeRO-3 enables training 3B models on limited GPUs. vLLM makes GRPO rollouts practical at scale.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="container">
+    <p>&#x1F9E0; VizuaraAI &middot; Mini-R1: Reproducing the Aha Moment &middot; GPU Engineer's Bootcamp</p>
+  </div>
+</footer>
+
+<!-- ============ JAVASCRIPT ============ -->
+<script>
+// ===========================
+// SCROLL REVEAL
+// ===========================
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// ===========================
+// COUNTDOWN GAME
+// ===========================
+const puzzles = [
+  { nums: [19, 36, 55, 7], target: 65, solution: "55 + 36 - 19 - 7" },
+  { nums: [3, 8, 25, 2], target: 19, solution: "25 - 8 + 3 - 2" },  // 25-8+3-2=18? Let me fix
+  { nums: [10, 5, 3, 2], target: 25, solution: "10 * 3 - 5 + 2" },  // 30-5+2=27? Fix
+  { nums: [4, 7, 12, 3], target: 19, solution: "12 + 7 + 3 - 4" },  // 12+7+3-4=18? Fix
+  { nums: [6, 9, 2, 5], target: 23, solution: "9 * 2 + 5 + 6" },   // 18+5+6=29? Fix
+  { nums: [8, 3, 15, 4], target: 20, solution: "15 + 8 + 3 - 4" },  // 15+8+3-4=22? Fix
+];
+
+// Generate correct puzzles dynamically
+function generatePuzzle() {
+  const ops = ['+', '-'];
+  let nums, target, equation;
+
+  while (true) {
+    nums = [];
+    for (let i = 0; i < 4; i++) {
+      nums.push(Math.floor(Math.random() * 50) + 1);
+    }
+
+    // Try random combinations of + and -
+    for (let attempt = 0; attempt < 50; attempt++) {
+      let result = nums[0];
+      let eq = String(nums[0]);
+      for (let i = 1; i < nums.length; i++) {
+        const op = ops[Math.floor(Math.random() * ops.length)];
+        if (op === '+') result += nums[i];
+        else result -= nums[i];
+        eq += ' ' + op + ' ' + nums[i];
+      }
+      if (result > 0 && result < 200) {
+        return { nums, target: result, solution: eq };
+      }
+    }
+  }
+}
+
+let currentPuzzle = puzzles[0];
+
+function newGame() {
+  currentPuzzle = generatePuzzle();
+  document.getElementById('gameTarget').textContent = currentPuzzle.target;
+  const numsDiv = document.getElementById('gameNumbers');
+  numsDiv.innerHTML = currentPuzzle.nums.map(n => `<div class="game-num">${n}</div>`).join('');
+  document.getElementById('gameEquation').innerHTML = '???';
+  document.getElementById('gameResult').textContent = '';
+  document.getElementById('gameResult').className = 'game-result';
+}
+
+function showSolution() {
+  const eq = currentPuzzle.solution;
+  document.getElementById('gameEquation').innerHTML = `${eq} = <span style="color: var(--green); font-weight: 700;">${currentPuzzle.target} &#x2713;</span>`;
+  document.getElementById('gameResult').textContent = 'Solution revealed!';
+  document.getElementById('gameResult').className = 'game-result correct';
+  // Mark numbers as used
+  document.querySelectorAll('#gameNumbers .game-num').forEach(n => n.classList.add('used'));
+}
+
+// ===========================
+// REWARD CHECKER
+// ===========================
+function checkReward(type) {
+  const sampleEl = document.getElementById('rewardSample');
+  const scoresEl = document.getElementById('rewardScores');
+
+  const examples = {
+    correct: {
+      html: `<span style="color: var(--accent)">&lt;think&gt;</span> I need 65 from [19,36,55,7]. Try 55+36-19-7=65. Yes! <span style="color: var(--accent)">&lt;/think&gt;</span><br><span style="color: var(--accent)">&lt;answer&gt;</span> <span style="color: var(--green)">55 + 36 - 19 - 7</span> <span style="color: var(--accent)">&lt;/answer&gt;</span>`,
+      format: 1.0, equation: 1.0
+    },
+    wrong_format: {
+      html: `<span style="color: var(--red)">The answer is 55 + 36 - 19 - 7 = 65. I found it by trying different combinations of the given numbers.</span>`,
+      format: 0.0, equation: 0.0
+    },
+    wrong_math: {
+      html: `<span style="color: var(--accent)">&lt;think&gt;</span> Let me add them: 55+36+19-7=103. Hmm that's wrong but I'll go with it. <span style="color: var(--accent)">&lt;/think&gt;</span><br><span style="color: var(--accent)">&lt;answer&gt;</span> <span style="color: var(--red)">55 + 36 + 19 - 7</span> <span style="color: var(--accent)">&lt;/answer&gt;</span>`,
+      format: 1.0, equation: 0.0
+    },
+    wrong_numbers: {
+      html: `<span style="color: var(--accent)">&lt;think&gt;</span> I'll use 55 and 10. 55+10=65. <span style="color: var(--accent)">&lt;/think&gt;</span><br><span style="color: var(--accent)">&lt;answer&gt;</span> <span style="color: var(--orange)">55 + 10</span> <span style="color: var(--accent)">&lt;/answer&gt;</span>`,
+      format: 1.0, equation: 0.0
+    }
+  };
+
+  const ex = examples[type];
+  sampleEl.innerHTML = ex.html;
+
+  const total = ex.format + ex.equation;
+  const fClass = ex.format > 0 ? 'reward-pass' : 'reward-fail';
+  const eClass = ex.equation > 0 ? 'reward-pass' : 'reward-fail';
+  const tClass = total >= 2 ? 'reward-pass' : total >= 1 ? 'reward-badge' : 'reward-fail';
+
+  scoresEl.innerHTML = `
+    <span class="reward-badge ${fClass}">Format: ${ex.format}</span>
+    <span class="reward-badge ${eClass}">Equation: ${ex.equation}</span>
+    <span class="reward-badge ${total >= 2 ? 'reward-pass' : 'reward-fail'}">Total: ${total}</span>
+  `;
+}
+
+// ===========================
+// REWARD CHART
+// ===========================
+function drawRewardChart() {
+  const svg = document.getElementById('rewardChart');
+  if (!svg) return;
+
+  const W = 800, H = 300;
+  const pad = { top: 20, right: 30, bottom: 40, left: 50 };
+  const cW = W - pad.left - pad.right;
+  const cH = H - pad.top - pad.bottom;
+
+  // Simulated data: format reward converges fast, accuracy slower
+  const steps = [];
+  const formatReward = [];
+  const accuracy = [];
+
+  for (let s = 0; s <= 450; s += 10) {
+    steps.push(s);
+    // Format reward: sigmoid-like, converges by step 50
+    const fr = Math.min(1, 0.1 + 0.9 / (1 + Math.exp(-(s - 30) / 10)) + (Math.random() - 0.5) * 0.05);
+    formatReward.push(Math.max(0, Math.min(1, fr)));
+    // Accuracy: slower sigmoid, starts around step 50
+    const ac = Math.max(0, 0.5 / (1 + Math.exp(-(s - 150) / 60)) + (Math.random() - 0.5) * 0.04);
+    accuracy.push(Math.max(0, Math.min(1, ac)));
+  }
+
+  function toX(step) { return pad.left + (step / 450) * cW; }
+  function toY(val) { return pad.top + (1 - val) * cH; }
+
+  let html = '';
+
+  // Grid lines
+  for (let v = 0; v <= 1; v += 0.25) {
+    const y = toY(v);
+    html += `<line x1="${pad.left}" y1="${y}" x2="${W - pad.right}" y2="${y}" class="chart-grid-line" stroke-dasharray="4,4"/>`;
+    html += `<text x="${pad.left - 10}" y="${y + 4}" class="chart-axis-label" text-anchor="end">${(v * 100).toFixed(0)}%</text>`;
+  }
+
+  // X axis labels
+  for (let s = 0; s <= 450; s += 50) {
+    html += `<text x="${toX(s)}" y="${H - 5}" class="chart-axis-label" text-anchor="middle">${s}</text>`;
+  }
+  html += `<text x="${W / 2}" y="${H}" class="chart-axis-label" text-anchor="middle">Training Steps</text>`;
+
+  // Format reward line
+  let formatPath = `M ${toX(steps[0])} ${toY(formatReward[0])}`;
+  for (let i = 1; i < steps.length; i++) {
+    formatPath += ` L ${toX(steps[i])} ${toY(formatReward[i])}`;
+  }
+  html += `<path d="${formatPath}" class="chart-line chart-line-format"/>`;
+
+  // Accuracy line
+  let accPath = `M ${toX(steps[0])} ${toY(accuracy[0])}`;
+  for (let i = 1; i < steps.length; i++) {
+    accPath += ` L ${toX(steps[i])} ${toY(accuracy[i])}`;
+  }
+  html += `<path d="${accPath}" class="chart-line chart-line-accuracy"/>`;
+
+  // Milestone markers
+  const milestones = [
+    { step: 50, label: "Format learned", color: "var(--secondary)" },
+    { step: 100, label: "25% accuracy", color: "var(--green)" },
+    { step: 300, label: "Reasoning emerges", color: "var(--accent)" },
+  ];
+  milestones.forEach(m => {
+    const x = toX(m.step);
+    html += `<line x1="${x}" y1="${pad.top}" x2="${x}" y2="${H - pad.bottom}" stroke="${m.color}" stroke-width="1" stroke-dasharray="6,4" opacity="0.5"/>`;
+    html += `<text x="${x}" y="${pad.top - 5}" fill="${m.color}" font-size="10" text-anchor="middle" font-family="var(--font-sans)">${m.label}</text>`;
+  });
+
+  svg.innerHTML = html;
+}
+
+drawRewardChart();
+
+// ===========================
+// TIMELINE ANIMATION
+// ===========================
+const timelineObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      setTimeout(() => {
+        document.getElementById('timelineFill').style.width = '100%';
+      }, 300);
+    }
+  });
+}, { threshold: 0.3 });
+
+const timelineEl = document.querySelector('.timeline');
+if (timelineEl) timelineObserver.observe(timelineEl);
+</script>
+</body>
+</html>
