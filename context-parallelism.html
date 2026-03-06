@@ -1,0 +1,1521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Context Parallelism — Ring Attention &amp; Zigzag Ring Attention</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* ========================================
+   CSS Variables — Design System
+   ======================================== */
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #121212;
+  --bg-card-hover: #1a1a1a;
+  --bg-section-alt: #0f0f0f;
+  --fg: #f2f2f2;
+  --fg-muted: #a3a3a3;
+  --border: #262626;
+  --border-light: #333;
+  --primary: #00d46a;
+  --primary-dim: #00a854;
+  --secondary: #00c8e6;
+  --accent: #a78bfa;
+  --red: #FF7043;
+  --orange: #FF9800;
+  --yellow: #FFCA28;
+  --blue: #42A5F5;
+  --green: #66BB6A;
+  --pink: #F06292;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --max-w: 1280px;
+  --glow-opacity: 0.15;
+  --gpu0: #3b82f6;
+  --gpu1: #00d46a;
+  --gpu2: #f59e0b;
+  --gpu3: #a78bfa;
+}
+
+/* --- Reset & Base --- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: var(--font-mono); }
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ========================================
+   NAVBAR
+   ======================================== */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,10,0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15rem; }
+.nav-brand-logo { width: 30px; height: 30px; object-fit: contain; }
+.brand-tag {
+  font-size: 0.65rem; background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: #fff; padding: 2px 10px; border-radius: 9999px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.8px;
+}
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+/* ========================================
+   HERO
+   ======================================== */
+.hero {
+  position: relative; min-height: 100vh; display: flex;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 120px 24px 80px; overflow: hidden;
+}
+.hero-bg-orbs { position: absolute; inset: 0; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.12; }
+.orb-green { width: 500px; height: 500px; background: var(--primary); top: 10%; left: 10%; animation: float-slow 20s ease-in-out infinite; }
+.orb-cyan { width: 400px; height: 400px; background: var(--secondary); top: 40%; right: 5%; animation: float-slow 25s ease-in-out infinite reverse; }
+.orb-purple { width: 350px; height: 350px; background: var(--accent); bottom: 10%; left: 30%; animation: float-slow 22s ease-in-out infinite; }
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(30px, -20px); }
+  50% { transform: translate(-20px, 30px); }
+  75% { transform: translate(20px, 20px); }
+}
+.hero-grid-bg {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+.hero-content { position: relative; z-index: 1; max-width: 800px; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3);
+  border-radius: 9999px; padding: 6px 18px; font-size: 0.82rem;
+  font-weight: 500; color: var(--primary); margin-bottom: 24px;
+}
+.pulse-dot { width: 8px; height: 8px; background: var(--primary); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }
+.hero h1 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2.5rem, 7vw, 4.5rem); font-weight: 400; line-height: 1.1; margin-bottom: 20px;
+}
+.hero-subtitle { font-size: 1.15rem; color: var(--fg-muted); line-height: 1.7; max-width: 620px; margin: 0 auto 40px; }
+.hero-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.hero-stat-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 12px; transition: border-color 0.3s, transform 0.2s;
+}
+.hero-stat-card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-2px); }
+.stat-number {
+  font-size: 1.6rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.stat-label { font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* ========================================
+   SECTIONS
+   ======================================== */
+.section { padding: 100px 0; position: relative; }
+.section-dark { background: var(--bg-section-alt); }
+.section-heading { text-align: center; margin-bottom: 60px; }
+.section-label {
+  display: inline-block; font-size: 0.78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 2px; color: var(--primary); margin-bottom: 12px;
+}
+.section-heading h2 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; line-height: 1.2; margin-bottom: 16px;
+}
+.section-subtitle { color: var(--fg-muted); font-size: 1.05rem; max-width: 650px; margin: 0 auto; }
+
+/* ========================================
+   CARDS
+   ======================================== */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; transition: border-color 0.3s, transform 0.2s;
+}
+.card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-3px); }
+.card h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; }
+.card p, .card li { font-size: 0.88rem; color: var(--fg-muted); line-height: 1.6; }
+.card code {
+  background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;
+  font-size: 0.82rem; color: var(--secondary);
+}
+
+/* ========================================
+   GRIDS
+   ======================================== */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+@media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+/* ========================================
+   INSIGHT BOX
+   ======================================== */
+.insight-box {
+  background: rgba(0,212,106,0.06); border: 1px solid rgba(0,212,106,0.25);
+  border-radius: 14px; padding: 22px 28px; margin-top: 28px;
+}
+.insight-box .insight-label {
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1.5px; color: var(--primary); margin-bottom: 8px;
+}
+.insight-box p { font-size: 0.92rem; color: var(--fg); line-height: 1.7; }
+.insight-box code { color: var(--secondary); background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.82rem; }
+
+/* ========================================
+   SECTION A: LONG SEQUENCES PROBLEM
+   ======================================== */
+.problem-visual {
+  max-width: 700px; margin: 0 auto; padding: 32px 0;
+}
+.sequence-bar {
+  display: flex; align-items: center; gap: 2px; margin-bottom: 24px;
+  padding: 16px; background: rgba(0,0,0,0.3); border-radius: 12px;
+  border: 1px solid var(--border); overflow: hidden;
+}
+.seq-token {
+  flex: 1; height: 28px; border-radius: 4px; min-width: 2px;
+  transition: background 0.3s;
+}
+.mem-equation {
+  text-align: center; font-family: var(--font-mono); font-size: 1.3rem;
+  color: var(--secondary); margin: 20px 0; font-weight: 600;
+}
+.mem-equation span { color: var(--red); }
+.attn-matrix-demo {
+  display: flex; align-items: center; justify-content: center; gap: 32px;
+  flex-wrap: wrap; margin: 32px 0;
+}
+.matrix-box {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.matrix-grid {
+  border: 2px solid var(--border); border-radius: 6px; overflow: hidden;
+  display: grid; transition: all 0.5s ease;
+}
+.matrix-cell {
+  transition: all 0.5s ease;
+}
+.matrix-label {
+  font-family: var(--font-mono); font-size: 0.78rem; color: var(--fg-muted);
+  font-weight: 600;
+}
+.matrix-mem {
+  font-family: var(--font-mono); font-size: 0.72rem; color: var(--red);
+  font-weight: 600;
+}
+.gpu-single-box {
+  background: var(--bg-card); border: 2px solid var(--red);
+  border-radius: 12px; padding: 20px 32px; text-align: center;
+  position: relative; overflow: hidden;
+}
+.gpu-single-box::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,112,67,0.05), transparent);
+}
+.gpu-single-box .gpu-label {
+  font-weight: 700; font-size: 1rem; margin-bottom: 4px;
+}
+.gpu-single-box .gpu-mem-label {
+  font-family: var(--font-mono); font-size: 0.78rem; color: var(--fg-muted);
+}
+
+/* Memory usage bar */
+.mem-usage-bar {
+  margin: 24px auto; max-width: 500px;
+}
+.mem-bar-track {
+  width: 100%; height: 36px; background: rgba(0,0,0,0.4);
+  border-radius: 8px; overflow: hidden; border: 1px solid var(--border);
+  position: relative;
+}
+.mem-bar-fill {
+  height: 100%; border-radius: 8px 0 0 8px; display: flex; align-items: center;
+  padding: 0 12px; font-size: 0.72rem; font-weight: 700; color: #fff;
+  transition: width 0.8s ease;
+}
+.mem-bar-fill.overflow {
+  background: linear-gradient(90deg, var(--red), #ff3333);
+}
+.mem-bar-fill.ok {
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+}
+.mem-bar-capacity {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  font-size: 0.68rem; color: var(--fg-muted); font-family: var(--font-mono);
+}
+.seq-slider-container {
+  text-align: center; margin: 24px 0;
+}
+.seq-slider-container label {
+  font-size: 0.82rem; color: var(--fg-muted); display: block; margin-bottom: 8px;
+}
+.seq-slider-container input[type="range"] {
+  -webkit-appearance: none; width: 300px; height: 6px;
+  background: var(--border); border-radius: 3px; outline: none;
+}
+.seq-slider-container input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--primary); cursor: pointer; border: 2px solid var(--bg);
+}
+.seq-slider-value {
+  font-family: var(--font-mono); font-size: 1.2rem; font-weight: 700;
+  color: var(--secondary); margin-top: 8px;
+}
+
+/* ========================================
+   SECTION B: RING ATTENTION
+   ======================================== */
+.ring-container {
+  position: relative; max-width: 800px; margin: 0 auto;
+}
+.ring-viz {
+  position: relative; width: 100%; aspect-ratio: 1;
+  max-width: 520px; margin: 0 auto;
+}
+.ring-svg {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+}
+.ring-gpu {
+  position: absolute; width: 110px; height: 110px;
+  border-radius: 16px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 4px;
+  border: 2px solid; transition: box-shadow 0.4s, transform 0.3s;
+  z-index: 2; background: var(--bg-card);
+}
+.ring-gpu:hover { transform: scale(1.05); }
+.ring-gpu.gpu-0 { border-color: var(--gpu0); top: 0; left: 50%; transform: translateX(-50%); }
+.ring-gpu.gpu-1 { border-color: var(--gpu1); top: 50%; right: 0; transform: translateY(-50%); }
+.ring-gpu.gpu-2 { border-color: var(--gpu2); bottom: 0; left: 50%; transform: translateX(-50%); }
+.ring-gpu.gpu-3 { border-color: var(--gpu3); top: 50%; left: 0; transform: translateY(-50%); }
+.ring-gpu.gpu-0:hover { transform: translateX(-50%) scale(1.05); }
+.ring-gpu.gpu-1:hover { transform: translateY(-50%) scale(1.05); }
+.ring-gpu.gpu-2:hover { transform: translateX(-50%) scale(1.05); }
+.ring-gpu.gpu-3:hover { transform: translateY(-50%) scale(1.05); }
+.ring-gpu .gpu-name {
+  font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.ring-gpu .gpu-q-label {
+  font-family: var(--font-mono); font-size: 0.68rem; color: var(--fg-muted);
+}
+.ring-gpu .gpu-kv-blocks {
+  display: flex; gap: 3px; margin-top: 4px; min-height: 20px;
+  align-items: center; justify-content: center;
+}
+.kv-block {
+  width: 18px; height: 18px; border-radius: 4px; font-size: 0.55rem;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; color: #fff; transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.kv-block.kv-0 { background: var(--gpu0); }
+.kv-block.kv-1 { background: var(--gpu1); }
+.kv-block.kv-2 { background: var(--gpu2); }
+.kv-block.kv-3 { background: var(--gpu3); }
+
+/* Ring arrows (SVG-based) */
+.ring-arrow {
+  stroke: var(--border-light);
+  stroke-width: 2;
+  fill: none;
+  marker-end: url(#arrowhead);
+}
+
+/* Step indicator */
+.ring-step-info {
+  text-align: center; margin: 28px 0 20px;
+}
+.ring-step-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(0,200,230,0.1); border: 1px solid rgba(0,200,230,0.3);
+  border-radius: 9999px; padding: 8px 20px; font-size: 0.88rem;
+  font-weight: 600; color: var(--secondary);
+}
+.ring-step-desc {
+  font-size: 0.92rem; color: var(--fg-muted); margin-top: 12px; max-width: 500px;
+  margin-left: auto; margin-right: auto; line-height: 1.6;
+}
+
+/* Step controls */
+.ring-controls {
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  margin: 20px 0;
+}
+.ring-btn {
+  background: var(--bg-card); border: 1px solid var(--border);
+  color: var(--fg); padding: 10px 24px; border-radius: 10px;
+  font-family: var(--font-sans); font-size: 0.88rem; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+}
+.ring-btn:hover { border-color: var(--primary); color: var(--primary); background: rgba(0,212,106,0.05); }
+.ring-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.ring-btn:disabled:hover { border-color: var(--border); color: var(--fg); background: var(--bg-card); }
+.ring-btn-auto {
+  background: rgba(0,212,106,0.1); border: 1px solid rgba(0,212,106,0.3);
+  color: var(--primary);
+}
+.ring-btn-auto:hover { background: rgba(0,212,106,0.2); }
+.ring-btn-auto.playing { background: rgba(0,212,106,0.2); border-color: var(--primary); }
+
+.step-dots {
+  display: flex; gap: 8px;
+}
+.step-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--border); transition: all 0.3s;
+}
+.step-dot.active { background: var(--secondary); transform: scale(1.3); }
+.step-dot.done { background: var(--primary); }
+
+/* Computed attention grid for each GPU */
+.attn-progress-container {
+  margin: 28px 0;
+}
+.attn-progress-label {
+  font-size: 0.82rem; font-weight: 600; text-align: center; margin-bottom: 16px;
+}
+.attn-progress-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+  max-width: 600px; margin: 0 auto;
+}
+.attn-gpu-progress {
+  text-align: center;
+}
+.attn-gpu-progress .gpu-tag {
+  font-size: 0.72rem; font-weight: 700; margin-bottom: 6px;
+}
+.attn-mini-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px;
+  margin: 0 auto; max-width: 80px;
+}
+.attn-mini-cell {
+  aspect-ratio: 1; border-radius: 3px; background: var(--border);
+  transition: background 0.4s ease;
+}
+.attn-mini-cell.computed-0 { background: var(--gpu0); }
+.attn-mini-cell.computed-1 { background: var(--gpu1); }
+.attn-mini-cell.computed-2 { background: var(--gpu2); }
+.attn-mini-cell.computed-3 { background: var(--gpu3); }
+
+/* Communication indicator */
+.comm-indicator {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin: 12px 0; font-size: 0.78rem; color: var(--fg-muted);
+}
+.comm-arrow-icon {
+  width: 20px; height: 20px; fill: var(--secondary);
+  animation: comm-pulse 1.5s ease-in-out infinite;
+}
+@keyframes comm-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* ========================================
+   SECTION C: ZIGZAG RING ATTENTION
+   ======================================== */
+.toggle-container {
+  display: flex; justify-content: center; gap: 4px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 4px; width: fit-content; margin: 0 auto 32px;
+}
+.toggle-btn {
+  padding: 10px 28px; border-radius: 10px; border: none;
+  font-family: var(--font-sans); font-size: 0.88rem; font-weight: 600;
+  cursor: pointer; transition: all 0.3s; background: transparent; color: var(--fg-muted);
+}
+.toggle-btn.active {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: #000;
+}
+.toggle-btn:hover:not(.active) { color: var(--fg); }
+
+/* Causal mask visual */
+.causal-mask-container {
+  display: flex; align-items: flex-start; justify-content: center; gap: 48px;
+  flex-wrap: wrap; margin: 32px 0;
+}
+.causal-mask-box {
+  text-align: center;
+}
+.causal-mask-box h4 {
+  font-size: 0.88rem; font-weight: 600; margin-bottom: 12px;
+}
+.causal-grid {
+  display: grid; gap: 1px; border: 1px solid var(--border); border-radius: 6px;
+  overflow: hidden; margin: 0 auto;
+}
+.causal-cell {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.5rem; font-weight: 600; transition: all 0.4s;
+}
+.causal-cell.masked { background: rgba(255,255,255,0.02); }
+.causal-cell.active { opacity: 0.9; }
+
+/* Workload bars */
+.workload-container {
+  max-width: 500px; margin: 32px auto;
+}
+.workload-bar-row {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
+}
+.workload-gpu-label {
+  min-width: 60px; font-size: 0.78rem; font-weight: 700;
+  font-family: var(--font-mono);
+}
+.workload-bar-track {
+  flex: 1; height: 28px; background: rgba(0,0,0,0.3);
+  border-radius: 6px; overflow: hidden; border: 1px solid var(--border);
+  position: relative;
+}
+.workload-bar-fill {
+  height: 100%; border-radius: 6px; transition: width 0.6s ease;
+  display: flex; align-items: center; padding: 0 8px;
+  font-size: 0.68rem; font-weight: 700; color: #fff;
+}
+.workload-pct {
+  font-family: var(--font-mono); font-size: 0.72rem; min-width: 40px;
+  text-align: right; color: var(--fg-muted);
+}
+
+/* Token assignment visual */
+.token-assign-container {
+  max-width: 650px; margin: 32px auto;
+}
+.token-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+}
+.token-row-label {
+  min-width: 65px; font-size: 0.78rem; font-weight: 700;
+  font-family: var(--font-mono);
+}
+.token-cells {
+  display: flex; gap: 3px; flex: 1;
+}
+.token-cell {
+  flex: 1; height: 30px; border-radius: 4px; display: flex;
+  align-items: center; justify-content: center;
+  font-size: 0.6rem; font-weight: 700; color: #fff;
+  transition: all 0.4s ease;
+}
+
+/* ========================================
+   SECTION D: COMPARISON TABLE
+   ======================================== */
+.comparison-table-wrap {
+  overflow-x: auto; margin: 32px 0;
+}
+.comparison-table {
+  width: 100%; border-collapse: collapse; font-size: 0.88rem;
+}
+.comparison-table th {
+  padding: 14px 18px; text-align: left;
+  font-weight: 600; font-size: 0.78rem; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--fg-muted);
+  border-bottom: 2px solid var(--border);
+  background: rgba(0,0,0,0.3);
+}
+.comparison-table td {
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  color: var(--fg);
+}
+.comparison-table tr:hover td { background: rgba(0,212,106,0.03); }
+.comparison-table .val-good { color: var(--primary); font-weight: 600; }
+.comparison-table .val-warn { color: var(--orange); font-weight: 600; }
+.comparison-table .val-great { color: var(--secondary); font-weight: 600; }
+
+.dual-pattern-container {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 32px;
+  margin: 32px 0;
+}
+@media (max-width: 768px) { .dual-pattern-container { grid-template-columns: 1fr; } }
+
+.pattern-box {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 24px; text-align: center;
+}
+.pattern-box h4 {
+  font-size: 0.92rem; font-weight: 700; margin-bottom: 16px;
+}
+.pattern-box .pattern-grid {
+  display: grid; gap: 1px; margin: 0 auto;
+  border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
+}
+.pattern-box .pattern-cell {
+  aspect-ratio: 1; transition: all 0.3s;
+}
+.pattern-box .pattern-cell.masked { background: rgba(255,255,255,0.02); }
+
+/* ========================================
+   FOOTER
+   ======================================== */
+.footer {
+  padding: 60px 0 40px; border-top: 1px solid var(--border); text-align: center;
+}
+.footer-logo { width: 36px; height: 36px; object-fit: contain; margin-bottom: 10px; }
+.footer-brand {
+  font-size: 1.2rem; font-weight: 700; margin-bottom: 8px;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  display: inline-block;
+}
+.footer p { font-size: 0.82rem; color: var(--fg-muted); }
+.footer-muted { font-size: 0.75rem !important; color: rgba(168,160,184,0.4) !important; margin-top: 12px; }
+.footer-links { display: flex; gap: 20px; justify-content: center; margin-top: 16px; }
+.footer-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; }
+.footer-links a:hover { color: var(--primary); }
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+.fade-in { opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease, transform 0.7s ease; }
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+
+/* Stagger children */
+.stagger-1 { transition-delay: 0.05s; }
+.stagger-2 { transition-delay: 0.1s; }
+.stagger-3 { transition-delay: 0.15s; }
+.stagger-4 { transition-delay: 0.2s; }
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+@media (max-width: 768px) {
+  .hero-cards { grid-template-columns: repeat(2, 1fr); }
+  .ring-viz { max-width: 360px; }
+  .ring-gpu { width: 85px; height: 85px; }
+  .ring-gpu .gpu-name { font-size: 0.68rem; }
+  .attn-progress-grid { grid-template-columns: repeat(2, 1fr); }
+  .causal-mask-container { gap: 24px; }
+  .hero h1 { font-size: clamp(2rem, 6vw, 3.5rem); }
+  .section { padding: 60px 0; }
+}
+@media (max-width: 480px) {
+  .hero-cards { grid-template-columns: 1fr 1fr; }
+  .ring-controls { flex-wrap: wrap; }
+}
+
+/* ========================================
+   KV FLYING ANIMATION
+   ======================================== */
+.kv-fly {
+  position: absolute;
+  width: 18px; height: 18px;
+  border-radius: 4px;
+  font-size: 0.55rem; font-weight: 700; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 10; pointer-events: none;
+  transition: all 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 0 12px rgba(0,0,0,0.5);
+}
+
+/* Glow effect for active GPU */
+.ring-gpu.active-step {
+  box-shadow: 0 0 20px rgba(0,212,106,0.3);
+}
+</style>
+</head>
+<body>
+
+<!-- ============ NAVBAR ============ -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <img src="vizlogo.png" alt="Vizuara" class="nav-brand-logo">
+      <span>Vizuara</span>
+      <span class="brand-tag">5D Parallelism</span>
+    </div>
+    <div class="nav-links">
+      <a href="index.html">All Guides</a>
+      <a href="https://github.com/VizuaraAI/5d-parallelism-visual-guide" target="_blank">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<section class="hero" id="overview">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-green"></div>
+    <div class="orb orb-cyan"></div>
+    <div class="orb orb-purple"></div>
+  </div>
+  <div class="hero-grid-bg"></div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="pulse-dot"></span>
+      Context Parallelism
+    </div>
+    <h1>Context Parallelism <span class="gradient-text">Visualized</span></h1>
+    <p class="hero-subtitle">Context Parallelism splits long sequences across GPUs so each device only computes attention for its chunk &mdash; enabling million-token contexts without running out of memory.</p>
+
+    <div class="hero-cards">
+      <div class="hero-stat-card">
+        <div class="stat-number">4</div>
+        <div class="stat-label">GPUs</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">Ring</div>
+        <div class="stat-label">Attention</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">Zigzag</div>
+        <div class="stat-label">Ring Attention</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">Zero</div>
+        <div class="stat-label">Redundancy</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION A: THE PROBLEM ============ -->
+<section class="section section-dark" id="problem">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">The Problem</span>
+      <h2>Long Sequences <span class="gradient-text">Don't Fit</span></h2>
+      <p class="section-subtitle">Self-attention memory scales quadratically with sequence length. At 128K tokens, a single GPU simply cannot hold the attention matrix.</p>
+    </div>
+
+    <div class="fade-in">
+      <div class="card" style="max-width:760px; margin:0 auto;">
+        <h3>A Single GPU vs. Long Sequences</h3>
+        <p style="margin-bottom:20px;">Drag the slider to see how attention memory explodes with sequence length.</p>
+
+        <div class="seq-slider-container">
+          <label for="seqSlider">Sequence Length (S)</label>
+          <input type="range" id="seqSlider" min="0" max="4" step="1" value="1">
+          <div class="seq-slider-value" id="seqValue">8K tokens</div>
+        </div>
+
+        <div class="gpu-single-box" style="max-width:400px; margin:20px auto;">
+          <div class="gpu-label">Single GPU</div>
+          <div class="gpu-mem-label">80 GB HBM (A100)</div>
+        </div>
+
+        <div class="mem-usage-bar">
+          <div style="display:flex; justify-content:space-between; font-size:0.72rem; color:var(--fg-muted); margin-bottom:4px;">
+            <span>Attention Memory Usage</span>
+            <span id="memUsageLabel">2 GB</span>
+          </div>
+          <div class="mem-bar-track">
+            <div class="mem-bar-fill ok" id="memBarFill" style="width:2.5%"></div>
+            <div class="mem-bar-capacity">80 GB</div>
+          </div>
+        </div>
+
+        <div class="mem-equation">
+          Memory = S<sup>2</sup> &times; 2 bytes = <span id="memCalc">128 MB</span>
+        </div>
+
+        <!-- Attention matrix size visualization -->
+        <div class="attn-matrix-demo" id="attnMatrixDemo">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="insight-box">
+          <div class="insight-label">Key Takeaway</div>
+          <p>At <code>S = 128K</code>, the attention matrix alone is <strong>32 GB</strong> &mdash; nearly half an A100's memory, leaving no room for model weights, gradients, or activations. Context Parallelism splits this across GPUs.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION B: RING ATTENTION ============ -->
+<section class="section" id="ring-attention">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Core Mechanism</span>
+      <h2>Ring Attention &mdash; <span class="gradient-text">The Core Idea</span></h2>
+      <p class="section-subtitle">Arrange GPUs in a ring. Each GPU holds Q for its chunk and passes K,V around the ring, computing partial attention at each step.</p>
+    </div>
+
+    <div class="fade-in">
+      <div class="card" style="max-width:880px; margin:0 auto; padding:36px 28px;">
+
+        <!-- Ring step info -->
+        <div class="ring-step-info">
+          <div class="ring-step-badge" id="ringStepBadge">Step 0 of 3</div>
+          <p class="ring-step-desc" id="ringStepDesc">Each GPU starts with its own K,V chunk. Compute local Q &times; K<sup>T</sup> attention.</p>
+        </div>
+
+        <!-- Ring visualization -->
+        <div class="ring-viz" id="ringViz">
+          <!-- SVG ring arrows -->
+          <svg class="ring-svg" viewBox="0 0 520 520">
+            <defs>
+              <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                <polygon points="0 0, 8 3, 0 6" fill="#555" />
+              </marker>
+            </defs>
+            <!-- Clockwise arrows: 0->1, 1->2, 2->3, 3->0 -->
+            <!-- Top to Right -->
+            <path d="M 310 55 C 400 55, 465 120, 465 210" class="ring-arrow" />
+            <!-- Right to Bottom -->
+            <path d="M 465 310 C 465 400, 400 465, 310 465" class="ring-arrow" />
+            <!-- Bottom to Left -->
+            <path d="M 210 465 C 120 465, 55 400, 55 310" class="ring-arrow" />
+            <!-- Left to Top -->
+            <path d="M 55 210 C 55 120, 120 55, 210 55" class="ring-arrow" />
+          </svg>
+
+          <!-- GPU 0 - Top (12 o'clock) -->
+          <div class="ring-gpu gpu-0" id="ringGpu0">
+            <div class="gpu-name" style="color:var(--gpu0);">GPU 0</div>
+            <div class="gpu-q-label">Q: chunk 0</div>
+            <div class="gpu-kv-blocks" id="kvBlocks0"></div>
+          </div>
+
+          <!-- GPU 1 - Right (3 o'clock) -->
+          <div class="ring-gpu gpu-1" id="ringGpu1">
+            <div class="gpu-name" style="color:var(--gpu1);">GPU 1</div>
+            <div class="gpu-q-label">Q: chunk 1</div>
+            <div class="gpu-kv-blocks" id="kvBlocks1"></div>
+          </div>
+
+          <!-- GPU 2 - Bottom (6 o'clock) -->
+          <div class="ring-gpu gpu-2" id="ringGpu2">
+            <div class="gpu-name" style="color:var(--gpu2);">GPU 2</div>
+            <div class="gpu-q-label">Q: chunk 2</div>
+            <div class="gpu-kv-blocks" id="kvBlocks2"></div>
+          </div>
+
+          <!-- GPU 3 - Left (9 o'clock) -->
+          <div class="ring-gpu gpu-3" id="ringGpu3">
+            <div class="gpu-name" style="color:var(--gpu3);">GPU 3</div>
+            <div class="gpu-q-label">Q: chunk 3</div>
+            <div class="gpu-kv-blocks" id="kvBlocks3"></div>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="ring-controls">
+          <button class="ring-btn" id="ringPrev" disabled>Prev</button>
+          <div class="step-dots" id="stepDots">
+            <div class="step-dot active" data-step="0"></div>
+            <div class="step-dot" data-step="1"></div>
+            <div class="step-dot" data-step="2"></div>
+            <div class="step-dot" data-step="3"></div>
+          </div>
+          <button class="ring-btn" id="ringNext">Next</button>
+          <button class="ring-btn ring-btn-auto" id="ringAuto">Auto Play</button>
+        </div>
+
+        <!-- Communication indicator -->
+        <div class="comm-indicator" id="commIndicator">
+          <svg class="comm-arrow-icon" viewBox="0 0 24 24"><path d="M12 2L20 12L12 22M4 12h16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span id="commText">No communication &mdash; each GPU uses local K,V</span>
+        </div>
+
+        <!-- Attention progress per GPU -->
+        <div class="attn-progress-container">
+          <div class="attn-progress-label">Attention Blocks Computed per GPU</div>
+          <div class="attn-progress-grid" id="attnProgressGrid">
+            <!-- GPU 0 -->
+            <div class="attn-gpu-progress">
+              <div class="gpu-tag" style="color:var(--gpu0);">GPU 0 (Q<sub>0</sub>)</div>
+              <div class="attn-mini-grid" id="attnMini0">
+                <div class="attn-mini-cell" data-col="0"></div>
+                <div class="attn-mini-cell" data-col="1"></div>
+                <div class="attn-mini-cell" data-col="2"></div>
+                <div class="attn-mini-cell" data-col="3"></div>
+              </div>
+              <div style="font-size:0.65rem; color:var(--fg-muted); margin-top:4px;">Q<sub>0</sub> &times; K<sub>?</sub></div>
+            </div>
+            <!-- GPU 1 -->
+            <div class="attn-gpu-progress">
+              <div class="gpu-tag" style="color:var(--gpu1);">GPU 1 (Q<sub>1</sub>)</div>
+              <div class="attn-mini-grid" id="attnMini1">
+                <div class="attn-mini-cell" data-col="0"></div>
+                <div class="attn-mini-cell" data-col="1"></div>
+                <div class="attn-mini-cell" data-col="2"></div>
+                <div class="attn-mini-cell" data-col="3"></div>
+              </div>
+              <div style="font-size:0.65rem; color:var(--fg-muted); margin-top:4px;">Q<sub>1</sub> &times; K<sub>?</sub></div>
+            </div>
+            <!-- GPU 2 -->
+            <div class="attn-gpu-progress">
+              <div class="gpu-tag" style="color:var(--gpu2);">GPU 2 (Q<sub>2</sub>)</div>
+              <div class="attn-mini-grid" id="attnMini2">
+                <div class="attn-mini-cell" data-col="0"></div>
+                <div class="attn-mini-cell" data-col="1"></div>
+                <div class="attn-mini-cell" data-col="2"></div>
+                <div class="attn-mini-cell" data-col="3"></div>
+              </div>
+              <div style="font-size:0.65rem; color:var(--fg-muted); margin-top:4px;">Q<sub>2</sub> &times; K<sub>?</sub></div>
+            </div>
+            <!-- GPU 3 -->
+            <div class="attn-gpu-progress">
+              <div class="gpu-tag" style="color:var(--gpu3);">GPU 3 (Q<sub>3</sub>)</div>
+              <div class="attn-mini-grid" id="attnMini3">
+                <div class="attn-mini-cell" data-col="0"></div>
+                <div class="attn-mini-cell" data-col="1"></div>
+                <div class="attn-mini-cell" data-col="2"></div>
+                <div class="attn-mini-cell" data-col="3"></div>
+              </div>
+              <div style="font-size:0.65rem; color:var(--fg-muted); margin-top:4px;">Q<sub>3</sub> &times; K<sub>?</sub></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="insight-box">
+          <div class="insight-label">Key Insight</div>
+          <p>At each step, only <code>1/P</code> of K,V is in flight between neighbors. Memory per GPU stays at <code>O(S&sup2;/P&sup2;)</code> for the attention matrix, achieving <strong>linear memory scaling</strong> with the number of GPUs.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION C: ZIGZAG RING ATTENTION ============ -->
+<section class="section section-dark" id="zigzag">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Load Balancing</span>
+      <h2>Zigzag Ring Attention &mdash; <span class="gradient-text">Better Balance</span></h2>
+      <p class="section-subtitle">Naive chunking + causal masking creates severe load imbalance. Zigzag interleaving fixes this elegantly.</p>
+    </div>
+
+    <div class="fade-in">
+      <div class="card" style="max-width:880px; margin:0 auto; padding:36px 28px;">
+
+        <!-- Toggle -->
+        <div class="toggle-container" id="zigzagToggle">
+          <button class="toggle-btn active" data-mode="naive">Naive Chunking</button>
+          <button class="toggle-btn" data-mode="zigzag">Zigzag</button>
+        </div>
+
+        <!-- Explanation text -->
+        <div style="text-align:center; margin-bottom:24px;">
+          <p style="font-size:0.92rem; color:var(--fg-muted); max-width:600px; margin:0 auto;" id="zigzagExplanation">
+            With naive chunking, GPU 0 gets the earliest tokens and must attend to all chunks (the top-left triangle is full). GPU 3 gets the latest tokens but its causal mask blocks most of the attention &mdash; leaving it mostly idle.
+          </p>
+        </div>
+
+        <!-- Token assignment visual -->
+        <div class="token-assign-container" id="tokenAssignContainer">
+          <div style="text-align:center; font-size:0.82rem; font-weight:600; margin-bottom:12px;">Token Assignment (16 tokens across 4 GPUs)</div>
+          <!-- Filled by JS -->
+        </div>
+
+        <!-- Causal mask + workload side by side -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:32px; align-items:start;" id="zigzagVisuals">
+
+          <!-- Causal attention matrix -->
+          <div class="causal-mask-box">
+            <h4>Causal Attention Matrix</h4>
+            <p style="font-size:0.72rem; color:var(--fg-muted); margin-bottom:10px;">Row = query token, Col = key token. Colored = computed, dark = masked.</p>
+            <div class="causal-grid" id="causalGrid" style="grid-template-columns:repeat(16, 1fr); width:256px; height:256px; margin:0 auto;">
+              <!-- 16x16 cells filled by JS -->
+            </div>
+          </div>
+
+          <!-- Workload bars -->
+          <div>
+            <h4 style="font-size:0.88rem; font-weight:600; margin-bottom:16px; text-align:center;">Workload per GPU</h4>
+            <p style="font-size:0.72rem; color:var(--fg-muted); margin-bottom:16px; text-align:center;">Number of attention computations (Q&times;K pairs)</p>
+            <div class="workload-container" id="workloadBars">
+              <!-- Filled by JS -->
+            </div>
+            <div id="imbalanceLabel" style="text-align:center; font-family:var(--font-mono); font-size:0.82rem; margin-top:12px;"></div>
+          </div>
+        </div>
+
+        <div class="insight-box" style="margin-top:32px;">
+          <div class="insight-label">Why Zigzag Works</div>
+          <p>By assigning tokens in a zigzag pattern (first + last, second + second-to-last, ...), each GPU gets a mix of early and late tokens. Under causal masking, this ensures each GPU performs roughly the same number of attention computations &mdash; eliminating the load imbalance problem.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION D: COMPARISON ============ -->
+<section class="section" id="comparison">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Head to Head</span>
+      <h2>Ring vs Zigzag <span class="gradient-text">Comparison</span></h2>
+      <p class="section-subtitle">Both methods use the same ring communication topology. Zigzag adds smarter token assignment for causal models.</p>
+    </div>
+
+    <div class="fade-in">
+      <!-- Side-by-side attention patterns -->
+      <div class="dual-pattern-container">
+        <div class="pattern-box">
+          <h4 style="color:var(--orange);">Naive Ring Attention</h4>
+          <p style="font-size:0.72rem; color:var(--fg-muted); margin-bottom:12px;">Contiguous chunks &rarr; Uneven causal work</p>
+          <div class="pattern-grid" id="patternNaive" style="grid-template-columns:repeat(8,1fr); width:200px; height:200px; margin:0 auto; display:grid; gap:1px; border:1px solid var(--border); border-radius:4px; overflow:hidden;">
+            <!-- Filled by JS -->
+          </div>
+          <div style="margin-top:12px;">
+            <span style="font-family:var(--font-mono); font-size:0.72rem; color:var(--orange);">Load imbalance: ~40%</span>
+          </div>
+        </div>
+        <div class="pattern-box">
+          <h4 style="color:var(--primary);">Zigzag Ring Attention</h4>
+          <p style="font-size:0.72rem; color:var(--fg-muted); margin-bottom:12px;">Interleaved tokens &rarr; Balanced causal work</p>
+          <div class="pattern-grid" id="patternZigzag" style="grid-template-columns:repeat(8,1fr); width:200px; height:200px; margin:0 auto; display:grid; gap:1px; border:1px solid var(--border); border-radius:4px; overflow:hidden;">
+            <!-- Filled by JS -->
+          </div>
+          <div style="margin-top:12px;">
+            <span style="font-family:var(--font-mono); font-size:0.72rem; color:var(--primary);">Load imbalance: ~2%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Comparison table -->
+      <div class="comparison-table-wrap" style="margin-top:40px;">
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Naive Ring Attention</th>
+              <th>Zigzag Ring Attention</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Token Assignment</strong></td>
+              <td>Contiguous chunks [0..S/P-1], [S/P..2S/P-1], ...</td>
+              <td class="val-great">Interleaved: GPU i gets tokens i, 2P-1-i, 2P+i, ...</td>
+            </tr>
+            <tr>
+              <td><strong>Load Balance (Causal)</strong></td>
+              <td class="val-warn">Poor &mdash; GPU 0 does most work, GPU P-1 least</td>
+              <td class="val-good">Excellent &mdash; near-perfect balance</td>
+            </tr>
+            <tr>
+              <td><strong>Memory per GPU</strong></td>
+              <td>O(S&sup2;/P&sup2;) attention + O(S/P) for K,V</td>
+              <td class="val-great">Same: O(S&sup2;/P&sup2;) attention + O(S/P) for K,V</td>
+            </tr>
+            <tr>
+              <td><strong>Communication Volume</strong></td>
+              <td>P-1 rounds of K,V transfer, each O(S/P)</td>
+              <td class="val-great">Same: P-1 rounds of K,V transfer</td>
+            </tr>
+            <tr>
+              <td><strong>Communication Pattern</strong></td>
+              <td>Ring (each GPU sends to next neighbor)</td>
+              <td class="val-great">Same ring topology</td>
+            </tr>
+            <tr>
+              <td><strong>Causal Mask Efficiency</strong></td>
+              <td class="val-warn">Wastes compute on masked positions</td>
+              <td class="val-good">Minimal wasted compute</td>
+            </tr>
+            <tr>
+              <td><strong>Implementation Complexity</strong></td>
+              <td class="val-good">Simple</td>
+              <td>Slightly more complex token remapping</td>
+            </tr>
+            <tr>
+              <td><strong>Best For</strong></td>
+              <td>Bidirectional attention (BERT, encoders)</td>
+              <td class="val-great">Causal / autoregressive models (GPT, LLaMA)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="insight-box" style="max-width:760px; margin:40px auto 0;">
+        <div class="insight-label">Bottom Line</div>
+        <p>For <strong>bidirectional</strong> attention (BERT-style), naive Ring Attention is fine &mdash; every GPU does the same work. For <strong>causal/autoregressive</strong> models (GPT, LLaMA, etc.), Zigzag Ring Attention is strictly better: same communication cost, same memory, but perfectly balanced workloads.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="container">
+    <img src="vizlogo.png" alt="Vizuara" class="footer-logo">
+    <div class="footer-brand">Vizuara 5D Parallelism Workshop</div>
+    <p>Interactive visual guides for distributed GPU training</p>
+    <div class="footer-links">
+      <a href="index.html">All Guides</a>
+      <a href="https://github.com/VizuaraAI/5d-parallelism-visual-guide" target="_blank">GitHub</a>
+      <a href="https://vizuara.ai" target="_blank">Vizuara</a>
+    </div>
+    <p class="footer-muted">Built with pure HTML/CSS/JS &mdash; no frameworks, no dependencies</p>
+  </div>
+</footer>
+
+<script>
+// ===========================
+// SECTION A: Long Sequences Problem
+// ===========================
+const seqLengths = [4096, 8192, 32768, 65536, 131072];
+const seqLabels = ['4K', '8K', '32K', '64K', '128K'];
+const seqSlider = document.getElementById('seqSlider');
+const seqValue = document.getElementById('seqValue');
+const memUsageLabel = document.getElementById('memUsageLabel');
+const memBarFill = document.getElementById('memBarFill');
+const memCalc = document.getElementById('memCalc');
+const attnMatrixDemo = document.getElementById('attnMatrixDemo');
+
+function updateSeqProblem() {
+  const idx = parseInt(seqSlider.value);
+  const S = seqLengths[idx];
+  const label = seqLabels[idx];
+  seqValue.textContent = label + ' tokens';
+
+  // Memory = S^2 * 2 bytes (FP16)
+  const memBytes = S * S * 2;
+  const memGB = memBytes / (1024 * 1024 * 1024);
+  const memStr = memGB >= 1 ? memGB.toFixed(1) + ' GB' : (memGB * 1024).toFixed(0) + ' MB';
+
+  memUsageLabel.textContent = memStr;
+  memCalc.textContent = memStr;
+
+  const pct = Math.min((memGB / 80) * 100, 100);
+  memBarFill.style.width = pct + '%';
+
+  if (memGB > 80) {
+    memBarFill.className = 'mem-bar-fill overflow';
+    memBarFill.textContent = memStr + ' (OOM!)';
+  } else if (memGB > 40) {
+    memBarFill.className = 'mem-bar-fill overflow';
+    memBarFill.textContent = memStr;
+  } else {
+    memBarFill.className = 'mem-bar-fill ok';
+    memBarFill.textContent = pct > 8 ? memStr : '';
+  }
+
+  // Draw matrix visualization
+  const sizes = [
+    { s: 4096, cells: 4, px: 40 },
+    { s: 8192, cells: 5, px: 50 },
+    { s: 32768, cells: 7, px: 70 },
+    { s: 65536, cells: 9, px: 90 },
+    { s: 131072, cells: 12, px: 120 }
+  ];
+  const cfg = sizes[idx];
+  let html = '<div class="matrix-box">';
+  html += '<div class="matrix-grid" style="grid-template-columns:repeat(' + cfg.cells + ',1fr); width:' + cfg.px + 'px; height:' + cfg.px + 'px;">';
+  for (let r = 0; r < cfg.cells; r++) {
+    for (let c = 0; c < cfg.cells; c++) {
+      const intensity = 0.15 + Math.random() * 0.35;
+      html += '<div class="matrix-cell" style="background:rgba(0,200,230,' + intensity.toFixed(2) + ');"></div>';
+    }
+  }
+  html += '</div>';
+  html += '<div class="matrix-label">S = ' + label + '</div>';
+  html += '<div class="matrix-mem" style="color:' + (memGB > 40 ? 'var(--red)' : 'var(--secondary)') + ';">' + memStr + '</div>';
+  html += '</div>';
+
+  attnMatrixDemo.innerHTML = html;
+}
+seqSlider.addEventListener('input', updateSeqProblem);
+updateSeqProblem();
+
+// ===========================
+// SECTION B: Ring Attention Animation
+// ===========================
+const GPU_COLORS = ['var(--gpu0)', 'var(--gpu1)', 'var(--gpu2)', 'var(--gpu3)'];
+const GPU_NAMES = ['GPU 0', 'GPU 1', 'GPU 2', 'GPU 3'];
+
+let ringStep = 0;
+let autoPlayInterval = null;
+const totalSteps = 4; // Steps 0,1,2,3
+
+// KV state: kvState[gpu] = which KV chunk index it currently holds
+// At step s, GPU i has K,V from chunk (i - s + P) % P ... but we track differently
+// Actually: at step 0, GPU i has KV_i. At step 1, shift clockwise: GPU i receives KV from GPU (i-1+P)%P
+// So GPU i at step s holds KV_{(i - s + P) % P}
+function getKVChunk(gpuIdx, step) {
+  return (gpuIdx - step + 400) % 4;  // +400 to ensure positive
+}
+
+const stepDescriptions = [
+  'Each GPU starts with its own K,V chunk. Compute local attention: Q_i times K_i.',
+  'K,V blocks shift one position clockwise around the ring. Each GPU computes attention with the newly received K,V.',
+  'K,V blocks shift again. Each GPU now has attended to 3 out of 4 chunks.',
+  'Final shift. All GPUs have now computed attention against all 4 K,V chunks. Full attention is complete!'
+];
+
+const commTexts = [
+  'No communication needed -- each GPU uses local K,V',
+  'Sending K,V one hop clockwise: GPU 0 -> GPU 1 -> GPU 2 -> GPU 3 -> GPU 0',
+  'Sending K,V one hop clockwise again (round 2 of 3)',
+  'Final K,V transfer (round 3 of 3) -- after this, all attention blocks are computed'
+];
+
+function renderKVBlocks(gpuIdx, step) {
+  const container = document.getElementById('kvBlocks' + gpuIdx);
+  const kvChunk = getKVChunk(gpuIdx, step);
+  container.innerHTML = '<div class="kv-block kv-' + kvChunk + '">' + kvChunk + '</div>';
+}
+
+function renderAttnProgress(step) {
+  // For each GPU, show which K,V chunks it has processed so far (steps 0..current)
+  for (let gpu = 0; gpu < 4; gpu++) {
+    const miniGrid = document.getElementById('attnMini' + gpu);
+    const cells = miniGrid.querySelectorAll('.attn-mini-cell');
+    for (let s = 0; s <= step; s++) {
+      const kvChunk = getKVChunk(gpu, s);
+      cells[kvChunk].className = 'attn-mini-cell computed-' + kvChunk;
+    }
+    // Reset cells beyond current step
+    for (let s = step + 1; s < 4; s++) {
+      const kvChunk = getKVChunk(gpu, s);
+      cells[kvChunk].className = 'attn-mini-cell';
+    }
+  }
+}
+
+function updateRingStep() {
+  // Update badge
+  document.getElementById('ringStepBadge').textContent = 'Step ' + ringStep + ' of 3';
+  document.getElementById('ringStepDesc').innerHTML = stepDescriptions[ringStep];
+  document.getElementById('commText').innerHTML = commTexts[ringStep];
+
+  // Update step dots
+  const dots = document.querySelectorAll('.step-dot');
+  dots.forEach((dot, i) => {
+    dot.className = 'step-dot';
+    if (i < ringStep) dot.classList.add('done');
+    if (i === ringStep) dot.classList.add('active');
+  });
+
+  // Render KV blocks on each GPU
+  for (let g = 0; g < 4; g++) {
+    renderKVBlocks(g, ringStep);
+    // Active glow
+    const gpuEl = document.getElementById('ringGpu' + g);
+    if (ringStep > 0) {
+      gpuEl.classList.add('active-step');
+    } else {
+      gpuEl.classList.remove('active-step');
+    }
+  }
+
+  // Update attention progress
+  renderAttnProgress(ringStep);
+
+  // Button states
+  document.getElementById('ringPrev').disabled = ringStep === 0;
+  document.getElementById('ringNext').disabled = ringStep === 3;
+}
+
+document.getElementById('ringNext').addEventListener('click', function() {
+  if (ringStep < 3) { ringStep++; updateRingStep(); }
+});
+document.getElementById('ringPrev').addEventListener('click', function() {
+  if (ringStep > 0) { ringStep--; updateRingStep(); }
+});
+
+// Auto play
+document.getElementById('ringAuto').addEventListener('click', function() {
+  const btn = this;
+  if (autoPlayInterval) {
+    clearInterval(autoPlayInterval);
+    autoPlayInterval = null;
+    btn.textContent = 'Auto Play';
+    btn.classList.remove('playing');
+    return;
+  }
+
+  btn.textContent = 'Pause';
+  btn.classList.add('playing');
+  ringStep = 0;
+  updateRingStep();
+
+  autoPlayInterval = setInterval(function() {
+    if (ringStep < 3) {
+      ringStep++;
+      updateRingStep();
+    } else {
+      clearInterval(autoPlayInterval);
+      autoPlayInterval = null;
+      btn.textContent = 'Auto Play';
+      btn.classList.remove('playing');
+      // Reset after a pause
+      setTimeout(function() {
+        ringStep = 0;
+        updateRingStep();
+      }, 2000);
+    }
+  }, 1500);
+});
+
+// Click on step dots
+document.querySelectorAll('.step-dot').forEach(dot => {
+  dot.style.cursor = 'pointer';
+  dot.addEventListener('click', function() {
+    ringStep = parseInt(this.dataset.step);
+    updateRingStep();
+  });
+});
+
+// Initialize ring
+updateRingStep();
+
+// ===========================
+// SECTION C: Zigzag Ring Attention
+// ===========================
+const NUM_TOKENS = 16;
+const NUM_GPUS = 4;
+
+// Naive assignment: contiguous chunks
+function naiveAssignment() {
+  const assignment = [];
+  const chunkSize = NUM_TOKENS / NUM_GPUS;
+  for (let t = 0; t < NUM_TOKENS; t++) {
+    assignment.push(Math.floor(t / chunkSize));
+  }
+  return assignment;
+}
+
+// Zigzag assignment
+function zigzagAssignment() {
+  const assignment = new Array(NUM_TOKENS);
+  const chunkSize = NUM_TOKENS / NUM_GPUS; // 4 tokens per GPU
+  // For zigzag: pair up tokens from front and back
+  // Group tokens into pairs of 2P: [0..2P-1], [2P..4P-1], ...
+  // Within each group of 2P tokens at positions [base..base+2P-1]:
+  //   GPU i gets tokens at positions base+i and base+(2P-1-i)
+  const P = NUM_GPUS;
+  for (let groupStart = 0; groupStart < NUM_TOKENS; groupStart += 2 * P) {
+    for (let i = 0; i < P; i++) {
+      const t1 = groupStart + i;
+      const t2 = groupStart + (2 * P - 1 - i);
+      if (t1 < NUM_TOKENS) assignment[t1] = i;
+      if (t2 < NUM_TOKENS) assignment[t2] = i;
+    }
+  }
+  return assignment;
+}
+
+let currentMode = 'naive';
+
+function getAssignment() {
+  return currentMode === 'naive' ? naiveAssignment() : zigzagAssignment();
+}
+
+function renderTokenAssignment() {
+  const assignment = getAssignment();
+  const container = document.getElementById('tokenAssignContainer');
+  const gpuColorValues = ['#3b82f6', '#00d46a', '#f59e0b', '#a78bfa'];
+
+  let html = '<div style="text-align:center; font-size:0.82rem; font-weight:600; margin-bottom:12px;">Token Assignment (16 tokens across 4 GPUs)</div>';
+
+  // Show all tokens in a row with GPU coloring
+  html += '<div style="display:flex; gap:3px; justify-content:center; margin-bottom:16px;">';
+  for (let t = 0; t < NUM_TOKENS; t++) {
+    const gpu = assignment[t];
+    html += '<div class="token-cell" style="width:32px; height:32px; flex:none; background:' + gpuColorValues[gpu] + ';">' + t + '</div>';
+  }
+  html += '</div>';
+
+  // Show per-GPU assignment
+  for (let g = 0; g < NUM_GPUS; g++) {
+    const tokens = [];
+    for (let t = 0; t < NUM_TOKENS; t++) {
+      if (assignment[t] === g) tokens.push(t);
+    }
+    html += '<div class="token-row">';
+    html += '<div class="token-row-label" style="color:' + gpuColorValues[g] + ';">GPU ' + g + ':</div>';
+    html += '<div style="font-family:var(--font-mono); font-size:0.78rem; color:var(--fg-muted);">tokens [' + tokens.join(', ') + ']</div>';
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+function renderCausalGrid() {
+  const assignment = getAssignment();
+  const grid = document.getElementById('causalGrid');
+  const gpuColorValues = ['#3b82f6', '#00d46a', '#f59e0b', '#a78bfa'];
+
+  let html = '';
+  for (let row = 0; row < NUM_TOKENS; row++) {
+    for (let col = 0; col < NUM_TOKENS; col++) {
+      if (col <= row) {
+        // Causal: can attend
+        const queryGPU = assignment[row];
+        const keyGPU = assignment[col];
+        // Color by which GPU does this computation (the query GPU)
+        html += '<div class="causal-cell active" style="background:' + gpuColorValues[queryGPU] + '; width:16px; height:16px;"></div>';
+      } else {
+        // Masked
+        html += '<div class="causal-cell masked" style="width:16px; height:16px;"></div>';
+      }
+    }
+  }
+  grid.innerHTML = html;
+}
+
+function renderWorkloadBars() {
+  const assignment = getAssignment();
+  const gpuColorValues = ['#3b82f6', '#00d46a', '#f59e0b', '#a78bfa'];
+
+  // Count work per GPU: how many (row, col) pairs where col <= row and assignment[row] == gpu
+  const work = [0, 0, 0, 0];
+  const totalWork = NUM_TOKENS * (NUM_TOKENS + 1) / 2; // Total causal attention pairs
+  for (let row = 0; row < NUM_TOKENS; row++) {
+    const gpu = assignment[row];
+    work[gpu] += (row + 1); // row+1 because col goes from 0 to row
+  }
+
+  const maxWork = Math.max(...work);
+  const idealWork = totalWork / NUM_GPUS;
+
+  const container = document.getElementById('workloadBars');
+  let html = '';
+  for (let g = 0; g < NUM_GPUS; g++) {
+    const pct = (work[g] / maxWork) * 100;
+    const workPct = ((work[g] / totalWork) * 100).toFixed(1);
+    html += '<div class="workload-bar-row">';
+    html += '<div class="workload-gpu-label" style="color:' + gpuColorValues[g] + ';">GPU ' + g + '</div>';
+    html += '<div class="workload-bar-track">';
+    html += '<div class="workload-bar-fill" style="width:' + pct + '%; background:' + gpuColorValues[g] + ';">' + work[g] + '</div>';
+    html += '</div>';
+    html += '<div class="workload-pct">' + workPct + '%</div>';
+    html += '</div>';
+  }
+  container.innerHTML = html;
+
+  // Imbalance metric
+  const imbalance = ((maxWork - Math.min(...work)) / idealWork * 100).toFixed(0);
+  const imbalanceLabel = document.getElementById('imbalanceLabel');
+  if (currentMode === 'naive') {
+    imbalanceLabel.innerHTML = 'Load imbalance: <span style="color:var(--red); font-weight:700;">' + imbalance + '%</span>';
+  } else {
+    imbalanceLabel.innerHTML = 'Load imbalance: <span style="color:var(--primary); font-weight:700;">' + imbalance + '%</span>';
+  }
+}
+
+function updateZigzag() {
+  renderTokenAssignment();
+  renderCausalGrid();
+  renderWorkloadBars();
+
+  const explanation = document.getElementById('zigzagExplanation');
+  if (currentMode === 'naive') {
+    explanation.innerHTML = 'With naive chunking, GPU 0 gets the earliest tokens and must attend to all chunks (the top rows have full attention width). GPU 3 gets the latest tokens but its causal mask blocks most of the attention &mdash; leaving it mostly idle.';
+  } else {
+    explanation.innerHTML = 'Zigzag interleaves tokens so each GPU gets a mix of early and late positions. GPU 0 gets tokens [0, 7, 8, 15] &mdash; some early (few keys) and some late (many keys). This balances the causal attention workload nearly perfectly.';
+  }
+}
+
+// Toggle buttons
+document.querySelectorAll('#zigzagToggle .toggle-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('#zigzagToggle .toggle-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    currentMode = this.dataset.mode;
+    updateZigzag();
+  });
+});
+
+updateZigzag();
+
+// ===========================
+// SECTION D: Side-by-side patterns
+// ===========================
+function renderComparisonPatterns() {
+  const naiveA = naiveAssignment();
+  const zigzagA = zigzagAssignment();
+  const gpuColors = ['#3b82f6', '#00d46a', '#f59e0b', '#a78bfa'];
+
+  // We'll show a simplified 8-token version for the patterns
+  const N = 8;
+  const P = 4;
+
+  // Naive 8-token assignment
+  function naiveAssign8() {
+    const a = [];
+    for (let t = 0; t < N; t++) a.push(Math.floor(t / (N / P)));
+    return a;
+  }
+
+  // Zigzag 8-token assignment
+  function zigzagAssign8() {
+    const a = new Array(N);
+    for (let groupStart = 0; groupStart < N; groupStart += 2 * P) {
+      for (let i = 0; i < P; i++) {
+        const t1 = groupStart + i;
+        const t2 = groupStart + (2 * P - 1 - i);
+        if (t1 < N) a[t1] = i;
+        if (t2 < N) a[t2] = i;
+      }
+    }
+    return a;
+  }
+
+  const naiveA8 = naiveAssign8();
+  const zigzagA8 = zigzagAssign8();
+
+  function renderPattern(containerId, assignment) {
+    const container = document.getElementById(containerId);
+    let html = '';
+    for (let row = 0; row < N; row++) {
+      for (let col = 0; col < N; col++) {
+        if (col <= row) {
+          const gpu = assignment[row];
+          html += '<div class="pattern-cell" style="background:' + gpuColors[gpu] + '; opacity:0.85;"></div>';
+        } else {
+          html += '<div class="pattern-cell masked" style="background:rgba(255,255,255,0.02);"></div>';
+        }
+      }
+    }
+    container.innerHTML = html;
+  }
+
+  renderPattern('patternNaive', naiveA8);
+  renderPattern('patternZigzag', zigzagA8);
+}
+
+renderComparisonPatterns();
+
+// ===========================
+// Scroll Animations
+// ===========================
+const observer = new IntersectionObserver(function(entries) {
+  entries.forEach(function(entry) {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.08, rootMargin: '-50px' });
+
+document.querySelectorAll('.fade-in').forEach(function(el) {
+  observer.observe(el);
+});
+</script>
+</body>
+</html>

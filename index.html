@@ -299,6 +299,8 @@ code { font-family: var(--font-mono); }
       <a href="#zero-series">ZeRO Series</a>
       <a href="#tensor-parallelism">Tensor Parallelism</a>
       <a href="#pipeline-parallelism">Pipeline Parallelism</a>
+      <a href="#context-parallelism">Context Parallelism</a>
+      <a href="#expert-parallelism">Expert Parallelism</a>
       <a href="#5d-capstone">5D Capstone</a>
       <a href="https://github.com/VizuaraAI/5d-parallelism-visual-guide" target="_blank">GitHub</a>
     </div>
@@ -321,7 +323,7 @@ code { font-family: var(--font-mono); }
 
     <div class="stats-row">
       <div class="stat-item">
-        <div class="stat-value">15</div>
+        <div class="stat-value">19</div>
         <div class="stat-desc">Visual Guides</div>
       </div>
       <div class="stat-item">
@@ -663,14 +665,39 @@ code { font-family: var(--font-mono); }
   <div class="container">
     <div class="section-heading fade-in">
       <div class="section-label">Tensor Parallelism</div>
-      <h2><span class="gradient-text">Tensor Parallelism &amp; Inference</span></h2>
-      <p class="section-subtitle">How model-parallel sharding strategies behave at inference time &mdash; and why the right choice changes everything.</p>
+      <h2><span class="gradient-text">Tensor &amp; Sequence Parallelism</span></h2>
+      <p class="section-subtitle">How weight matrices are split within a layer, how SP complements TP, and why the right sharding strategy changes everything.</p>
     </div>
 
     <div class="guides-grid">
 
+      <!-- TP + SP Visual Deep Dive -->
+      <a href="tensor-parallelism-visual.html" class="guide-card fade-in stagger-1">
+        <div class="guide-card-header">
+          <div class="guide-icon" style="background: linear-gradient(135deg, rgba(59,130,246,0.15), rgba(0,200,230,0.05));">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><path d="M10 6.5h4"/><path d="M10 17.5h4"/><path d="M6.5 10v4"/><path d="M17.5 10v4"/></svg>
+          </div>
+          <div>
+            <h3>Tensor + Sequence Parallelism Visual</h3>
+            <span class="guide-tag" style="background: rgba(59,130,246,0.1); color: #3b82f6;">TP + SP</span>
+          </div>
+        </div>
+        <div class="guide-card-body">
+          <p>See how weight matrices split across GPUs — column parallel for up-projection, row parallel for down. Then watch SP eliminate redundant activations in LayerNorm &amp; Dropout regions.</p>
+          <div class="guide-features">
+            <span class="feature-chip">Matrix Splitting</span>
+            <span class="feature-chip">MLP &amp; Attention TP</span>
+            <span class="feature-chip">SP Memory Savings</span>
+            <span class="feature-chip">NEW</span>
+          </div>
+        </div>
+        <div class="guide-card-footer">
+          <span class="guide-arrow">Explore guide <span>&rarr;</span></span>
+        </div>
+      </a>
+
       <!-- 12. TP vs ZeRO for Inference -->
-      <a href="tp-vs-zero-inference.html" class="guide-card fade-in stagger-1">
+      <a href="tp-vs-zero-inference.html" class="guide-card fade-in stagger-2">
         <div class="guide-card-header">
           <div class="guide-icon" style="background: linear-gradient(135deg, rgba(0,212,106,0.15), rgba(255,112,67,0.05));">
             <svg viewBox="0 0 24 24" fill="none" stroke="#00d46a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
@@ -791,7 +818,116 @@ code { font-family: var(--font-mono); }
 </section>
 
 <!-- ============================================================
-     SECTION 6: 5D PARALLELISM CAPSTONE
+     SECTION 6: CONTEXT PARALLELISM
+     ============================================================ -->
+<section class="section section-dark" id="context-parallelism">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Context Parallelism</div>
+      <h2><span class="gradient-text">Context Parallelism &amp; Ring Attention</span></h2>
+      <p class="section-subtitle">How long sequences are split across GPUs using ring communication &mdash; and why zigzag assignment balances the workload.</p>
+    </div>
+
+    <div class="guides-grid">
+
+      <!-- Context Parallelism Visualized -->
+      <a href="context-parallelism.html" class="guide-card fade-in stagger-1">
+        <div class="guide-card-header">
+          <div class="guide-icon" style="background: linear-gradient(135deg, rgba(0,200,230,0.15), rgba(0,212,106,0.05));">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#00c8e6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+          </div>
+          <div>
+            <h3>Context Parallelism Visualized</h3>
+            <span class="guide-tag" style="background: rgba(0,200,230,0.1); color: #00c8e6;">Ring Attention</span>
+          </div>
+        </div>
+        <div class="guide-card-body">
+          <p>Watch Ring Attention in action: K,V blocks rotate around a GPU ring step-by-step. Then see how Zigzag assignment fixes the causal mask load imbalance for perfectly balanced workloads.</p>
+          <div class="guide-features">
+            <span class="feature-chip">Ring Animation</span>
+            <span class="feature-chip">Zigzag vs Naive</span>
+            <span class="feature-chip">Load Balancing</span>
+            <span class="feature-chip">NEW</span>
+          </div>
+        </div>
+        <div class="guide-card-footer">
+          <span class="guide-arrow">Explore guide <span>&rarr;</span></span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 7: EXPERT PARALLELISM
+     ============================================================ -->
+<section class="section" id="expert-parallelism">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Expert Parallelism</div>
+      <h2><span class="gradient-text-warm">Mixture of Experts &amp; Expert Parallelism</span></h2>
+      <p class="section-subtitle">Sparse models that activate only a fraction of parameters per token &mdash; and how to distribute experts across GPUs with All-to-All communication.</p>
+    </div>
+
+    <div class="guides-grid">
+
+      <!-- Mixture of Experts -->
+      <a href="mixture-of-experts.html" class="guide-card fade-in stagger-1">
+        <div class="guide-card-header">
+          <div class="guide-icon" style="background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(0,212,106,0.05));">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div>
+            <h3>Mixture of Experts Explained</h3>
+            <span class="guide-tag" style="background: rgba(245,158,11,0.1); color: #f59e0b;">MoE Architecture</span>
+          </div>
+        </div>
+        <div class="guide-card-body">
+          <p>Dense vs sparse models, router gating, top-K expert selection, and load balancing. Watch tokens flow through the gating network to their assigned experts in real time.</p>
+          <div class="guide-features">
+            <span class="feature-chip">Router Gating</span>
+            <span class="feature-chip">Token Routing</span>
+            <span class="feature-chip">Load Balancing</span>
+            <span class="feature-chip">NEW</span>
+          </div>
+        </div>
+        <div class="guide-card-footer">
+          <span class="guide-arrow">Explore guide <span>&rarr;</span></span>
+        </div>
+      </a>
+
+      <!-- Expert Parallelism -->
+      <a href="expert-parallelism.html" class="guide-card fade-in stagger-2">
+        <div class="guide-card-header">
+          <div class="guide-icon" style="background: linear-gradient(135deg, rgba(236,72,153,0.15), rgba(0,200,230,0.05));">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#ec4899" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+          </div>
+          <div>
+            <h3>Expert Parallelism Visualized</h3>
+            <span class="guide-tag" style="background: rgba(236,72,153,0.1); color: #ec4899;">All-to-All Comm</span>
+          </div>
+        </div>
+        <div class="guide-card-body">
+          <p>Distribute MoE experts across GPUs. Watch the All-to-All dispatch: tokens travel to their expert&rsquo;s GPU, compute, then return. See how EP combines with TP and DP.</p>
+          <div class="guide-features">
+            <span class="feature-chip">All-to-All Animation</span>
+            <span class="feature-chip">Expert Distribution</span>
+            <span class="feature-chip">EP + TP + DP</span>
+            <span class="feature-chip">NEW</span>
+          </div>
+        </div>
+        <div class="guide-card-footer">
+          <span class="guide-arrow">Explore guide <span>&rarr;</span></span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 8: 5D PARALLELISM CAPSTONE
      ============================================================ -->
 <section class="section section-dark" id="5d-capstone">
   <div class="container">

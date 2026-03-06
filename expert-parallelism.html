@@ -1,0 +1,1705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Expert Parallelism — Distributing MoE Experts Across GPUs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* ============ RESET & BASE ============ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0a0a0a; }
+::-webkit-scrollbar-thumb { background: #262626; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #a3a3a3; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: var(--font-mono); }
+
+/* ============ CSS VARIABLES ============ */
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #121212;
+  --bg-card-hover: #1a1a1a;
+  --bg-section-alt: #0f0f0f;
+  --fg: #f2f2f2;
+  --fg-muted: #a3a3a3;
+  --border: #262626;
+  --border-light: #333;
+  --primary: #00d46a;
+  --primary-dim: rgba(0, 212, 106, 0.15);
+  --secondary: #00c8e6;
+  --secondary-dim: rgba(0, 200, 230, 0.15);
+  --accent: #ec4899;
+  --accent-dim: rgba(236, 72, 153, 0.15);
+  --red: #ef4444;
+  --orange: #f97316;
+  --yellow: #FFCA28;
+  --blue: #42A5F5;
+  --green: #66BB6A;
+  --violet: #8b5cf6;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --max-w: 1280px;
+}
+
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.gradient-text-pink {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ============ NAVBAR ============ */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,10,0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.1rem; }
+.nav-brand-logo { height: 28px; width: auto; }
+.brand-tag {
+  font-size: 0.7rem; background: var(--primary); color: #000;
+  padding: 2px 8px; border-radius: 9999px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+/* ============ HERO ============ */
+.hero {
+  position: relative; min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 120px 24px 80px; overflow: hidden;
+}
+.hero-bg-orbs { position: absolute; inset: 0; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.12; }
+.orb-pink { width: 500px; height: 500px; background: var(--accent); top: 10%; left: 10%; animation: float-slow 20s ease-in-out infinite; }
+.orb-cyan { width: 400px; height: 400px; background: var(--secondary); top: 40%; right: 5%; animation: float-slow 25s ease-in-out infinite reverse; }
+.orb-green { width: 350px; height: 350px; background: var(--primary); bottom: 10%; left: 30%; animation: float-slow 22s ease-in-out infinite; }
+
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(30px, -20px); }
+  50% { transform: translate(-20px, 30px); }
+  75% { transform: translate(20px, 20px); }
+}
+
+.hero-content { position: relative; z-index: 1; max-width: 800px; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--accent-dim); border: 1px solid rgba(236, 72, 153, 0.3);
+  border-radius: 9999px; padding: 6px 18px;
+  font-size: 0.82rem; font-weight: 500; color: var(--accent); margin-bottom: 24px;
+}
+.pulse-dot {
+  width: 8px; height: 8px; background: var(--accent);
+  border-radius: 50%; animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.4); }
+}
+
+.hero h1 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2.5rem, 7vw, 5rem); font-weight: 400;
+  line-height: 1.1; margin-bottom: 20px;
+}
+.hero-subtitle {
+  font-size: 1.15rem; color: var(--fg-muted); line-height: 1.7;
+  max-width: 600px; margin: 0 auto 40px;
+}
+.hero-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.hero-stat-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px 12px;
+  transition: border-color 0.3s, transform 0.2s;
+}
+.hero-stat-card:hover { border-color: rgba(236, 72, 153, 0.3); transform: translateY(-2px); }
+.stat-number {
+  font-size: 1.8rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), var(--secondary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.stat-label { font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* ============ SECTIONS ============ */
+.section { padding: 100px 0; position: relative; }
+.section-dark { background: var(--bg-section-alt); }
+.section-heading { text-align: center; margin-bottom: 60px; }
+.section-heading h2 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2rem, 4vw, 3rem); margin-bottom: 16px;
+}
+.section-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.78rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 1.5px; color: var(--primary); margin-bottom: 12px;
+}
+.section-subtitle { font-size: 1.05rem; color: var(--fg-muted); max-width: 680px; margin: 0 auto; }
+
+/* ============ CARDS ============ */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 32px; transition: all 0.3s;
+}
+.card:hover { border-color: var(--border-light); background: var(--bg-card-hover); }
+
+/* ============ FADE-IN ANIMATION ============ */
+.fade-in { opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+
+/* ============ SECTION A: PROBLEM ============ */
+.memory-demo { max-width: 700px; margin: 0 auto; }
+.gpu-single-box {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 32px; margin-bottom: 32px;
+}
+.gpu-single-header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 20px; font-weight: 600; font-size: 1.1rem;
+}
+.gpu-icon {
+  width: 40px; height: 40px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.2rem; font-weight: 700; color: #000;
+  background: var(--secondary);
+}
+.memory-bar-container { margin-bottom: 16px; }
+.memory-bar-label {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 6px;
+}
+.memory-bar-bg {
+  height: 32px; background: #1a1a1a; border-radius: 8px;
+  overflow: hidden; position: relative; border: 1px solid var(--border);
+}
+.memory-bar-fill {
+  height: 100%; border-radius: 8px 0 0 8px;
+  display: flex; align-items: center; padding-left: 10px;
+  font-size: 0.72rem; font-weight: 600; color: #000;
+  transition: width 0.8s ease;
+}
+.memory-bar-fill.attention { background: var(--secondary); width: 15%; }
+.memory-bar-fill.experts { background: var(--accent); }
+.memory-overflow-marker {
+  position: absolute; right: 0; top: 0; bottom: 0;
+  width: 4px; background: var(--red);
+  box-shadow: 0 0 12px var(--red);
+  animation: blink 1.2s ease-in-out infinite;
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.expert-grid-small {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  margin-top: 16px;
+}
+.expert-chip {
+  padding: 8px 6px; border-radius: 8px; text-align: center;
+  font-size: 0.72rem; font-weight: 600; color: #000;
+  border: 2px solid transparent;
+}
+.overflow-label {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 20px; padding: 12px 20px; border-radius: 10px;
+  background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--red); font-size: 0.9rem; font-weight: 600;
+}
+.solution-preview {
+  background: var(--bg-card); border: 1px solid rgba(0, 212, 106, 0.3);
+  border-radius: 16px; padding: 24px; text-align: center;
+}
+.solution-preview h4 { color: var(--primary); margin-bottom: 8px; }
+.solution-preview p { color: var(--fg-muted); font-size: 0.95rem; }
+
+/* ============ SECTION B: DISTRIBUTION ============ */
+.ep-distribution { max-width: 900px; margin: 0 auto; }
+.toggle-row {
+  display: flex; align-items: center; justify-content: center;
+  gap: 16px; margin-bottom: 40px;
+}
+.toggle-btn {
+  padding: 10px 24px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg-card); color: var(--fg-muted); cursor: pointer;
+  font-family: var(--font-sans); font-size: 0.88rem; font-weight: 500;
+  transition: all 0.3s;
+}
+.toggle-btn.active {
+  background: var(--accent-dim); border-color: var(--accent);
+  color: var(--accent); font-weight: 600;
+}
+.toggle-btn:hover:not(.active) { border-color: var(--border-light); color: var(--fg); }
+
+.gpu-distribution-grid {
+  display: grid; gap: 20px;
+  transition: all 0.5s ease;
+}
+.gpu-distribution-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+.gpu-distribution-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+
+.gpu-dist-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 24px; position: relative;
+  transition: all 0.4s ease;
+}
+.gpu-dist-header {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 16px; font-weight: 600;
+}
+.gpu-dist-label {
+  padding: 4px 12px; border-radius: 8px; font-size: 0.78rem;
+  font-weight: 700; color: #000;
+}
+.shared-layers {
+  background: #1a1a1a; border: 1px dashed var(--border-light);
+  border-radius: 10px; padding: 12px; margin-bottom: 12px;
+  text-align: center; font-size: 0.75rem; color: var(--fg-muted);
+}
+.shared-layers span { display: block; font-size: 0.68rem; margin-top: 2px; color: #666; }
+.expert-slots {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.expert-slot {
+  padding: 10px 14px; border-radius: 10px; text-align: center;
+  font-size: 0.82rem; font-weight: 600; color: #000;
+  position: relative; overflow: hidden;
+}
+.expert-slot::after {
+  content: 'FFN'; position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  font-size: 0.65rem; opacity: 0.5; font-weight: 700;
+}
+
+/* Expert colors */
+.expert-0 { background: #FF6B6B; }
+.expert-1 { background: #FFA06B; }
+.expert-2 { background: #FFD93D; }
+.expert-3 { background: #6BCB77; }
+.expert-4 { background: #4D96FF; }
+.expert-5 { background: #9B59B6; }
+.expert-6 { background: #00c8e6; }
+.expert-7 { background: #ec4899; }
+
+/* ============ SECTION C: ALL-TO-ALL ============ */
+.all2all-viz { max-width: 1000px; margin: 0 auto; }
+.step-controls {
+  display: flex; align-items: center; justify-content: center;
+  gap: 16px; margin-bottom: 32px;
+}
+.step-btn {
+  padding: 10px 28px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg-card); color: var(--fg); cursor: pointer;
+  font-family: var(--font-sans); font-size: 0.88rem; font-weight: 500;
+  transition: all 0.3s;
+}
+.step-btn:hover { border-color: var(--accent); color: var(--accent); }
+.step-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.step-btn:disabled:hover { border-color: var(--border); color: var(--fg); }
+.step-counter {
+  font-family: var(--font-mono); font-size: 0.88rem;
+  color: var(--fg-muted); min-width: 100px; text-align: center;
+}
+.step-title-bar {
+  text-align: center; margin-bottom: 32px;
+  padding: 16px 24px; border-radius: 12px;
+  background: var(--bg-card); border: 1px solid var(--border);
+}
+.step-title-bar h3 {
+  font-size: 1.2rem; margin-bottom: 6px; font-weight: 600;
+}
+.step-title-bar p { font-size: 0.88rem; color: var(--fg-muted); }
+
+.all2all-canvas-wrap {
+  position: relative;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 20px; padding: 40px; min-height: 520px;
+  overflow: hidden;
+}
+.all2all-gpu-row {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;
+  position: relative; z-index: 2;
+}
+.a2a-gpu {
+  background: #1a1a1a; border: 1px solid var(--border-light);
+  border-radius: 14px; padding: 16px; text-align: center;
+  transition: all 0.5s ease; position: relative;
+}
+.a2a-gpu-label {
+  font-weight: 700; font-size: 0.82rem; margin-bottom: 10px;
+  color: var(--fg-muted);
+}
+.a2a-gpu-experts {
+  display: flex; gap: 4px; justify-content: center; margin-bottom: 10px;
+}
+.a2a-expert-mini {
+  width: 28px; height: 28px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.6rem; font-weight: 700; color: #000;
+}
+.a2a-tokens-area {
+  min-height: 110px; position: relative;
+  display: flex; flex-wrap: wrap; gap: 6px;
+  justify-content: center; align-items: flex-start;
+  padding: 8px 4px;
+}
+.a2a-token {
+  width: 44px; height: 44px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.65rem; font-weight: 700; color: #000;
+  transition: all 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative; z-index: 3;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.a2a-token.processing {
+  animation: token-process 1s ease-in-out infinite;
+}
+@keyframes token-process {
+  0%, 100% { transform: scale(1); box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+  50% { transform: scale(1.1); box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+}
+.a2a-token.result {
+  border: 2px solid rgba(255,255,255,0.4);
+}
+
+/* Arrow overlay for All-to-All comm */
+.a2a-arrows-overlay {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+}
+.a2a-arrow-line {
+  position: absolute;
+  height: 2px;
+  transform-origin: left center;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+.a2a-arrow-line.visible { opacity: 1; }
+.a2a-arrow-line .arrow-body {
+  width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: arrow-flow 1.5s linear infinite;
+}
+@keyframes arrow-flow {
+  0% { opacity: 0.3; }
+  50% { opacity: 1; }
+  100% { opacity: 0.3; }
+}
+
+/* comm flow lines drawn via SVG */
+.comm-svg {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  width: 100%; height: 100%;
+}
+.comm-path {
+  fill: none; stroke-width: 2;
+  stroke-dasharray: 8 4;
+  opacity: 0; transition: opacity 0.5s ease;
+}
+.comm-path.visible {
+  opacity: 0.8;
+  animation: dash-flow 1s linear infinite;
+}
+@keyframes dash-flow {
+  to { stroke-dashoffset: -24; }
+}
+
+/* Labels between GPU rows */
+.a2a-phase-label {
+  text-align: center; margin: 24px 0;
+  font-size: 0.88rem; font-weight: 600; color: var(--accent);
+  position: relative; z-index: 2;
+}
+.a2a-phase-label .arrow-down {
+  display: block; font-size: 1.5rem; margin: 4px auto;
+  animation: bounce-down 1.5s ease-in-out infinite;
+}
+@keyframes bounce-down {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(6px); }
+}
+
+/* Step descriptions */
+.step-detail-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  margin-top: 24px; position: relative; z-index: 2;
+}
+.step-detail-item {
+  background: #1a1a1a; border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px; text-align: center;
+  font-size: 0.78rem; color: var(--fg-muted);
+}
+.step-detail-item strong { color: var(--fg); display: block; margin-bottom: 4px; }
+
+/* ============ SECTION D: COMM COST ============ */
+.comm-comparison { max-width: 800px; margin: 0 auto; }
+.formula-bar {
+  background: #1a1a1a; border: 1px solid var(--border);
+  border-radius: 14px; padding: 24px 32px; text-align: center;
+  margin-bottom: 40px;
+}
+.formula-bar .formula {
+  font-family: var(--font-mono); font-size: 1.3rem;
+  font-weight: 600; color: var(--accent); margin-bottom: 8px;
+}
+.formula-bar .formula-desc { font-size: 0.88rem; color: var(--fg-muted); }
+.formula-bar .formula-vars {
+  display: flex; justify-content: center; gap: 24px; margin-top: 12px;
+  flex-wrap: wrap;
+}
+.formula-var {
+  font-family: var(--font-mono); font-size: 0.78rem;
+  color: var(--secondary); background: rgba(0, 200, 230, 0.08);
+  padding: 4px 12px; border-radius: 6px;
+}
+
+.comm-compare-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+}
+.comm-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 24px; text-align: center;
+  transition: all 0.3s;
+}
+.comm-card:hover { border-color: var(--border-light); }
+.comm-card h4 { font-size: 1rem; margin-bottom: 8px; }
+.comm-card .comm-type {
+  font-family: var(--font-mono); font-size: 0.82rem;
+  padding: 4px 12px; border-radius: 6px; display: inline-block; margin-bottom: 12px;
+}
+.comm-card .comm-desc { font-size: 0.82rem; color: var(--fg-muted); line-height: 1.5; }
+.comm-card .comm-volume {
+  margin-top: 12px; font-family: var(--font-mono); font-size: 0.78rem;
+  padding: 8px; border-radius: 8px; background: #1a1a1a;
+}
+.comm-bar-wrap { margin-top: 16px; }
+.comm-bar-track { height: 8px; background: #1a1a1a; border-radius: 4px; overflow: hidden; }
+.comm-bar-fill { height: 100%; border-radius: 4px; transition: width 1s ease; }
+
+.insight-box {
+  margin-top: 32px; padding: 20px 28px; border-radius: 14px;
+  background: rgba(0, 212, 106, 0.06); border: 1px solid rgba(0, 212, 106, 0.2);
+}
+.insight-box h4 { color: var(--primary); margin-bottom: 8px; font-size: 0.95rem; }
+.insight-box p { color: var(--fg-muted); font-size: 0.9rem; line-height: 1.6; }
+
+/* ============ SECTION E: EP + TP + DP ============ */
+.cluster-viz { max-width: 900px; margin: 0 auto; }
+.config-toggles {
+  display: flex; align-items: center; justify-content: center;
+  gap: 12px; margin-bottom: 40px; flex-wrap: wrap;
+}
+.config-btn {
+  padding: 10px 20px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg-card); color: var(--fg-muted); cursor: pointer;
+  font-family: var(--font-mono); font-size: 0.82rem; font-weight: 500;
+  transition: all 0.3s;
+}
+.config-btn.active {
+  background: var(--primary-dim); border-color: var(--primary);
+  color: var(--primary); font-weight: 600;
+}
+.config-btn:hover:not(.active) { border-color: var(--border-light); color: var(--fg); }
+
+.cluster-diagram {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 20px; padding: 32px; position: relative;
+}
+.cluster-title {
+  text-align: center; margin-bottom: 24px;
+  font-family: var(--font-mono); font-size: 0.88rem; color: var(--fg-muted);
+}
+.cluster-title strong { color: var(--fg); }
+.cluster-nodes {
+  display: grid; gap: 20px;
+}
+.cluster-node {
+  border: 1px solid var(--border-light); border-radius: 14px;
+  padding: 20px; position: relative;
+}
+.cluster-node-label {
+  position: absolute; top: -10px; left: 20px;
+  background: var(--bg-card); padding: 0 10px;
+  font-size: 0.75rem; font-weight: 600; color: var(--fg-muted);
+}
+.cluster-gpus {
+  display: grid; gap: 10px;
+}
+.cluster-gpu {
+  background: #1a1a1a; border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 16px;
+  display: flex; align-items: center; gap: 10px;
+  font-size: 0.78rem; font-weight: 500;
+  transition: all 0.3s;
+}
+.cluster-gpu-id {
+  font-family: var(--font-mono); font-weight: 700;
+  min-width: 50px;
+}
+.cluster-gpu-tags {
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.cluster-tag {
+  padding: 2px 8px; border-radius: 6px;
+  font-size: 0.68rem; font-weight: 600; color: #000;
+}
+.tag-tp { background: var(--secondary); }
+.tag-ep { background: var(--accent); }
+.tag-dp { background: var(--primary); }
+
+.cluster-legend {
+  display: flex; gap: 24px; justify-content: center;
+  margin-top: 24px; flex-wrap: wrap;
+}
+.legend-item {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.78rem; color: var(--fg-muted);
+}
+.legend-dot {
+  width: 12px; height: 12px; border-radius: 4px;
+}
+.cluster-insight {
+  margin-top: 24px; text-align: center;
+  padding: 16px 20px; border-radius: 10px;
+  background: rgba(236, 72, 153, 0.06); border: 1px solid rgba(236, 72, 153, 0.2);
+  font-size: 0.88rem; color: var(--fg-muted);
+}
+.cluster-insight strong { color: var(--accent); }
+
+/* ============ FOOTER ============ */
+.footer {
+  border-top: 1px solid var(--border); padding: 60px 0;
+  text-align: center;
+}
+.footer-inner { max-width: 600px; margin: 0 auto; }
+.footer-brand {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: 2rem; margin-bottom: 12px;
+}
+.footer p { color: var(--fg-muted); font-size: 0.9rem; margin-bottom: 6px; }
+.footer-muted { font-size: 0.78rem !important; color: #555 !important; }
+
+/* ============ RESPONSIVE ============ */
+@media (max-width: 768px) {
+  .hero-cards { grid-template-columns: repeat(2, 1fr); }
+  .gpu-distribution-grid.cols-4 { grid-template-columns: repeat(2, 1fr); }
+  .all2all-gpu-row { grid-template-columns: repeat(2, 1fr); }
+  .comm-compare-grid { grid-template-columns: 1fr; }
+  .step-detail-grid { grid-template-columns: repeat(2, 1fr); }
+  .nav-links { display: none; }
+}
+@media (max-width: 480px) {
+  .hero-cards { grid-template-columns: 1fr; }
+  .gpu-distribution-grid.cols-4,
+  .gpu-distribution-grid.cols-2 { grid-template-columns: 1fr; }
+  .all2all-gpu-row { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ NAVBAR ============ -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <img src="vizlogo.png" alt="Vizuara" class="nav-brand-logo">
+      <span>Vizuara</span>
+      <span class="brand-tag">5D Parallelism</span>
+    </div>
+    <div class="nav-links">
+      <a href="index.html">All Guides</a>
+      <a href="mixture-of-experts.html">← MoE Basics</a>
+      <a href="https://github.com/VizuaraAI/5d-parallelism-visual-guide" target="_blank">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<section class="hero" id="top">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-pink"></div>
+    <div class="orb orb-cyan"></div>
+    <div class="orb orb-green"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="pulse-dot"></span>
+      Expert Parallelism
+    </div>
+    <h1>Expert Parallelism <span class="gradient-text-pink">Visualized</span></h1>
+    <p class="hero-subtitle">How MoE experts are distributed across GPUs using All-to-All communication</p>
+    <div class="hero-cards">
+      <div class="hero-stat-card">
+        <div class="stat-number">8</div>
+        <div class="stat-label">Experts</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">4</div>
+        <div class="stat-label">GPUs</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">A2A</div>
+        <div class="stat-label">All-to-All Comm</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">2</div>
+        <div class="stat-label">Experts / GPU</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION A: THE PROBLEM ============ -->
+<section class="section section-dark" id="problem">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section A &mdash; The Problem</span>
+      <h2>Too Many Experts for <span class="gradient-text">One GPU</span></h2>
+      <p class="section-subtitle">In a Mixture-of-Experts model, each expert is a full FFN block. With 8 experts, a single GPU simply runs out of memory.</p>
+    </div>
+
+    <div class="memory-demo fade-in">
+      <div class="gpu-single-box">
+        <div class="gpu-single-header">
+          <div class="gpu-icon">0</div>
+          <div>
+            <div>GPU 0 &mdash; Single GPU Attempt</div>
+            <div style="font-size: 0.78rem; color: var(--fg-muted); font-weight: 400;">Trying to fit everything on one device</div>
+          </div>
+        </div>
+
+        <!-- Attention weights bar -->
+        <div class="memory-bar-container">
+          <div class="memory-bar-label">
+            <span>Attention Layers + Embeddings</span>
+            <span>~15% VRAM</span>
+          </div>
+          <div class="memory-bar-bg">
+            <div class="memory-bar-fill attention">Attn</div>
+          </div>
+        </div>
+
+        <!-- Expert FFN blocks bar -->
+        <div class="memory-bar-container">
+          <div class="memory-bar-label">
+            <span>8 Expert FFN Blocks</span>
+            <span style="color: var(--red);">~120% VRAM !!!</span>
+          </div>
+          <div class="memory-bar-bg">
+            <div class="memory-bar-fill experts" style="width: 100%;">8 Experts = OOM</div>
+            <div class="memory-overflow-marker"></div>
+          </div>
+        </div>
+
+        <div class="expert-grid-small">
+          <div class="expert-chip expert-0">E0</div>
+          <div class="expert-chip expert-1">E1</div>
+          <div class="expert-chip expert-2">E2</div>
+          <div class="expert-chip expert-3">E3</div>
+          <div class="expert-chip expert-4">E4</div>
+          <div class="expert-chip expert-5">E5</div>
+          <div class="expert-chip expert-6">E6</div>
+          <div class="expert-chip expert-7">E7</div>
+        </div>
+
+        <div class="overflow-label">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+          Out of Memory &mdash; Each expert is a full FFN (same size as the original dense FFN)
+        </div>
+      </div>
+
+      <div class="solution-preview fade-in">
+        <h4>The Solution: Expert Parallelism</h4>
+        <p>Distribute the 8 experts across 4 GPUs &mdash; each GPU holds only 2 experts while keeping the full attention layers.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION B: DISTRIBUTING EXPERTS ============ -->
+<section class="section" id="distribution">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section B &mdash; Expert Distribution</span>
+      <h2>Distributing Experts <span class="gradient-text-pink">Across GPUs</span></h2>
+      <p class="section-subtitle">Each GPU holds the full model (attention, embeddings) but only a subset of the expert FFN blocks.</p>
+    </div>
+
+    <div class="ep-distribution fade-in">
+      <div class="toggle-row">
+        <button class="toggle-btn active" id="btn-4gpu" onclick="setDistribution(4)">4 GPUs &times; 2 Experts</button>
+        <button class="toggle-btn" id="btn-2gpu" onclick="setDistribution(2)">2 GPUs &times; 4 Experts</button>
+      </div>
+
+      <div class="gpu-distribution-grid cols-4" id="distGrid">
+        <!-- GPU 0 -->
+        <div class="gpu-dist-card">
+          <div class="gpu-dist-header">
+            <div class="gpu-dist-label" style="background: var(--secondary);">GPU 0</div>
+          </div>
+          <div class="shared-layers">
+            Attention + Embeddings + LayerNorm
+            <span>(full copy on every GPU)</span>
+          </div>
+          <div class="expert-slots" id="gpu0-experts">
+            <div class="expert-slot expert-0">Expert 0</div>
+            <div class="expert-slot expert-1">Expert 1</div>
+          </div>
+        </div>
+        <!-- GPU 1 -->
+        <div class="gpu-dist-card">
+          <div class="gpu-dist-header">
+            <div class="gpu-dist-label" style="background: var(--primary);">GPU 1</div>
+          </div>
+          <div class="shared-layers">
+            Attention + Embeddings + LayerNorm
+            <span>(full copy on every GPU)</span>
+          </div>
+          <div class="expert-slots" id="gpu1-experts">
+            <div class="expert-slot expert-2">Expert 2</div>
+            <div class="expert-slot expert-3">Expert 3</div>
+          </div>
+        </div>
+        <!-- GPU 2 -->
+        <div class="gpu-dist-card">
+          <div class="gpu-dist-header">
+            <div class="gpu-dist-label" style="background: var(--violet);">GPU 2</div>
+          </div>
+          <div class="shared-layers">
+            Attention + Embeddings + LayerNorm
+            <span>(full copy on every GPU)</span>
+          </div>
+          <div class="expert-slots" id="gpu2-experts">
+            <div class="expert-slot expert-4">Expert 4</div>
+            <div class="expert-slot expert-5">Expert 5</div>
+          </div>
+        </div>
+        <!-- GPU 3 -->
+        <div class="gpu-dist-card">
+          <div class="gpu-dist-header">
+            <div class="gpu-dist-label" style="background: var(--accent);">GPU 3</div>
+          </div>
+          <div class="shared-layers">
+            Attention + Embeddings + LayerNorm
+            <span>(full copy on every GPU)</span>
+          </div>
+          <div class="expert-slots" id="gpu3-experts">
+            <div class="expert-slot expert-6">Expert 6</div>
+            <div class="expert-slot expert-7">Expert 7</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION C: ALL-TO-ALL (STAR) ============ -->
+<section class="section section-dark" id="all2all">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section C &mdash; Core Pattern</span>
+      <h2>All-to-All Communication <span class="gradient-text-pink">Step by Step</span></h2>
+      <p class="section-subtitle">The All-to-All dispatch and combine is the heart of expert parallelism. Watch tokens flow between GPUs to reach their target experts.</p>
+    </div>
+
+    <div class="all2all-viz fade-in">
+      <!-- Step controls -->
+      <div class="step-controls">
+        <button class="step-btn" id="prevStepBtn" onclick="prevStep()" disabled>&#8592; Prev</button>
+        <span class="step-counter" id="stepCounter">Step 1 / 5</span>
+        <button class="step-btn" id="nextStepBtn" onclick="nextStep()">Next &#8594;</button>
+      </div>
+
+      <!-- Step title -->
+      <div class="step-title-bar" id="stepTitleBar">
+        <h3 id="stepTitle">Before All-to-All</h3>
+        <p id="stepDesc">Each GPU has a batch of tokens. The router has assigned each token to a target expert.</p>
+      </div>
+
+      <!-- Main visualization area -->
+      <div class="all2all-canvas-wrap" id="a2aCanvas">
+        <!-- SVG for communication lines -->
+        <svg class="comm-svg" id="commSvg"></svg>
+
+        <!-- Top row: source GPUs -->
+        <div style="margin-bottom: 12px; font-size: 0.75rem; color: var(--fg-muted); text-align: center; position: relative; z-index: 2;" id="rowLabel">Source GPUs &mdash; each has local tokens</div>
+        <div class="all2all-gpu-row" id="gpuRowTop">
+          <!-- GPU 0 -->
+          <div class="a2a-gpu" id="gpu-top-0">
+            <div class="a2a-gpu-label">GPU 0</div>
+            <div class="a2a-gpu-experts">
+              <div class="a2a-expert-mini expert-0">E0</div>
+              <div class="a2a-expert-mini expert-1">E1</div>
+            </div>
+            <div class="a2a-tokens-area" id="tokens-top-0"></div>
+          </div>
+          <!-- GPU 1 -->
+          <div class="a2a-gpu" id="gpu-top-1">
+            <div class="a2a-gpu-label">GPU 1</div>
+            <div class="a2a-gpu-experts">
+              <div class="a2a-expert-mini expert-2">E2</div>
+              <div class="a2a-expert-mini expert-3">E3</div>
+            </div>
+            <div class="a2a-tokens-area" id="tokens-top-1"></div>
+          </div>
+          <!-- GPU 2 -->
+          <div class="a2a-gpu" id="gpu-top-2">
+            <div class="a2a-gpu-label">GPU 2</div>
+            <div class="a2a-gpu-experts">
+              <div class="a2a-expert-mini expert-4">E4</div>
+              <div class="a2a-expert-mini expert-5">E5</div>
+            </div>
+            <div class="a2a-tokens-area" id="tokens-top-2"></div>
+          </div>
+          <!-- GPU 3 -->
+          <div class="a2a-gpu" id="gpu-top-3">
+            <div class="a2a-gpu-label">GPU 3</div>
+            <div class="a2a-gpu-experts">
+              <div class="a2a-expert-mini expert-6">E6</div>
+              <div class="a2a-expert-mini expert-7">E7</div>
+            </div>
+            <div class="a2a-tokens-area" id="tokens-top-3"></div>
+          </div>
+        </div>
+
+        <!-- Phase label (appears during dispatch/combine) -->
+        <div class="a2a-phase-label" id="phaseLabel" style="display: none;">
+          <span id="phaseLabelText">All-to-All Dispatch</span>
+          <span class="arrow-down" id="phaseArrow">&darr;</span>
+        </div>
+
+        <!-- Bottom row: destination GPUs (shown during dispatch/combine) -->
+        <div style="margin-top: 12px; margin-bottom: 12px; font-size: 0.75rem; color: var(--fg-muted); text-align: center; position: relative; z-index: 2; display: none;" id="rowLabelBottom">Destination GPUs &mdash; tokens arrive at their target expert's GPU</div>
+        <div class="all2all-gpu-row" id="gpuRowBottom" style="display: none;">
+          <!-- GPU 0 -->
+          <div class="a2a-gpu" id="gpu-bot-0">
+            <div class="a2a-gpu-label">GPU 0</div>
+            <div class="a2a-gpu-experts">
+              <div class="a2a-expert-mini expert-0">E0</div>
+              <div class="a2a-expert-mini expert-1">E1</div>
+            </div>
+            <div class="a2a-tokens-area" id="tokens-bot-0"></div>
+          </div>
+          <!-- GPU 1 -->
+          <div class="a2a-gpu" id="gpu-bot-1">
+            <div class="a2a-gpu-label">GPU 1</div>
+            <div class="a2a-gpu-experts">
+              <div class="a2a-expert-mini expert-2">E2</div>
+              <div class="a2a-expert-mini expert-3">E3</div>
+            </div>
+            <div class="a2a-tokens-area" id="tokens-bot-1"></div>
+          </div>
+          <!-- GPU 2 -->
+          <div class="a2a-gpu" id="gpu-bot-2">
+            <div class="a2a-gpu-label">GPU 2</div>
+            <div class="a2a-gpu-experts">
+              <div class="a2a-expert-mini expert-4">E4</div>
+              <div class="a2a-expert-mini expert-5">E5</div>
+            </div>
+            <div class="a2a-tokens-area" id="tokens-bot-2"></div>
+          </div>
+          <!-- GPU 3 -->
+          <div class="a2a-gpu" id="gpu-bot-3">
+            <div class="a2a-gpu-label">GPU 3</div>
+            <div class="a2a-gpu-experts">
+              <div class="a2a-expert-mini expert-6">E6</div>
+              <div class="a2a-expert-mini expert-7">E7</div>
+            </div>
+            <div class="a2a-tokens-area" id="tokens-bot-3"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step detail annotations -->
+      <div class="step-detail-grid" id="stepDetails" style="display: none;">
+        <div class="step-detail-item"><strong>GPU 0</strong> <span id="detail0"></span></div>
+        <div class="step-detail-item"><strong>GPU 1</strong> <span id="detail1"></span></div>
+        <div class="step-detail-item"><strong>GPU 2</strong> <span id="detail2"></span></div>
+        <div class="step-detail-item"><strong>GPU 3</strong> <span id="detail3"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION D: COMM COST ============ -->
+<section class="section" id="comm-cost">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section D &mdash; Communication Cost</span>
+      <h2>EP Communication <span class="gradient-text">Analysis</span></h2>
+      <p class="section-subtitle">Every MoE layer requires two All-to-All operations: dispatch (send tokens) and combine (receive results).</p>
+    </div>
+
+    <div class="comm-comparison fade-in">
+      <div class="formula-bar">
+        <div class="formula">Comm / MoE layer = 2 &times; B &times; S &times; H</div>
+        <div class="formula-desc">Two All-to-All collective operations per Mixture-of-Experts layer (dispatch + combine)</div>
+        <div class="formula-vars">
+          <span class="formula-var">B = batch size</span>
+          <span class="formula-var">S = sequence length</span>
+          <span class="formula-var">H = hidden dimension</span>
+        </div>
+      </div>
+
+      <div class="comm-compare-grid">
+        <!-- EP -->
+        <div class="comm-card" style="border-color: rgba(236, 72, 153, 0.3);">
+          <h4 style="color: var(--accent);">Expert Parallelism</h4>
+          <div class="comm-type" style="background: var(--accent-dim); color: var(--accent);">All-to-All</div>
+          <div class="comm-desc">Tokens dispatched to target expert's GPU, results sent back. Per MoE layer.</div>
+          <div class="comm-volume" style="color: var(--accent);">2 &times; B &times; S &times; H</div>
+          <div class="comm-bar-wrap">
+            <div class="comm-bar-track">
+              <div class="comm-bar-fill" style="width: 50%; background: var(--accent);"></div>
+            </div>
+          </div>
+          <div style="font-size: 0.72rem; color: var(--fg-muted); margin-top: 6px;">Scales with tokens, not model size</div>
+        </div>
+        <!-- TP -->
+        <div class="comm-card">
+          <h4 style="color: var(--secondary);">Tensor Parallelism</h4>
+          <div class="comm-type" style="background: var(--secondary-dim); color: var(--secondary);">AllReduce</div>
+          <div class="comm-desc">Partial activations reduced across TP group. Per attention + FFN layer.</div>
+          <div class="comm-volume" style="color: var(--secondary);">2 &times; B &times; S &times; H &times; L</div>
+          <div class="comm-bar-wrap">
+            <div class="comm-bar-track">
+              <div class="comm-bar-fill" style="width: 85%; background: var(--secondary);"></div>
+            </div>
+          </div>
+          <div style="font-size: 0.72rem; color: var(--fg-muted); margin-top: 6px;">Scales with num layers (L)</div>
+        </div>
+        <!-- DP -->
+        <div class="comm-card">
+          <h4 style="color: var(--primary);">Data Parallelism</h4>
+          <div class="comm-type" style="background: var(--primary-dim); color: var(--primary);">AllReduce</div>
+          <div class="comm-desc">Gradient synchronization across all DP ranks. Once per training step.</div>
+          <div class="comm-volume" style="color: var(--primary);">2 &times; P (all params)</div>
+          <div class="comm-bar-wrap">
+            <div class="comm-bar-track">
+              <div class="comm-bar-fill" style="width: 100%; background: var(--primary);"></div>
+            </div>
+          </div>
+          <div style="font-size: 0.72rem; color: var(--fg-muted); margin-top: 6px;">Scales with total model size</div>
+        </div>
+      </div>
+
+      <div class="insight-box fade-in">
+        <h4>Key Insight</h4>
+        <p>EP communication scales with the number of tokens (B &times; S) and hidden size (H), <strong>not</strong> with model size. This makes EP particularly efficient for large MoE models with many experts &mdash; adding more experts doesn't increase communication, only adding more tokens does. In contrast, DP gradient sync scales with total parameter count, making it increasingly expensive as models grow.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION E: EP + TP + DP ============ -->
+<section class="section section-dark" id="combined">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section E &mdash; Combining Parallelisms</span>
+      <h2>EP + TP + DP <span class="gradient-text-pink">Together</span></h2>
+      <p class="section-subtitle">Expert Parallelism is another axis of parallelism. It can be combined with Tensor and Data Parallelism for maximum efficiency.</p>
+    </div>
+
+    <div class="cluster-viz fade-in">
+      <div class="config-toggles">
+        <button class="config-btn active" id="cfg-8-4tp-2ep" onclick="setClusterConfig('8-4tp-2ep')">8 GPUs: 4 TP &times; 2 EP</button>
+        <button class="config-btn" id="cfg-16-4tp-2ep-2dp" onclick="setClusterConfig('16-4tp-2ep-2dp')">16 GPUs: 4 TP &times; 2 EP &times; 2 DP</button>
+        <button class="config-btn" id="cfg-8-2tp-4ep" onclick="setClusterConfig('8-2tp-4ep')">8 GPUs: 2 TP &times; 4 EP</button>
+      </div>
+
+      <div class="cluster-diagram" id="clusterDiagram">
+        <!-- Filled by JS -->
+      </div>
+
+      <div class="cluster-legend">
+        <div class="legend-item"><div class="legend-dot" style="background: var(--secondary);"></div>Tensor Parallel (TP)</div>
+        <div class="legend-item"><div class="legend-dot" style="background: var(--accent);"></div>Expert Parallel (EP)</div>
+        <div class="legend-item"><div class="legend-dot" style="background: var(--primary);"></div>Data Parallel (DP)</div>
+      </div>
+
+      <div class="cluster-insight fade-in">
+        <strong>Key Insight:</strong> EP replaces some TP or DP GPUs &mdash; it is another <em>dimension</em> of parallelism. Within a node (fast NVLink), you typically combine TP + EP. Across nodes (slower network), you use DP. The total GPU count = TP &times; EP &times; DP.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand gradient-text-pink">Vizuara</div>
+      <p>Expert Parallelism: Distributing MoE Experts Across GPUs</p>
+      <p class="footer-muted">Part of the 5D Parallelism Visual Guide Series</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+// =============================================
+// INTERSECTION OBSERVER FOR FADE-IN
+// =============================================
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// =============================================
+// EXPERT COLORS MAP
+// =============================================
+const expertColors = {
+  0: '#FF6B6B', 1: '#FFA06B', 2: '#FFD93D', 3: '#6BCB77',
+  4: '#4D96FF', 5: '#9B59B6', 6: '#00c8e6', 7: '#ec4899'
+};
+
+const expertColorClass = {
+  0: 'expert-0', 1: 'expert-1', 2: 'expert-2', 3: 'expert-3',
+  4: 'expert-4', 5: 'expert-5', 6: 'expert-6', 7: 'expert-7'
+};
+
+// =============================================
+// SECTION B: DISTRIBUTION TOGGLE
+// =============================================
+function setDistribution(numGpus) {
+  const grid = document.getElementById('distGrid');
+  const btn4 = document.getElementById('btn-4gpu');
+  const btn2 = document.getElementById('btn-2gpu');
+
+  if (numGpus === 4) {
+    btn4.classList.add('active');
+    btn2.classList.remove('active');
+    grid.className = 'gpu-distribution-grid cols-4';
+    grid.innerHTML = buildDistHTML(4);
+  } else {
+    btn2.classList.add('active');
+    btn4.classList.remove('active');
+    grid.className = 'gpu-distribution-grid cols-2';
+    grid.innerHTML = buildDistHTML(2);
+  }
+}
+
+function buildDistHTML(numGpus) {
+  const expertsPerGpu = 8 / numGpus;
+  const gpuColors = ['var(--secondary)', 'var(--primary)', 'var(--violet)', 'var(--accent)'];
+  let html = '';
+  for (let g = 0; g < numGpus; g++) {
+    const startE = g * expertsPerGpu;
+    html += `<div class="gpu-dist-card">
+      <div class="gpu-dist-header">
+        <div class="gpu-dist-label" style="background: ${gpuColors[g % gpuColors.length]};">GPU ${g}</div>
+      </div>
+      <div class="shared-layers">
+        Attention + Embeddings + LayerNorm
+        <span>(full copy on every GPU)</span>
+      </div>
+      <div class="expert-slots">`;
+    for (let e = startE; e < startE + expertsPerGpu; e++) {
+      html += `<div class="expert-slot ${expertColorClass[e]}">Expert ${e}</div>`;
+    }
+    html += `</div></div>`;
+  }
+  return html;
+}
+
+// =============================================
+// SECTION C: ALL-TO-ALL STEP ANIMATION
+// =============================================
+
+// Token assignments: [gpu_index][token_index] = target expert
+// Designed so tokens need to move to different GPUs
+const tokenAssignments = [
+  // GPU 0's 4 tokens target these experts:
+  [0, 3, 5, 7],
+  // GPU 1's 4 tokens:
+  [1, 2, 4, 6],
+  // GPU 2's 4 tokens:
+  [0, 3, 5, 7],
+  // GPU 3's 4 tokens:
+  [1, 2, 4, 6]
+];
+
+// Which GPU holds which experts
+function expertToGpu(expertId) {
+  return Math.floor(expertId / 2);
+}
+
+let currentStep = 0;
+const totalSteps = 5;
+
+const stepData = [
+  {
+    title: 'Before All-to-All',
+    desc: 'Each GPU has a batch of 4 tokens. The router has assigned each token to a target expert. Tokens are color-coded by their target expert.',
+    showBottom: false, showPhase: false, showDetails: true,
+    details: [
+      'Has 4 tokens needing E0, E3, E5, E7',
+      'Has 4 tokens needing E1, E2, E4, E6',
+      'Has 4 tokens needing E0, E3, E5, E7',
+      'Has 4 tokens needing E1, E2, E4, E6'
+    ]
+  },
+  {
+    title: 'All-to-All Dispatch',
+    desc: 'Tokens are sent to the GPU that HOLDS their target expert. Every GPU sends tokens to every other GPU &mdash; this is the "All-to-All" pattern.',
+    showBottom: true, showPhase: true, phaseText: 'All-to-All Dispatch &mdash; tokens move to target expert\'s GPU',
+    phaseArrow: '\u2193', showDetails: true,
+    details: [
+      'Keeps E0 token, sends E3\u2192GPU1, E5\u2192GPU2, E7\u2192GPU3',
+      'Keeps E2 token, sends E1\u2192GPU0, E4\u2192GPU2, E6\u2192GPU3',
+      'Keeps E5 token, sends E0\u2192GPU0, E3\u2192GPU1, E7\u2192GPU3',
+      'Keeps E6 token, sends E1\u2192GPU0, E2\u2192GPU1, E4\u2192GPU2'
+    ]
+  },
+  {
+    title: 'Expert Computation',
+    desc: 'Each GPU processes the received tokens through its local experts. The expert FFN transforms the token hidden states.',
+    showBottom: false, showPhase: false, showDetails: true,
+    details: [
+      'Runs E0 on 2 tokens, E1 on 2 tokens',
+      'Runs E2 on 2 tokens, E3 on 2 tokens',
+      'Runs E4 on 2 tokens, E5 on 2 tokens',
+      'Runs E6 on 2 tokens, E7 on 2 tokens'
+    ]
+  },
+  {
+    title: 'All-to-All Combine',
+    desc: 'Expert outputs are sent BACK to the original source GPU. Each GPU gets back the transformed results for its original tokens.',
+    showBottom: true, showPhase: true, phaseText: 'All-to-All Combine &mdash; results flow back to source GPUs',
+    phaseArrow: '\u2191', showDetails: true,
+    details: [
+      'Receives results for its original 4 tokens back',
+      'Receives results for its original 4 tokens back',
+      'Receives results for its original 4 tokens back',
+      'Receives results for its original 4 tokens back'
+    ]
+  },
+  {
+    title: 'Final &mdash; Weighted Sum & Continue',
+    desc: 'Each GPU now has the expert outputs for ALL its original tokens. It computes the weighted sum (router weights \u00D7 expert outputs) and continues with the next layer.',
+    showBottom: false, showPhase: false, showDetails: true,
+    details: [
+      'Combines expert outputs \u2192 next layer',
+      'Combines expert outputs \u2192 next layer',
+      'Combines expert outputs \u2192 next layer',
+      'Combines expert outputs \u2192 next layer'
+    ]
+  }
+];
+
+function createToken(expertId, label, extra) {
+  const div = document.createElement('div');
+  div.className = 'a2a-token';
+  div.style.background = expertColors[expertId];
+  div.textContent = label || ('E' + expertId);
+  if (extra) {
+    for (const [k, v] of Object.entries(extra)) {
+      div.style[k] = v;
+    }
+  }
+  return div;
+}
+
+function clearTokenAreas() {
+  for (let g = 0; g < 4; g++) {
+    const top = document.getElementById('tokens-top-' + g);
+    const bot = document.getElementById('tokens-bot-' + g);
+    if (top) top.innerHTML = '';
+    if (bot) bot.innerHTML = '';
+  }
+}
+
+function renderStep(step) {
+  const data = stepData[step];
+
+  // Update title bar
+  document.getElementById('stepTitle').textContent = data.title;
+  document.getElementById('stepDesc').innerHTML = data.desc;
+  document.getElementById('stepCounter').textContent = 'Step ' + (step + 1) + ' / ' + totalSteps;
+
+  // Button states
+  document.getElementById('prevStepBtn').disabled = (step === 0);
+  document.getElementById('nextStepBtn').disabled = (step === totalSteps - 1);
+
+  // Show/hide bottom row
+  const bottomRow = document.getElementById('gpuRowBottom');
+  const bottomLabel = document.getElementById('rowLabelBottom');
+  const phaseLabel = document.getElementById('phaseLabel');
+
+  if (data.showBottom) {
+    bottomRow.style.display = 'grid';
+    bottomLabel.style.display = 'block';
+  } else {
+    bottomRow.style.display = 'none';
+    bottomLabel.style.display = 'none';
+  }
+
+  if (data.showPhase) {
+    phaseLabel.style.display = 'block';
+    document.getElementById('phaseLabelText').innerHTML = data.phaseText;
+    document.getElementById('phaseArrow').textContent = data.phaseArrow;
+  } else {
+    phaseLabel.style.display = 'none';
+  }
+
+  // Update row labels
+  const rowLabel = document.getElementById('rowLabel');
+
+  // Show/hide details
+  const detailsEl = document.getElementById('stepDetails');
+  if (data.showDetails) {
+    detailsEl.style.display = 'grid';
+    for (let i = 0; i < 4; i++) {
+      document.getElementById('detail' + i).textContent = data.details[i];
+    }
+  } else {
+    detailsEl.style.display = 'none';
+  }
+
+  // Clear SVG
+  document.getElementById('commSvg').innerHTML = '';
+
+  // Clear tokens
+  clearTokenAreas();
+
+  // Render tokens based on step
+  if (step === 0) {
+    // Step 1: Each GPU has its tokens, colored by target expert
+    rowLabel.textContent = 'Source GPUs \u2014 each has 4 local tokens (colored by target expert)';
+    for (let g = 0; g < 4; g++) {
+      const area = document.getElementById('tokens-top-' + g);
+      for (let t = 0; t < 4; t++) {
+        const expert = tokenAssignments[g][t];
+        const tok = createToken(expert, 'T' + g + '.' + t + '\u2192E' + expert);
+        tok.style.fontSize = '0.55rem';
+        area.appendChild(tok);
+      }
+    }
+  }
+
+  else if (step === 1) {
+    // Step 2: All-to-All Dispatch — show source and destination
+    rowLabel.textContent = 'Source GPUs \u2014 tokens about to be dispatched';
+    bottomLabel.textContent = 'Destination GPUs \u2014 tokens arrive at their target expert\'s GPU';
+
+    // Source side: show tokens fading out (those that leave)
+    for (let g = 0; g < 4; g++) {
+      const area = document.getElementById('tokens-top-' + g);
+      for (let t = 0; t < 4; t++) {
+        const expert = tokenAssignments[g][t];
+        const destGpu = expertToGpu(expert);
+        const tok = createToken(expert, 'T' + g + '.' + t);
+        tok.style.fontSize = '0.6rem';
+        if (destGpu !== g) {
+          tok.style.opacity = '0.3';
+          tok.style.border = '2px dashed rgba(255,255,255,0.3)';
+        } else {
+          tok.style.border = '2px solid rgba(255,255,255,0.5)';
+        }
+        area.appendChild(tok);
+      }
+    }
+
+    // Destination side: group by destination GPU
+    for (let destG = 0; destG < 4; destG++) {
+      const area = document.getElementById('tokens-bot-' + destG);
+      // Find all tokens targeted to this GPU's experts
+      for (let srcG = 0; srcG < 4; srcG++) {
+        for (let t = 0; t < 4; t++) {
+          const expert = tokenAssignments[srcG][t];
+          if (expertToGpu(expert) === destG) {
+            const tok = createToken(expert, 'T' + srcG + '.' + t);
+            tok.style.fontSize = '0.6rem';
+            if (srcG !== destG) {
+              tok.style.animation = 'token-process 1.5s ease-in-out infinite';
+            }
+            area.appendChild(tok);
+          }
+        }
+      }
+    }
+
+    // Draw communication lines (SVG)
+    requestAnimationFrame(() => drawCommLines('dispatch'));
+  }
+
+  else if (step === 2) {
+    // Step 3: Expert computation — tokens at their GPU, with processing animation
+    rowLabel.textContent = 'Each GPU processes received tokens through its local experts';
+
+    for (let destG = 0; destG < 4; destG++) {
+      const area = document.getElementById('tokens-top-' + destG);
+      for (let srcG = 0; srcG < 4; srcG++) {
+        for (let t = 0; t < 4; t++) {
+          const expert = tokenAssignments[srcG][t];
+          if (expertToGpu(expert) === destG) {
+            const tok = createToken(expert, 'E' + expert + '(T' + srcG + '.' + t + ')');
+            tok.style.fontSize = '0.48rem';
+            tok.classList.add('processing');
+            area.appendChild(tok);
+          }
+        }
+      }
+    }
+  }
+
+  else if (step === 3) {
+    // Step 4: All-to-All Combine — results flow back
+    rowLabel.textContent = 'Expert GPUs \u2014 sending results back';
+    bottomLabel.textContent = 'Source GPUs \u2014 receiving transformed results';
+
+    // Top: expert GPUs with results (fading out tokens that leave)
+    for (let destG = 0; destG < 4; destG++) {
+      const area = document.getElementById('tokens-top-' + destG);
+      for (let srcG = 0; srcG < 4; srcG++) {
+        for (let t = 0; t < 4; t++) {
+          const expert = tokenAssignments[srcG][t];
+          if (expertToGpu(expert) === destG) {
+            const tok = createToken(expert, 'R' + srcG + '.' + t);
+            tok.style.fontSize = '0.6rem';
+            tok.classList.add('result');
+            if (srcG !== destG) {
+              tok.style.opacity = '0.3';
+            }
+            area.appendChild(tok);
+          }
+        }
+      }
+    }
+
+    // Bottom: original GPUs receiving their results back
+    for (let srcG = 0; srcG < 4; srcG++) {
+      const area = document.getElementById('tokens-bot-' + srcG);
+      for (let t = 0; t < 4; t++) {
+        const expert = tokenAssignments[srcG][t];
+        const tok = createToken(expert, 'R' + srcG + '.' + t);
+        tok.style.fontSize = '0.6rem';
+        tok.classList.add('result');
+        tok.style.animation = 'token-process 1.5s ease-in-out infinite';
+        area.appendChild(tok);
+      }
+    }
+
+    requestAnimationFrame(() => drawCommLines('combine'));
+  }
+
+  else if (step === 4) {
+    // Step 5: Final — all tokens back, weighted sum
+    rowLabel.textContent = 'All GPUs \u2014 expert outputs combined (weighted sum), ready for next layer';
+
+    for (let g = 0; g < 4; g++) {
+      const area = document.getElementById('tokens-top-' + g);
+      for (let t = 0; t < 4; t++) {
+        const expert = tokenAssignments[g][t];
+        const tok = createToken(expert, 'Out ' + g + '.' + t);
+        tok.style.fontSize = '0.55rem';
+        tok.classList.add('result');
+        tok.style.border = '2px solid rgba(0, 212, 106, 0.6)';
+        tok.style.boxShadow = '0 0 12px rgba(0, 212, 106, 0.3)';
+        area.appendChild(tok);
+      }
+    }
+  }
+}
+
+function drawCommLines(mode) {
+  const svg = document.getElementById('commSvg');
+  const canvasRect = document.getElementById('a2aCanvas').getBoundingClientRect();
+
+  // Get positions of top and bottom GPU boxes
+  const getCenter = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return {
+      x: r.left + r.width / 2 - canvasRect.left,
+      y: r.top + r.height / 2 - canvasRect.top
+    };
+  };
+
+  svg.innerHTML = '';
+  svg.setAttribute('viewBox', `0 0 ${canvasRect.width} ${canvasRect.height}`);
+
+  const colors = ['#FF6B6B', '#6BCB77', '#4D96FF', '#ec4899'];
+
+  if (mode === 'dispatch') {
+    // Draw lines from each source GPU (top) to each destination GPU (bottom)
+    for (let srcG = 0; srcG < 4; srcG++) {
+      for (let t = 0; t < 4; t++) {
+        const expert = tokenAssignments[srcG][t];
+        const destG = expertToGpu(expert);
+        if (destG !== srcG) {
+          const from = getCenter('gpu-top-' + srcG);
+          const to = getCenter('gpu-bot-' + destG);
+          if (from && to) {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            path.setAttribute('x1', from.x);
+            path.setAttribute('y1', from.y + 50);
+            path.setAttribute('x2', to.x);
+            path.setAttribute('y2', to.y - 50);
+            path.setAttribute('stroke', expertColors[expert]);
+            path.setAttribute('stroke-width', '1.5');
+            path.setAttribute('stroke-dasharray', '6 4');
+            path.setAttribute('opacity', '0.5');
+            path.style.animation = 'dash-flow 1s linear infinite';
+            svg.appendChild(path);
+
+            // Arrowhead
+            const angle = Math.atan2(to.y - 50 - (from.y + 50), to.x - from.x);
+            const headLen = 8;
+            const ax = to.x - headLen * Math.cos(angle - 0.4);
+            const ay = (to.y - 50) - headLen * Math.sin(angle - 0.4);
+            const bx = to.x - headLen * Math.cos(angle + 0.4);
+            const by = (to.y - 50) - headLen * Math.sin(angle + 0.4);
+            const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            arrow.setAttribute('points', `${to.x},${to.y - 50} ${ax},${ay} ${bx},${by}`);
+            arrow.setAttribute('fill', expertColors[expert]);
+            arrow.setAttribute('opacity', '0.7');
+            svg.appendChild(arrow);
+          }
+        }
+      }
+    }
+  } else if (mode === 'combine') {
+    // Draw lines from top (expert GPUs) back to bottom (source GPUs)
+    for (let srcG = 0; srcG < 4; srcG++) {
+      for (let t = 0; t < 4; t++) {
+        const expert = tokenAssignments[srcG][t];
+        const expertGpu = expertToGpu(expert);
+        if (expertGpu !== srcG) {
+          const from = getCenter('gpu-top-' + expertGpu);
+          const to = getCenter('gpu-bot-' + srcG);
+          if (from && to) {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            path.setAttribute('x1', from.x);
+            path.setAttribute('y1', from.y + 50);
+            path.setAttribute('x2', to.x);
+            path.setAttribute('y2', to.y - 50);
+            path.setAttribute('stroke', expertColors[expert]);
+            path.setAttribute('stroke-width', '1.5');
+            path.setAttribute('stroke-dasharray', '6 4');
+            path.setAttribute('opacity', '0.5');
+            path.style.animation = 'dash-flow 1s linear infinite';
+            svg.appendChild(path);
+
+            const angle = Math.atan2(to.y - 50 - (from.y + 50), to.x - from.x);
+            const headLen = 8;
+            const ax = to.x - headLen * Math.cos(angle - 0.4);
+            const ay = (to.y - 50) - headLen * Math.sin(angle - 0.4);
+            const bx = to.x - headLen * Math.cos(angle + 0.4);
+            const by = (to.y - 50) - headLen * Math.sin(angle + 0.4);
+            const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            arrow.setAttribute('points', `${to.x},${to.y - 50} ${ax},${ay} ${bx},${by}`);
+            arrow.setAttribute('fill', expertColors[expert]);
+            arrow.setAttribute('opacity', '0.7');
+            svg.appendChild(arrow);
+          }
+        }
+      }
+    }
+  }
+}
+
+function nextStep() {
+  if (currentStep < totalSteps - 1) {
+    currentStep++;
+    renderStep(currentStep);
+  }
+}
+
+function prevStep() {
+  if (currentStep > 0) {
+    currentStep--;
+    renderStep(currentStep);
+  }
+}
+
+// Handle window resize for comm lines
+let resizeTimeout;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimeout);
+  resizeTimeout = setTimeout(() => {
+    if (currentStep === 1 || currentStep === 3) {
+      renderStep(currentStep);
+    }
+  }, 200);
+});
+
+// =============================================
+// SECTION E: CLUSTER CONFIGURATION
+// =============================================
+const clusterConfigs = {
+  '8-4tp-2ep': {
+    title: '8 GPUs = <strong>4 TP</strong> &times; <strong>2 EP</strong>',
+    nodes: [
+      {
+        label: 'Node 0 (NVLink)',
+        gpus: [
+          { id: 'GPU 0', tags: [{ label: 'TP 0', cls: 'tag-tp' }, { label: 'EP 0', cls: 'tag-ep' }] },
+          { id: 'GPU 1', tags: [{ label: 'TP 1', cls: 'tag-tp' }, { label: 'EP 0', cls: 'tag-ep' }] },
+          { id: 'GPU 2', tags: [{ label: 'TP 2', cls: 'tag-tp' }, { label: 'EP 0', cls: 'tag-ep' }] },
+          { id: 'GPU 3', tags: [{ label: 'TP 3', cls: 'tag-tp' }, { label: 'EP 0', cls: 'tag-ep' }] }
+        ]
+      },
+      {
+        label: 'Node 1 (NVLink)',
+        gpus: [
+          { id: 'GPU 4', tags: [{ label: 'TP 0', cls: 'tag-tp' }, { label: 'EP 1', cls: 'tag-ep' }] },
+          { id: 'GPU 5', tags: [{ label: 'TP 1', cls: 'tag-tp' }, { label: 'EP 1', cls: 'tag-ep' }] },
+          { id: 'GPU 6', tags: [{ label: 'TP 2', cls: 'tag-tp' }, { label: 'EP 1', cls: 'tag-ep' }] },
+          { id: 'GPU 7', tags: [{ label: 'TP 3', cls: 'tag-tp' }, { label: 'EP 1', cls: 'tag-ep' }] }
+        ]
+      }
+    ],
+    insight: 'TP within each node (fast NVLink). EP across nodes &mdash; experts split between Node 0 and Node 1. Each TP rank within a node sees the same subset of experts.'
+  },
+  '16-4tp-2ep-2dp': {
+    title: '16 GPUs = <strong>4 TP</strong> &times; <strong>2 EP</strong> &times; <strong>2 DP</strong>',
+    nodes: [
+      {
+        label: 'Node 0 &mdash; DP Rank 0',
+        gpus: [
+          { id: 'GPU 0', tags: [{ label: 'TP 0', cls: 'tag-tp' }, { label: 'EP 0', cls: 'tag-ep' }, { label: 'DP 0', cls: 'tag-dp' }] },
+          { id: 'GPU 1', tags: [{ label: 'TP 1', cls: 'tag-tp' }, { label: 'EP 0', cls: 'tag-ep' }, { label: 'DP 0', cls: 'tag-dp' }] },
+          { id: 'GPU 2', tags: [{ label: 'TP 2', cls: 'tag-tp' }, { label: 'EP 0', cls: 'tag-ep' }, { label: 'DP 0', cls: 'tag-dp' }] },
+          { id: 'GPU 3', tags: [{ label: 'TP 3', cls: 'tag-tp' }, { label: 'EP 0', cls: 'tag-ep' }, { label: 'DP 0', cls: 'tag-dp' }] }
+        ]
+      },
+      {
+        label: 'Node 1 &mdash; DP Rank 0',
+        gpus: [
+          { id: 'GPU 4', tags: [{ label: 'TP 0', cls: 'tag-tp' }, { label: 'EP 1', cls: 'tag-ep' }, { label: 'DP 0', cls: 'tag-dp' }] },
+          { id: 'GPU 5', tags: [{ label: 'TP 1', cls: 'tag-tp' }, { label: 'EP 1', cls: 'tag-ep' }, { label: 'DP 0', cls: 'tag-dp' }] },
+          { id: 'GPU 6', tags: [{ label: 'TP 2', cls: 'tag-tp' }, { label: 'EP 1', cls: 'tag-ep' }, { label: 'DP 0', cls: 'tag-dp' }] },
+          { id: 'GPU 7', tags: [{ label: 'TP 3', cls: 'tag-tp' }, { label: 'EP 1', cls: 'tag-ep' }, { label: 'DP 0', cls: 'tag-dp' }] }
+        ]
+      },
+      {
+        label: 'Node 2 &mdash; DP Rank 1',
+        gpus: [
+          { id: 'GPU 8', tags: [{ label: 'TP 0', cls: 'tag-tp' }, { label: 'EP 0', cls: 'tag-ep' }, { label: 'DP 1', cls: 'tag-dp' }] },
+          { id: 'GPU 9', tags: [{ label: 'TP 1', cls: 'tag-tp' }, { label: 'EP 0', cls: 'tag-ep' }, { label: 'DP 1', cls: 'tag-dp' }] },
+          { id: 'GPU 10', tags: [{ label: 'TP 2', cls: 'tag-tp' }, { label: 'EP 0', cls: 'tag-ep' }, { label: 'DP 1', cls: 'tag-dp' }] },
+          { id: 'GPU 11', tags: [{ label: 'TP 3', cls: 'tag-tp' }, { label: 'EP 0', cls: 'tag-ep' }, { label: 'DP 1', cls: 'tag-dp' }] }
+        ]
+      },
+      {
+        label: 'Node 3 &mdash; DP Rank 1',
+        gpus: [
+          { id: 'GPU 12', tags: [{ label: 'TP 0', cls: 'tag-tp' }, { label: 'EP 1', cls: 'tag-ep' }, { label: 'DP 1', cls: 'tag-dp' }] },
+          { id: 'GPU 13', tags: [{ label: 'TP 1', cls: 'tag-tp' }, { label: 'EP 1', cls: 'tag-ep' }, { label: 'DP 1', cls: 'tag-dp' }] },
+          { id: 'GPU 14', tags: [{ label: 'TP 2', cls: 'tag-tp' }, { label: 'EP 1', cls: 'tag-ep' }, { label: 'DP 1', cls: 'tag-dp' }] },
+          { id: 'GPU 15', tags: [{ label: 'TP 3', cls: 'tag-tp' }, { label: 'EP 1', cls: 'tag-ep' }, { label: 'DP 1', cls: 'tag-dp' }] }
+        ]
+      }
+    ],
+    insight: 'TP within each node. EP splits experts across pairs of nodes. DP replicates the entire TP&times;EP setup for data-parallel training. Total = 4 TP &times; 2 EP &times; 2 DP = 16 GPUs.'
+  },
+  '8-2tp-4ep': {
+    title: '8 GPUs = <strong>2 TP</strong> &times; <strong>4 EP</strong>',
+    nodes: [
+      {
+        label: 'Node 0 (NVLink)',
+        gpus: [
+          { id: 'GPU 0', tags: [{ label: 'TP 0', cls: 'tag-tp' }, { label: 'EP 0', cls: 'tag-ep' }] },
+          { id: 'GPU 1', tags: [{ label: 'TP 1', cls: 'tag-tp' }, { label: 'EP 0', cls: 'tag-ep' }] },
+          { id: 'GPU 2', tags: [{ label: 'TP 0', cls: 'tag-tp' }, { label: 'EP 1', cls: 'tag-ep' }] },
+          { id: 'GPU 3', tags: [{ label: 'TP 1', cls: 'tag-tp' }, { label: 'EP 1', cls: 'tag-ep' }] }
+        ]
+      },
+      {
+        label: 'Node 1 (NVLink)',
+        gpus: [
+          { id: 'GPU 4', tags: [{ label: 'TP 0', cls: 'tag-tp' }, { label: 'EP 2', cls: 'tag-ep' }] },
+          { id: 'GPU 5', tags: [{ label: 'TP 1', cls: 'tag-tp' }, { label: 'EP 2', cls: 'tag-ep' }] },
+          { id: 'GPU 6', tags: [{ label: 'TP 0', cls: 'tag-tp' }, { label: 'EP 3', cls: 'tag-ep' }] },
+          { id: 'GPU 7', tags: [{ label: 'TP 1', cls: 'tag-tp' }, { label: 'EP 3', cls: 'tag-ep' }] }
+        ]
+      }
+    ],
+    insight: 'Smaller TP groups (2) means less TP communication. More EP groups (4) means experts are spread thinner &mdash; useful when you have many experts and want to minimize per-GPU memory. Trade-off: more All-to-All traffic.'
+  }
+};
+
+function setClusterConfig(configId) {
+  // Update button states
+  document.querySelectorAll('.config-btn').forEach(btn => btn.classList.remove('active'));
+  document.getElementById('cfg-' + configId).classList.add('active');
+
+  const config = clusterConfigs[configId];
+  const diagram = document.getElementById('clusterDiagram');
+
+  let numCols;
+  if (config.nodes[0].gpus.length <= 4) {
+    numCols = config.nodes[0].gpus.length;
+  } else {
+    numCols = 4;
+  }
+
+  let html = `<div class="cluster-title">${config.title}</div>`;
+  html += `<div class="cluster-nodes" style="grid-template-columns: 1fr;">`;
+
+  config.nodes.forEach(node => {
+    html += `<div class="cluster-node">
+      <div class="cluster-node-label">${node.label}</div>
+      <div class="cluster-gpus" style="grid-template-columns: repeat(${numCols}, 1fr);">`;
+    node.gpus.forEach(gpu => {
+      html += `<div class="cluster-gpu">
+        <div class="cluster-gpu-id">${gpu.id}</div>
+        <div class="cluster-gpu-tags">`;
+      gpu.tags.forEach(tag => {
+        html += `<span class="cluster-tag ${tag.cls}">${tag.label}</span>`;
+      });
+      html += `</div></div>`;
+    });
+    html += `</div></div>`;
+  });
+
+  html += `</div>`;
+  html += `<div class="cluster-insight"><strong>Insight:</strong> ${config.insight}</div>`;
+
+  diagram.innerHTML = html;
+}
+
+// =============================================
+// INITIALIZATION
+// =============================================
+document.addEventListener('DOMContentLoaded', () => {
+  // Render initial All-to-All step
+  renderStep(0);
+
+  // Render initial cluster config
+  setClusterConfig('8-4tp-2ep');
+});
+</script>
+</body>
+</html>

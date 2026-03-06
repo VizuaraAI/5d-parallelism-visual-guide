@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tensor &amp; Sequence Parallelism — Interactive Visual Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #121212;
+  --bg-card-hover: #1a1a1a;
+  --bg-section-alt: #0f0f0f;
+  --fg: #f2f2f2;
+  --fg-muted: #a3a3a3;
+  --border: #262626;
+  --border-light: #333;
+  --primary: #00d46a;
+  --primary-dim: #00a854;
+  --secondary: #00c8e6;
+  --accent: #3b82f6;
+  --red: #FF7043;
+  --orange: #FF9800;
+  --yellow: #FFCA28;
+  --blue: #42A5F5;
+  --green: #66BB6A;
+  --pink: #F06292;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --max-w: 1280px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); line-height: 1.7; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: var(--font-mono); }
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+.gradient-text { background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+
+/* NAVBAR */
+.navbar { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(10,10,10,0.85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--border); }
+.nav-inner { max-width: var(--max-w); margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
+.nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.1rem; }
+.nav-brand img, .nav-brand-logo { width: 28px; height: 28px; object-fit: contain; }
+.brand-tag { font-size: 0.7rem; background: var(--primary); color: #000; padding: 2px 8px; border-radius: 9999px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+/* HERO */
+.hero { position: relative; padding: 120px 24px 70px; overflow: hidden; text-align: center; }
+.hero-bg-orbs { position: absolute; inset: 0; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.12; }
+.orb-blue { width: 500px; height: 500px; background: var(--accent); top: 10%; left: 5%; animation: float-slow 20s ease-in-out infinite; }
+.orb-cyan { width: 400px; height: 400px; background: var(--secondary); top: 35%; right: 5%; animation: float-slow 25s ease-in-out infinite reverse; }
+.orb-green { width: 350px; height: 350px; background: var(--primary); bottom: 5%; left: 30%; animation: float-slow 22s ease-in-out infinite; }
+@keyframes float-slow { 0%, 100% { transform: translate(0,0); } 25% { transform: translate(30px,-20px); } 50% { transform: translate(-20px,30px); } 75% { transform: translate(20px,20px); } }
+.hero::before { content: ''; position: absolute; inset: 0; background-image: linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px); background-size: 60px 60px; pointer-events: none; }
+.hero-content { position: relative; z-index: 1; max-width: 800px; margin: 0 auto; }
+.hero-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.3); border-radius: 9999px; padding: 6px 18px; font-size: 0.82rem; font-weight: 500; color: var(--accent); margin-bottom: 24px; }
+.pulse-dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }
+.hero h1 { font-family: var(--font-serif); font-style: italic; font-size: clamp(2.2rem, 5vw, 3.5rem); font-weight: 400; line-height: 1.15; margin-bottom: 16px; }
+.hero-subtitle { font-size: 1.05rem; color: var(--fg-muted); line-height: 1.7; max-width: 620px; margin: 0 auto 36px; }
+.hero-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.hero-stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px 12px; transition: border-color 0.3s, transform 0.2s; text-align: center; }
+.hero-stat-card:hover { border-color: rgba(59,130,246,0.4); transform: translateY(-2px); }
+.stat-number { font-size: 1.5rem; font-weight: 700; background: linear-gradient(135deg, var(--primary), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.stat-label { font-size: 0.75rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* SECTIONS */
+.section { padding: 80px 0; position: relative; }
+.section-dark { background: var(--bg-section-alt); }
+.section-heading { text-align: center; margin-bottom: 48px; }
+.section-label { display: inline-block; font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; color: var(--accent); margin-bottom: 12px; }
+.section-heading h2 { font-family: var(--font-serif); font-style: italic; font-size: clamp(1.8rem, 4vw, 2.6rem); font-weight: 400; line-height: 1.2; margin-bottom: 12px; }
+.section-subtitle { color: var(--fg-muted); font-size: 0.95rem; max-width: 650px; margin: 0 auto; }
+
+/* CARDS */
+.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 28px 24px; transition: border-color 0.3s, transform 0.2s; }
+.card:hover { border-color: rgba(0,212,106,0.3); transform: translateY(-3px); }
+.card h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; }
+.card p, .card li { font-size: 0.88rem; color: var(--fg-muted); line-height: 1.6; }
+.card code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.82rem; color: var(--secondary); }
+
+/* GRIDS */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+@media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+/* CALLOUTS */
+.callout { border-radius: 10px; padding: 16px 20px; font-size: 0.85rem; line-height: 1.6; margin: 16px 0; }
+.callout-info { background: rgba(66,165,245,0.08); border: 1px solid rgba(66,165,245,0.2); color: var(--fg-muted); }
+.callout-green { background: rgba(0,212,106,0.08); border: 1px solid rgba(0,212,106,0.2); color: var(--fg-muted); }
+.callout-warn { background: rgba(255,112,67,0.08); border: 1px solid rgba(255,112,67,0.2); color: var(--fg-muted); }
+.callout strong { color: var(--fg); }
+.callout code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; color: var(--secondary); }
+
+/* TOGGLE BUTTONS */
+.toggle-row { display: flex; gap: 8px; margin-bottom: 20px; justify-content: center; flex-wrap: wrap; }
+.toggle-btn { padding: 8px 20px; border-radius: 9999px; font-size: 0.82rem; font-weight: 500; border: 1px solid var(--border); background: var(--bg-card); color: var(--fg-muted); cursor: pointer; transition: all 0.2s; font-family: var(--font-sans); }
+.toggle-btn:hover { border-color: rgba(59,130,246,0.4); color: var(--fg); }
+.toggle-btn.active { background: rgba(59,130,246,0.12); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.toggle-btn.active-green { background: rgba(0,212,106,0.1); border-color: var(--primary); color: var(--primary); font-weight: 600; }
+.toggle-btn.active-cyan { background: rgba(0,200,230,0.1); border-color: var(--secondary); color: var(--secondary); font-weight: 600; }
+
+/* MATRIX VIS */
+.matrix-vis { max-width: 900px; margin: 0 auto; }
+.matrix-container { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; padding: 20px 0; }
+.matrix-block { border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; }
+.matrix-grid { display: grid; gap: 2px; }
+.matrix-cell { border-radius: 3px; width: 100%; aspect-ratio: 1; transition: all 0.3s; }
+.matrix-label { font-size: 0.72rem; font-family: var(--font-mono); color: var(--fg-muted); margin-top: 4px; text-align: center; }
+.matrix-dim { font-size: 0.6rem; color: rgba(163,163,163,0.5); font-family: var(--font-mono); }
+.matrix-op { font-size: 1.4rem; font-weight: 300; color: var(--fg-muted); display: flex; align-items: center; padding: 0 4px; }
+.gpu-colors-0 { background: rgba(59,130,246,0.5); border: 1px solid rgba(59,130,246,0.7); }
+.gpu-colors-1 { background: rgba(0,212,106,0.5); border: 1px solid rgba(0,212,106,0.7); }
+.gpu-colors-2 { background: rgba(255,152,0,0.5); border: 1px solid rgba(255,152,0,0.7); }
+.gpu-colors-3 { background: rgba(240,98,146,0.5); border: 1px solid rgba(240,98,146,0.7); }
+.gpu-colors-full { background: rgba(167,139,250,0.35); border: 1px solid rgba(167,139,250,0.5); }
+.gpu-tag { font-size: 0.62rem; font-family: var(--font-mono); font-weight: 600; padding: 2px 8px; border-radius: 4px; }
+.gpu-tag-0 { background: rgba(59,130,246,0.15); color: #60a5fa; }
+.gpu-tag-1 { background: rgba(0,212,106,0.15); color: #34d399; }
+.gpu-tag-2 { background: rgba(255,152,0,0.15); color: #fbbf24; }
+.gpu-tag-3 { background: rgba(240,98,146,0.15); color: #f472b6; }
+
+/* FLOW DIAGRAM */
+.flow-diagram { display: flex; align-items: center; justify-content: center; gap: 0; flex-wrap: wrap; padding: 24px 0; }
+.flow-box { padding: 10px 16px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; text-align: center; border: 1px solid; min-width: 100px; transition: transform 0.2s, box-shadow 0.2s; }
+.flow-box:hover { transform: scale(1.05); }
+.flow-arrow { color: var(--fg-muted); font-size: 1.2rem; padding: 0 6px; flex-shrink: 0; }
+.flow-tp { background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.3); color: var(--accent); }
+.flow-sp { background: rgba(0,212,106,0.1); border-color: rgba(0,212,106,0.3); color: var(--primary); }
+.flow-comm { background: rgba(255,152,0,0.1); border-color: rgba(255,152,0,0.3); color: var(--orange); }
+.flow-act { background: rgba(0,200,230,0.1); border-color: rgba(0,200,230,0.3); color: var(--secondary); }
+.flow-input { background: rgba(167,139,250,0.1); border-color: rgba(167,139,250,0.3); color: #a78bfa; }
+
+/* TRANSFORMER BLOCK VIS */
+.tf-block-vis { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.tf-row { width: 100%; max-width: 440px; padding: 12px 18px; border-radius: 8px; text-align: center; font-size: 0.82rem; font-weight: 600; border: 1px solid; transition: all 0.3s; cursor: default; }
+.tf-row:hover { transform: scale(1.02); }
+.tf-row small { display: block; font-size: 0.68rem; font-weight: 400; margin-top: 2px; opacity: 0.7; }
+.tf-tp { background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.25); color: var(--accent); }
+.tf-sp { background: rgba(0,212,106,0.08); border-color: rgba(0,212,106,0.25); color: var(--primary); }
+.tf-replicated { background: rgba(255,112,67,0.08); border-color: rgba(255,112,67,0.25); color: var(--red); }
+.tf-comm-row { background: rgba(255,152,0,0.08); border-color: rgba(255,152,0,0.25); color: var(--orange); font-size: 0.75rem; padding: 8px 18px; }
+.tf-arrow { color: var(--fg-muted); font-size: 0.9rem; }
+
+/* HEAD DISTRIBUTION */
+.head-dist { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; max-width: 800px; margin: 0 auto; }
+.head-gpu-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; text-align: center; transition: all 0.3s; }
+.head-gpu-card:hover { border-color: rgba(59,130,246,0.4); transform: translateY(-2px); }
+.head-gpu-label { font-size: 0.82rem; font-weight: 700; font-family: var(--font-mono); margin-bottom: 8px; }
+.head-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.head-cell { aspect-ratio: 1; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.55rem; font-weight: 600; font-family: var(--font-mono); color: rgba(255,255,255,0.8); }
+
+/* MEMORY BARS */
+.mem-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 800px; margin: 0 auto; }
+.mem-col { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+.mem-col h4 { font-size: 0.92rem; font-weight: 600; margin-bottom: 16px; text-align: center; }
+.mem-bar-wrap { margin-bottom: 10px; }
+.mem-bar-title { font-size: 0.72rem; color: var(--fg-muted); margin-bottom: 4px; font-family: var(--font-mono); }
+.mem-bar { height: 28px; border-radius: 6px; display: flex; align-items: center; padding-left: 8px; font-size: 0.65rem; font-weight: 600; color: rgba(255,255,255,0.9); transition: width 0.6s ease; }
+.mem-bar-red { background: linear-gradient(90deg, rgba(255,112,67,0.7), rgba(255,112,67,0.4)); }
+.mem-bar-green { background: linear-gradient(90deg, rgba(0,212,106,0.7), rgba(0,212,106,0.4)); }
+.mem-bar-blue { background: linear-gradient(90deg, rgba(59,130,246,0.7), rgba(59,130,246,0.4)); }
+.mem-bar-yellow { background: linear-gradient(90deg, rgba(255,202,40,0.7), rgba(255,202,40,0.4)); }
+.mem-savings { text-align: center; margin-top: 14px; padding: 8px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; }
+
+/* COMM TABLE */
+.comm-table { width: 100%; border-collapse: collapse; margin: 0 auto; max-width: 900px; }
+.comm-table th { background: rgba(59,130,246,0.08); color: var(--accent); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+.comm-table td { padding: 12px 16px; font-size: 0.82rem; color: var(--fg-muted); border-bottom: 1px solid rgba(38,38,38,0.5); }
+.comm-table tr:hover td { background: rgba(255,255,255,0.02); }
+.comm-table code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; color: var(--secondary); }
+
+/* STEP NAV */
+.step-nav { display: flex; gap: 8px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
+.step-dot { width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border); background: transparent; color: var(--fg-muted); font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); }
+.step-dot:hover { border-color: var(--accent); color: var(--accent); }
+.step-dot.active { border-color: var(--accent); background: rgba(59,130,246,0.15); color: var(--accent); }
+.step-content { min-height: 300px; }
+.step-panel { display: none; animation: fadeUp 0.4s ease; }
+.step-panel.active { display: block; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+
+/* KEY INSIGHT */
+.key-insight { background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.2); border-radius: 12px; padding: 20px 24px; margin: 24px 0; }
+.key-insight-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); margin-bottom: 8px; }
+.key-insight p { font-size: 0.88rem; color: var(--fg-muted); line-height: 1.6; }
+.key-insight strong { color: var(--fg); }
+
+/* FULL FLOW ANIMATED */
+.full-flow { max-width: 700px; margin: 0 auto; }
+.full-flow-step { display: flex; align-items: stretch; gap: 16px; margin-bottom: 4px; opacity: 0; transform: translateX(-20px); transition: all 0.5s ease; }
+.full-flow-step.visible { opacity: 1; transform: translateX(0); }
+.full-flow-num { width: 36px; min-height: 52px; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 0.82rem; font-weight: 700; color: var(--accent); position: relative; }
+.full-flow-num::after { content: ''; position: absolute; bottom: -4px; left: 50%; width: 1px; height: 4px; background: var(--border); }
+.full-flow-step:last-child .full-flow-num::after { display: none; }
+.full-flow-box { flex: 1; padding: 12px 18px; border-radius: 8px; border: 1px solid; font-size: 0.82rem; font-weight: 500; }
+.full-flow-box small { display: block; font-size: 0.7rem; font-weight: 400; opacity: 0.7; margin-top: 2px; }
+
+/* EQUATION */
+.equation-box { background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px; padding: 16px 24px; margin: 16px 0; text-align: center; font-family: var(--font-mono); font-size: 1.1rem; color: var(--secondary); letter-spacing: 1px; }
+.equation-box .eq-note { display: block; font-size: 0.72rem; color: var(--fg-muted); margin-top: 6px; letter-spacing: 0; }
+
+/* FOOTER */
+.footer { padding: 60px 0 40px; border-top: 1px solid var(--border); text-align: center; }
+.footer-logo { width: 36px; height: 36px; object-fit: contain; margin-bottom: 10px; }
+.footer-brand { font-size: 1.2rem; font-weight: 700; background: linear-gradient(135deg, var(--primary), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; display: inline-block; margin-bottom: 8px; }
+.footer p { font-size: 0.82rem; color: var(--fg-muted); }
+.footer-muted { font-size: 0.75rem !important; color: rgba(163,163,163,0.4) !important; margin-top: 12px; }
+.footer-links { display: flex; gap: 20px; justify-content: center; margin-top: 16px; }
+.footer-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; }
+.footer-links a:hover { color: var(--primary); }
+
+/* FADE IN */
+.fade-in { opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease, transform 0.7s ease; }
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+
+/* RESPONSIVE */
+@media (max-width: 900px) {
+  .hero-cards { grid-template-columns: repeat(2, 1fr); }
+  .head-dist { grid-template-columns: repeat(2, 1fr); }
+  .mem-compare { grid-template-columns: 1fr; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .flow-diagram { gap: 4px; }
+  .flow-box { min-width: 70px; font-size: 0.68rem; padding: 8px 10px; }
+}
+@media (max-width: 600px) {
+  .hero h1 { font-size: 1.8rem; }
+  .hero-cards { grid-template-columns: 1fr 1fr; }
+  .nav-links { display: none; }
+  .head-dist { grid-template-columns: 1fr 1fr; }
+  .comm-table { font-size: 0.72rem; }
+  .comm-table th, .comm-table td { padding: 8px; }
+}
+
+::selection { background: rgba(59,130,246,0.3); color: #fff; }
+</style>
+</head>
+<body>
+
+<!-- ============ NAVBAR ============ -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <img src="vizlogo.png" alt="Vizuara" class="nav-brand-logo">
+      <span>Vizuara</span>
+      <span class="brand-tag">5D Parallelism</span>
+    </div>
+    <div class="nav-links">
+      <a href="index.html">All Guides</a>
+      <a href="https://github.com/VizuaraAI/5d-parallelism-visual-guide" target="_blank">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<section class="hero">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-blue"></div>
+    <div class="orb orb-cyan"></div>
+    <div class="orb orb-green"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge"><span class="pulse-dot"></span> Tensor Parallelism</div>
+    <h1><span class="gradient-text">Tensor &amp; Sequence Parallelism</span> Visualized</h1>
+    <p class="hero-subtitle">How weight matrices are split within a layer, and how SP handles the regions TP can't</p>
+    <div class="hero-cards">
+      <div class="hero-stat-card">
+        <div class="stat-number">Column</div>
+        <div class="stat-label">Column Parallel</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">Row</div>
+        <div class="stat-label">Row Parallel</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">Seq</div>
+        <div class="stat-label">Sequence Parallel</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">900</div>
+        <div class="stat-label">GB/s NVLink Speed</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION A: Core Idea ============ -->
+<section class="section" id="core-idea">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section A</span>
+      <h2>The Core Idea &mdash; <span class="gradient-text">Splitting Weight Matrices</span></h2>
+      <p class="section-subtitle">A single linear layer computes Y = XW + b. The weight matrix W is large. Two ways to split it across GPUs.</p>
+    </div>
+
+    <div class="equation-box fade-in">
+      Y = X &times; W + b
+      <span class="eq-note">W has shape [hidden_dim &times; hidden_dim] &mdash; too large for one GPU</span>
+    </div>
+
+    <div class="toggle-row fade-in" id="split-toggle">
+      <button class="toggle-btn active" onclick="showSplit('column')">Column Parallel</button>
+      <button class="toggle-btn" onclick="showSplit('row')">Row Parallel</button>
+    </div>
+
+    <!-- Column Parallel -->
+    <div id="split-column" class="fade-in">
+      <div class="callout callout-info" style="max-width:800px;margin:0 auto 24px;">
+        <strong>Column Parallel:</strong> Split W along its <strong>columns</strong>. W = [W&#x2080; | W&#x2081; | W&#x2082; | W&#x2083;]. Input X is <strong>replicated</strong> on all GPUs. Each GPU computes Y&#x1D62; = X &times; W&#x1D62;, producing a <strong>slice of the output columns</strong>. No communication needed!
+      </div>
+      <div class="matrix-vis">
+        <div style="text-align:center;margin-bottom:8px;font-size:0.78rem;color:var(--fg-muted);font-family:var(--font-mono);">Input X (replicated) &times; Weight W (column-split) = Output Y (column-split)</div>
+        <div class="matrix-container" id="col-par-vis"></div>
+        <div style="display:flex;justify-content:center;gap:16px;margin-top:12px;flex-wrap:wrap;">
+          <span class="gpu-tag gpu-tag-0">GPU 0</span>
+          <span class="gpu-tag gpu-tag-1">GPU 1</span>
+          <span class="gpu-tag gpu-tag-2">GPU 2</span>
+          <span class="gpu-tag gpu-tag-3">GPU 3</span>
+        </div>
+      </div>
+      <div class="key-insight" style="max-width:800px;margin:20px auto 0;">
+        <div class="key-insight-title">Key Insight</div>
+        <p>Each GPU holds the <strong>full input X</strong> but only <strong>1/4 of the weight columns</strong>. The output is naturally partitioned &mdash; each GPU gets different columns of Y. <strong>No AllReduce needed</strong> after this operation.</p>
+      </div>
+    </div>
+
+    <!-- Row Parallel -->
+    <div id="split-row" style="display:none;" class="fade-in">
+      <div class="callout callout-info" style="max-width:800px;margin:0 auto 24px;">
+        <strong>Row Parallel:</strong> Split W along its <strong>rows</strong>. Input X must also be <strong>split</strong> across GPUs: X = [X&#x2080; | X&#x2081; | X&#x2082; | X&#x2083;]. Each GPU computes Y&#x1D62; = X&#x1D62; &times; W&#x1D62; (a <strong>partial sum</strong>). Then <strong>AllReduce</strong> to get the full Y.
+      </div>
+      <div class="matrix-vis">
+        <div style="text-align:center;margin-bottom:8px;font-size:0.78rem;color:var(--fg-muted);font-family:var(--font-mono);">Input X (column-split) &times; Weight W (row-split) = Output Y (AllReduce)</div>
+        <div class="matrix-container" id="row-par-vis"></div>
+        <div style="display:flex;justify-content:center;gap:16px;margin-top:12px;flex-wrap:wrap;">
+          <span class="gpu-tag gpu-tag-0">GPU 0</span>
+          <span class="gpu-tag gpu-tag-1">GPU 1</span>
+          <span class="gpu-tag gpu-tag-2">GPU 2</span>
+          <span class="gpu-tag gpu-tag-3">GPU 3</span>
+        </div>
+      </div>
+      <div class="key-insight" style="max-width:800px;margin:20px auto 0;">
+        <div class="key-insight-title">Key Insight</div>
+        <p>Each GPU computes a <strong>partial result</strong> &mdash; a contribution to every element of Y. These partials must be <strong>summed via AllReduce</strong> to reconstruct the full output. This is where communication happens.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION B: TP in Transformer MLP ============ -->
+<section class="section section-dark" id="tp-mlp">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section B</span>
+      <h2>TP in the <span class="gradient-text">Transformer MLP</span></h2>
+      <p class="section-subtitle">The MLP block has two linear layers: up-projection (h &rarr; 4h) then down-projection (4h &rarr; h). TP cleverly combines column and row parallelism to need only ONE AllReduce.</p>
+    </div>
+
+    <div class="step-nav fade-in" id="mlp-step-nav">
+      <button class="step-dot active" onclick="showMLPStep(1)">1</button>
+      <button class="step-dot" onclick="showMLPStep(2)">2</button>
+      <button class="step-dot" onclick="showMLPStep(3)">3</button>
+      <button class="step-dot" onclick="showMLPStep(4)">4</button>
+      <button class="step-dot" onclick="showMLPStep(5)">5</button>
+    </div>
+
+    <div class="step-content fade-in" id="mlp-steps">
+      <!-- Step 1: Overview -->
+      <div class="step-panel active" id="mlp-step-1">
+        <div class="card" style="max-width:800px;margin:0 auto;">
+          <h3 style="color:var(--accent);">Step 1: The MLP Block Structure</h3>
+          <p style="margin-bottom:16px;">A standard Transformer MLP (FFN) has two linear layers with a GeLU activation in between:</p>
+          <div class="equation-box">
+            MLP(x) = GeLU(x &times; W&#x2081;) &times; W&#x2082;
+            <span class="eq-note">W&#x2081;: [h &times; 4h] (up-projection) &nbsp;&nbsp; W&#x2082;: [4h &times; h] (down-projection)</span>
+          </div>
+          <p>The key insight of Megatron-LM: use <strong>Column Parallel</strong> for W&#x2081; and <strong>Row Parallel</strong> for W&#x2082;. They fit together perfectly.</p>
+        </div>
+      </div>
+
+      <!-- Step 2: Column parallel -->
+      <div class="step-panel" id="mlp-step-2">
+        <div class="card" style="max-width:800px;margin:0 auto;">
+          <h3 style="color:#60a5fa;">Step 2: First Linear &mdash; Column Parallel</h3>
+          <p style="margin-bottom:16px;">Split W&#x2081; by <strong>columns</strong> across 4 GPUs. Each GPU gets W&#x2081;&#x1D62; with shape [h &times; h].</p>
+          <div class="matrix-container" style="justify-content:center;">
+            <div class="matrix-block">
+              <div class="matrix-grid" style="grid-template-columns:repeat(4,28px);grid-template-rows:repeat(4,28px);">
+                <div class="matrix-cell gpu-colors-full"></div><div class="matrix-cell gpu-colors-full"></div><div class="matrix-cell gpu-colors-full"></div><div class="matrix-cell gpu-colors-full"></div>
+                <div class="matrix-cell gpu-colors-full"></div><div class="matrix-cell gpu-colors-full"></div><div class="matrix-cell gpu-colors-full"></div><div class="matrix-cell gpu-colors-full"></div>
+                <div class="matrix-cell gpu-colors-full"></div><div class="matrix-cell gpu-colors-full"></div><div class="matrix-cell gpu-colors-full"></div><div class="matrix-cell gpu-colors-full"></div>
+                <div class="matrix-cell gpu-colors-full"></div><div class="matrix-cell gpu-colors-full"></div><div class="matrix-cell gpu-colors-full"></div><div class="matrix-cell gpu-colors-full"></div>
+              </div>
+              <div class="matrix-label">X (replicated)<br><span class="matrix-dim">[b&times;s, h]</span></div>
+            </div>
+            <div class="matrix-op">&times;</div>
+            <div class="matrix-block">
+              <div class="matrix-grid" style="grid-template-columns:repeat(4,28px);grid-template-rows:repeat(4,28px);">
+                <div class="matrix-cell gpu-colors-0"></div><div class="matrix-cell gpu-colors-1"></div><div class="matrix-cell gpu-colors-2"></div><div class="matrix-cell gpu-colors-3"></div>
+                <div class="matrix-cell gpu-colors-0"></div><div class="matrix-cell gpu-colors-1"></div><div class="matrix-cell gpu-colors-2"></div><div class="matrix-cell gpu-colors-3"></div>
+                <div class="matrix-cell gpu-colors-0"></div><div class="matrix-cell gpu-colors-1"></div><div class="matrix-cell gpu-colors-2"></div><div class="matrix-cell gpu-colors-3"></div>
+                <div class="matrix-cell gpu-colors-0"></div><div class="matrix-cell gpu-colors-1"></div><div class="matrix-cell gpu-colors-2"></div><div class="matrix-cell gpu-colors-3"></div>
+              </div>
+              <div class="matrix-label">W&#x2081; (col-split)<br><span class="matrix-dim">[h, 4h]</span></div>
+            </div>
+            <div class="matrix-op">=</div>
+            <div class="matrix-block">
+              <div class="matrix-grid" style="grid-template-columns:repeat(4,28px);grid-template-rows:repeat(4,28px);">
+                <div class="matrix-cell gpu-colors-0"></div><div class="matrix-cell gpu-colors-1"></div><div class="matrix-cell gpu-colors-2"></div><div class="matrix-cell gpu-colors-3"></div>
+                <div class="matrix-cell gpu-colors-0"></div><div class="matrix-cell gpu-colors-1"></div><div class="matrix-cell gpu-colors-2"></div><div class="matrix-cell gpu-colors-3"></div>
+                <div class="matrix-cell gpu-colors-0"></div><div class="matrix-cell gpu-colors-1"></div><div class="matrix-cell gpu-colors-2"></div><div class="matrix-cell gpu-colors-3"></div>
+                <div class="matrix-cell gpu-colors-0"></div><div class="matrix-cell gpu-colors-1"></div><div class="matrix-cell gpu-colors-2"></div><div class="matrix-cell gpu-colors-3"></div>
+              </div>
+              <div class="matrix-label">Y&#x2081; (col-split)<br><span class="matrix-dim">[b&times;s, 4h]</span></div>
+            </div>
+          </div>
+          <div class="callout callout-green" style="margin-top:16px;">
+            <strong>No communication!</strong> Each GPU has the full X and its column slice of W&#x2081;. The output is naturally split by columns.
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: GeLU -->
+      <div class="step-panel" id="mlp-step-3">
+        <div class="card" style="max-width:800px;margin:0 auto;">
+          <h3 style="color:var(--primary);">Step 3: GeLU Activation</h3>
+          <p style="margin-bottom:16px;">GeLU is applied element-wise to each GPU's partial activation independently. Since each GPU has a <strong>complete slice of the columns</strong>, GeLU can be applied without any communication.</p>
+          <div class="flow-diagram" style="margin:24px 0;">
+            <div class="flow-box" style="background:rgba(59,130,246,0.08);border-color:rgba(59,130,246,0.25);color:#60a5fa;">Y&#x2081;&#x1D62;<br><small style="font-size:0.65rem;opacity:0.7;">on each GPU</small></div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-box" style="background:rgba(0,212,106,0.08);border-color:rgba(0,212,106,0.25);color:var(--primary);">GeLU(Y&#x2081;&#x1D62;)<br><small style="font-size:0.65rem;opacity:0.7;">element-wise</small></div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-box" style="background:rgba(0,200,230,0.08);border-color:rgba(0,200,230,0.25);color:var(--secondary);">Z&#x1D62;<br><small style="font-size:0.65rem;opacity:0.7;">partial activations</small></div>
+          </div>
+          <div class="callout callout-green">
+            <strong>Still no communication!</strong> GeLU is element-wise, so each GPU applies it to its local slice. This is why column parallelism is used for the first linear: the non-linearity works independently on each partition.
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4: Row parallel -->
+      <div class="step-panel" id="mlp-step-4">
+        <div class="card" style="max-width:800px;margin:0 auto;">
+          <h3 style="color:#fbbf24;">Step 4: Second Linear &mdash; Row Parallel</h3>
+          <p style="margin-bottom:16px;">Now W&#x2082; is split by <strong>rows</strong>. Each GPU already has the right input slice from the column parallel output!</p>
+          <div class="matrix-container" style="justify-content:center;">
+            <div class="matrix-block">
+              <div class="matrix-grid" style="grid-template-columns:repeat(4,24px);grid-template-rows:repeat(4,24px);">
+                <div class="matrix-cell gpu-colors-0"></div><div class="matrix-cell gpu-colors-1"></div><div class="matrix-cell gpu-colors-2"></div><div class="matrix-cell gpu-colors-3"></div>
+                <div class="matrix-cell gpu-colors-0"></div><div class="matrix-cell gpu-colors-1"></div><div class="matrix-cell gpu-colors-2"></div><div class="matrix-cell gpu-colors-3"></div>
+                <div class="matrix-cell gpu-colors-0"></div><div class="matrix-cell gpu-colors-1"></div><div class="matrix-cell gpu-colors-2"></div><div class="matrix-cell gpu-colors-3"></div>
+                <div class="matrix-cell gpu-colors-0"></div><div class="matrix-cell gpu-colors-1"></div><div class="matrix-cell gpu-colors-2"></div><div class="matrix-cell gpu-colors-3"></div>
+              </div>
+              <div class="matrix-label">Z&#x1D62; (col-partitioned)<br><span class="matrix-dim">[b&times;s, 4h]</span></div>
+            </div>
+            <div class="matrix-op">&times;</div>
+            <div class="matrix-block">
+              <div class="matrix-grid" style="grid-template-columns:repeat(4,24px);grid-template-rows:repeat(4,24px);">
+                <div class="matrix-cell gpu-colors-0"></div><div class="matrix-cell gpu-colors-0"></div><div class="matrix-cell gpu-colors-0"></div><div class="matrix-cell gpu-colors-0"></div>
+                <div class="matrix-cell gpu-colors-1"></div><div class="matrix-cell gpu-colors-1"></div><div class="matrix-cell gpu-colors-1"></div><div class="matrix-cell gpu-colors-1"></div>
+                <div class="matrix-cell gpu-colors-2"></div><div class="matrix-cell gpu-colors-2"></div><div class="matrix-cell gpu-colors-2"></div><div class="matrix-cell gpu-colors-2"></div>
+                <div class="matrix-cell gpu-colors-3"></div><div class="matrix-cell gpu-colors-3"></div><div class="matrix-cell gpu-colors-3"></div><div class="matrix-cell gpu-colors-3"></div>
+              </div>
+              <div class="matrix-label">W&#x2082; (row-split)<br><span class="matrix-dim">[4h, h]</span></div>
+            </div>
+            <div class="matrix-op">&rarr;</div>
+            <div class="matrix-block">
+              <div class="matrix-grid" style="grid-template-columns:repeat(4,24px);grid-template-rows:repeat(4,24px);">
+                <div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div><div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div><div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div><div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div>
+                <div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div><div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div><div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div><div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div>
+                <div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div><div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div><div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div><div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div>
+                <div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div><div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div><div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div><div class="matrix-cell" style="background:rgba(255,152,0,0.3);border:1px solid rgba(255,152,0,0.5);"></div>
+              </div>
+              <div class="matrix-label">AllReduce<br><span class="matrix-dim">sum partials &rarr; full Y</span></div>
+            </div>
+          </div>
+          <div class="callout callout-warn" style="margin-top:16px;">
+            <strong>AllReduce here!</strong> Each GPU has a partial sum. We need to sum across all GPUs to get the final output Y. This is the <strong>only communication</strong> in the MLP block.
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 5: Full flow -->
+      <div class="step-panel" id="mlp-step-5">
+        <div class="card" style="max-width:800px;margin:0 auto;">
+          <h3 style="color:var(--secondary);">Step 5: Complete MLP Data Flow</h3>
+          <p style="margin-bottom:16px;">The genius of Megatron-LM: Column parallel feeds directly into Row parallel with zero communication in between!</p>
+          <div class="flow-diagram" style="flex-wrap:wrap;gap:8px;">
+            <div class="flow-box flow-input">X<br><small>replicated</small></div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-box flow-tp">Col Parallel<br><small>W&#x2081; split</small></div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-box flow-act">GeLU<br><small>local</small></div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-box flow-tp">Row Parallel<br><small>W&#x2082; split</small></div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-box flow-comm">AllReduce<br><small>sum</small></div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-box flow-input">Y<br><small>replicated</small></div>
+          </div>
+          <div class="key-insight" style="margin-top:20px;">
+            <div class="key-insight-title">Result</div>
+            <p>Only <strong>1 AllReduce per MLP block</strong>. The column-to-row transition is seamless &mdash; each GPU's column-partitioned output is exactly the input slice the row-parallel layer needs. No reshuffling required.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION C: TP in Multi-Head Attention ============ -->
+<section class="section" id="tp-attention">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section C</span>
+      <h2>TP in <span class="gradient-text">Multi-Head Attention</span></h2>
+      <p class="section-subtitle">Attention has Q, K, V projections and an output projection. TP splits attention heads across GPUs &mdash; each GPU handles independent heads.</p>
+    </div>
+
+    <div class="grid-2 fade-in" style="max-width:900px;margin:0 auto 32px;">
+      <div class="card">
+        <h3 style="color:#60a5fa;">Q, K, V Projections &mdash; Column Parallel</h3>
+        <p>The Q, K, V weight matrices are split by <strong>columns</strong>, which maps to splitting <strong>attention heads</strong> across GPUs.</p>
+        <div style="margin-top:12px;padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;">
+          <div style="font-family:var(--font-mono);font-size:0.78rem;color:var(--secondary);">
+            32 heads &divide; 4 GPUs = 8 heads/GPU<br>
+            <span style="color:var(--fg-muted);">Each GPU computes attention for its local heads independently</span>
+          </div>
+        </div>
+        <div class="callout callout-green" style="margin-top:12px;">
+          <strong>No communication needed!</strong> Each head is independent during the attention computation.
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="color:#fbbf24;">Output Projection &mdash; Row Parallel</h3>
+        <p>After attention, each GPU has partial output from its heads. The output projection uses <strong>row parallelism</strong>.</p>
+        <div style="margin-top:12px;padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;">
+          <div style="font-family:var(--font-mono);font-size:0.78rem;color:var(--secondary);">
+            Partial outputs &rarr; Row Parallel W_o &rarr; AllReduce<br>
+            <span style="color:var(--fg-muted);">ONE AllReduce per attention block</span>
+          </div>
+        </div>
+        <div class="callout callout-warn" style="margin-top:12px;">
+          <strong>AllReduce here!</strong> Same pattern as MLP: column parallel Q/K/V feeds into row parallel output projection.
+        </div>
+      </div>
+    </div>
+
+    <div class="fade-in" style="max-width:900px;margin:0 auto;">
+      <h3 style="text-align:center;font-size:1rem;margin-bottom:16px;color:var(--fg);">Head Distribution Across 4 GPUs (32 heads total)</h3>
+      <div class="head-dist" id="head-dist-vis"></div>
+    </div>
+
+    <div class="fade-in" style="max-width:800px;margin:24px auto 0;">
+      <div class="flow-diagram" style="flex-wrap:wrap;gap:8px;">
+        <div class="flow-box flow-input">X<br><small>replicated</small></div>
+        <div class="flow-arrow">&rarr;</div>
+        <div class="flow-box flow-tp">Q,K,V<br><small>col parallel</small></div>
+        <div class="flow-arrow">&rarr;</div>
+        <div class="flow-box flow-act">Attention<br><small>local heads</small></div>
+        <div class="flow-arrow">&rarr;</div>
+        <div class="flow-box flow-tp">Output Proj<br><small>row parallel</small></div>
+        <div class="flow-arrow">&rarr;</div>
+        <div class="flow-box flow-comm">AllReduce<br><small>sum</small></div>
+        <div class="flow-arrow">&rarr;</div>
+        <div class="flow-box flow-input">Y<br><small>replicated</small></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION D: Sequence Parallelism ============ -->
+<section class="section section-dark" id="sequence-parallelism">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section D</span>
+      <h2>The Sequence Parallelism <span class="gradient-text">Complement</span></h2>
+      <p class="section-subtitle">TP handles linear layers brilliantly &mdash; but LayerNorm and Dropout can't be tensor-parallelized. SP solves this.</p>
+    </div>
+
+    <!-- The Problem -->
+    <div class="fade-in" style="max-width:800px;margin:0 auto 32px;">
+      <div class="card" style="border-color:rgba(255,112,67,0.3);">
+        <h3 style="color:var(--red);">The Problem with Pure TP</h3>
+        <p style="margin-bottom:16px;">In a transformer block, some operations work on the <strong>full hidden dimension</strong> and cannot be split by TP:</p>
+        <div class="tf-block-vis">
+          <div class="tf-row tf-replicated">LayerNorm <small>Operates on full hidden dim &mdash; REPLICATED across all GPUs</small></div>
+          <div class="tf-arrow">&darr;</div>
+          <div class="tf-row tf-tp">Self-Attention <small>Tensor Parallel &mdash; split across GPUs</small></div>
+          <div class="tf-arrow">&darr;</div>
+          <div class="tf-row tf-replicated">Dropout + Residual <small>REPLICATED &mdash; wasted memory!</small></div>
+          <div class="tf-arrow">&darr;</div>
+          <div class="tf-row tf-replicated">LayerNorm <small>REPLICATED &mdash; wasted memory!</small></div>
+          <div class="tf-arrow">&darr;</div>
+          <div class="tf-row tf-tp">MLP (FFN) <small>Tensor Parallel &mdash; split across GPUs</small></div>
+          <div class="tf-arrow">&darr;</div>
+          <div class="tf-row tf-replicated">Dropout + Residual <small>REPLICATED &mdash; wasted memory!</small></div>
+        </div>
+        <div class="callout callout-warn" style="margin-top:16px;">
+          <strong>Red = Wasted Memory.</strong> Every GPU stores <strong>identical copies</strong> of activations in non-TP regions. With 4 GPUs, that's 4&times; redundant memory for LayerNorm, Dropout, and residual connections.
+        </div>
+      </div>
+    </div>
+
+    <!-- SP Toggle -->
+    <div class="toggle-row fade-in" id="sp-toggle">
+      <button class="toggle-btn active" onclick="showSPMode('without')" id="sp-btn-without">Without SP (Replicated)</button>
+      <button class="toggle-btn" onclick="showSPMode('with')" id="sp-btn-with">With SP (Partitioned)</button>
+    </div>
+
+    <!-- Without SP -->
+    <div id="sp-without" class="fade-in" style="max-width:800px;margin:0 auto;">
+      <div class="card" style="border-color:rgba(255,112,67,0.25);">
+        <h3 style="color:var(--red);">Without SP &mdash; Replicated Non-TP Regions</h3>
+        <div class="tf-block-vis" style="margin:20px auto;">
+          <div class="tf-row tf-replicated">LayerNorm <small>Full activations [b, s, h] on EVERY GPU</small></div>
+          <div class="tf-arrow">&darr;</div>
+          <div class="tf-row tf-tp">Attention (TP) <small>Each GPU: [b, s, h/P] &mdash; partitioned</small></div>
+          <div class="tf-row tf-comm-row">AllReduce <small>sum partial outputs</small></div>
+          <div class="tf-arrow">&darr;</div>
+          <div class="tf-row tf-replicated">Dropout + Residual <small>Full activations [b, s, h] on EVERY GPU</small></div>
+          <div class="tf-arrow">&darr;</div>
+          <div class="tf-row tf-replicated">LayerNorm <small>Full activations [b, s, h] on EVERY GPU</small></div>
+          <div class="tf-arrow">&darr;</div>
+          <div class="tf-row tf-tp">MLP (TP) <small>Each GPU: [b, s, 4h/P] &mdash; partitioned</small></div>
+          <div class="tf-row tf-comm-row">AllReduce <small>sum partial outputs</small></div>
+          <div class="tf-arrow">&darr;</div>
+          <div class="tf-row tf-replicated">Dropout + Residual <small>Full activations [b, s, h] on EVERY GPU</small></div>
+        </div>
+      </div>
+      <div class="mem-compare" style="margin-top:24px;">
+        <div class="mem-col">
+          <h4 style="color:var(--red);">GPU 0 Memory (Without SP)</h4>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">LayerNorm 1</div><div class="mem-bar mem-bar-red" style="width:100%;">b&times;s&times;h (FULL)</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">Attention</div><div class="mem-bar mem-bar-blue" style="width:25%;">b&times;s&times;h/4</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">Dropout+Res</div><div class="mem-bar mem-bar-red" style="width:100%;">b&times;s&times;h (FULL)</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">LayerNorm 2</div><div class="mem-bar mem-bar-red" style="width:100%;">b&times;s&times;h (FULL)</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">MLP</div><div class="mem-bar mem-bar-blue" style="width:25%;">b&times;s&times;4h/4</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">Dropout+Res</div><div class="mem-bar mem-bar-red" style="width:100%;">b&times;s&times;h (FULL)</div></div>
+          <div class="mem-savings" style="background:rgba(255,112,67,0.1);color:var(--red);">4 regions at FULL size = wasted</div>
+        </div>
+        <div class="mem-col">
+          <h4 style="color:var(--fg-muted);">GPU 1, 2, 3</h4>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">LayerNorm 1</div><div class="mem-bar mem-bar-red" style="width:100%;">IDENTICAL copy</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">Attention</div><div class="mem-bar mem-bar-blue" style="width:25%;">different slice</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">Dropout+Res</div><div class="mem-bar mem-bar-red" style="width:100%;">IDENTICAL copy</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">LayerNorm 2</div><div class="mem-bar mem-bar-red" style="width:100%;">IDENTICAL copy</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">MLP</div><div class="mem-bar mem-bar-blue" style="width:25%;">different slice</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">Dropout+Res</div><div class="mem-bar mem-bar-red" style="width:100%;">IDENTICAL copy</div></div>
+          <div class="mem-savings" style="background:rgba(255,112,67,0.1);color:var(--red);">Exact same data = pure waste!</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- With SP -->
+    <div id="sp-with" style="display:none;max-width:800px;margin:0 auto;" class="fade-in">
+      <div class="card" style="border-color:rgba(0,212,106,0.25);">
+        <h3 style="color:var(--primary);">With SP &mdash; Sequence-Partitioned Non-TP Regions</h3>
+        <p style="margin-bottom:12px;">In non-TP regions, split activations along the <strong>sequence dimension</strong>. Each GPU holds <code>1/P</code> of the sequence tokens.</p>
+        <div class="tf-block-vis" style="margin:20px auto;">
+          <div class="tf-row tf-sp">LayerNorm <small>Each GPU: [b, s/P, h] &mdash; sequence-partitioned</small></div>
+          <div class="tf-row tf-comm-row">AllGather <small>gather sequence chunks &rarr; full sequence for TP</small></div>
+          <div class="tf-arrow">&darr;</div>
+          <div class="tf-row tf-tp">Attention (TP) <small>Each GPU: full seq, partial heads [b, s, h/P]</small></div>
+          <div class="tf-row tf-comm-row">ReduceScatter <small>sum + scatter along sequence dim</small></div>
+          <div class="tf-arrow">&darr;</div>
+          <div class="tf-row tf-sp">Dropout + Residual <small>Each GPU: [b, s/P, h] &mdash; partitioned!</small></div>
+          <div class="tf-arrow">&darr;</div>
+          <div class="tf-row tf-sp">LayerNorm <small>Each GPU: [b, s/P, h] &mdash; partitioned!</small></div>
+          <div class="tf-row tf-comm-row">AllGather <small>gather sequence chunks &rarr; full sequence for TP</small></div>
+          <div class="tf-arrow">&darr;</div>
+          <div class="tf-row tf-tp">MLP (TP) <small>Each GPU: full seq, partial width [b, s, 4h/P]</small></div>
+          <div class="tf-row tf-comm-row">ReduceScatter <small>sum + scatter along sequence dim</small></div>
+          <div class="tf-arrow">&darr;</div>
+          <div class="tf-row tf-sp">Dropout + Residual <small>Each GPU: [b, s/P, h] &mdash; partitioned!</small></div>
+        </div>
+      </div>
+      <div class="mem-compare" style="margin-top:24px;">
+        <div class="mem-col" style="border-color:rgba(0,212,106,0.25);">
+          <h4 style="color:var(--primary);">GPU 0 Memory (With SP)</h4>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">LayerNorm 1</div><div class="mem-bar mem-bar-green" style="width:25%;">b&times;s/4&times;h</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">Attention</div><div class="mem-bar mem-bar-blue" style="width:25%;">b&times;s&times;h/4</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">Dropout+Res</div><div class="mem-bar mem-bar-green" style="width:25%;">b&times;s/4&times;h</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">LayerNorm 2</div><div class="mem-bar mem-bar-green" style="width:25%;">b&times;s/4&times;h</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">MLP</div><div class="mem-bar mem-bar-blue" style="width:25%;">b&times;s&times;4h/4</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">Dropout+Res</div><div class="mem-bar mem-bar-green" style="width:25%;">b&times;s/4&times;h</div></div>
+          <div class="mem-savings" style="background:rgba(0,212,106,0.1);color:var(--primary);">ALL regions at 1/P size!</div>
+        </div>
+        <div class="mem-col" style="border-color:rgba(0,212,106,0.25);">
+          <h4 style="color:var(--primary);">GPU 1, 2, 3</h4>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">LayerNorm 1</div><div class="mem-bar mem-bar-green" style="width:25%;">DIFFERENT tokens</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">Attention</div><div class="mem-bar mem-bar-blue" style="width:25%;">different heads</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">Dropout+Res</div><div class="mem-bar mem-bar-green" style="width:25%;">DIFFERENT tokens</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">LayerNorm 2</div><div class="mem-bar mem-bar-green" style="width:25%;">DIFFERENT tokens</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">MLP</div><div class="mem-bar mem-bar-blue" style="width:25%;">different slice</div></div>
+          <div class="mem-bar-wrap"><div class="mem-bar-title">Dropout+Res</div><div class="mem-bar mem-bar-green" style="width:25%;">DIFFERENT tokens</div></div>
+          <div class="mem-savings" style="background:rgba(0,212,106,0.1);color:var(--primary);">Zero redundancy!</div>
+        </div>
+      </div>
+
+      <div class="key-insight" style="margin-top:24px;">
+        <div class="key-insight-title">SP Communication Trade-off</div>
+        <p>SP replaces each <strong>AllReduce</strong> with a <strong>ReduceScatter + AllGather</strong> pair. The total communication volume is <strong>exactly the same</strong> &mdash; AllReduce = ReduceScatter + AllGather. But now <strong>no activations are replicated</strong>, saving significant memory.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION E: Full TP+SP Data Flow ============ -->
+<section class="section" id="full-flow">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section E</span>
+      <h2>Full TP+SP <span class="gradient-text">Data Flow</span></h2>
+      <p class="section-subtitle">A complete animated view of one transformer block with TP+SP working together. Every activation is partitioned &mdash; zero redundancy.</p>
+    </div>
+
+    <div class="full-flow fade-in" id="full-flow-vis">
+      <div class="full-flow-step" data-delay="0">
+        <div class="full-flow-num">1</div>
+        <div class="full-flow-box flow-sp">
+          <strong>Input (Sequence-Partitioned)</strong>
+          <small>Each GPU holds tokens [s/P] with full hidden dim [h]</small>
+        </div>
+      </div>
+      <div class="full-flow-step" data-delay="100">
+        <div class="full-flow-num">&darr;</div>
+        <div class="full-flow-box flow-comm">
+          <strong>AllGather</strong>
+          <small>Gather sequence chunks &rarr; each GPU now has full [s, h] for TP region</small>
+        </div>
+      </div>
+      <div class="full-flow-step" data-delay="200">
+        <div class="full-flow-num">2</div>
+        <div class="full-flow-box flow-tp">
+          <strong>Self-Attention (Tensor Parallel)</strong>
+          <small>Each GPU computes 8/32 heads on the full sequence. Q, K, V col-parallel, attention local.</small>
+        </div>
+      </div>
+      <div class="full-flow-step" data-delay="300">
+        <div class="full-flow-num">&darr;</div>
+        <div class="full-flow-box flow-comm">
+          <strong>ReduceScatter</strong>
+          <small>Sum partial outputs from row-parallel W_o, scatter result along sequence dim</small>
+        </div>
+      </div>
+      <div class="full-flow-step" data-delay="400">
+        <div class="full-flow-num">3</div>
+        <div class="full-flow-box flow-sp">
+          <strong>LayerNorm + Residual (Sequence-Partitioned)</strong>
+          <small>Each GPU processes its s/P tokens. No redundancy.</small>
+        </div>
+      </div>
+      <div class="full-flow-step" data-delay="500">
+        <div class="full-flow-num">&darr;</div>
+        <div class="full-flow-box flow-comm">
+          <strong>AllGather</strong>
+          <small>Gather sequence chunks &rarr; each GPU now has full [s, h] for MLP TP region</small>
+        </div>
+      </div>
+      <div class="full-flow-step" data-delay="600">
+        <div class="full-flow-num">4</div>
+        <div class="full-flow-box flow-tp">
+          <strong>MLP / FFN (Tensor Parallel)</strong>
+          <small>Col-parallel up-projection &rarr; GeLU &rarr; row-parallel down-projection</small>
+        </div>
+      </div>
+      <div class="full-flow-step" data-delay="700">
+        <div class="full-flow-num">&darr;</div>
+        <div class="full-flow-box flow-comm">
+          <strong>ReduceScatter</strong>
+          <small>Sum partial MLP outputs, scatter along sequence dim</small>
+        </div>
+      </div>
+      <div class="full-flow-step" data-delay="800">
+        <div class="full-flow-num">5</div>
+        <div class="full-flow-box flow-sp">
+          <strong>LayerNorm + Residual (Sequence-Partitioned)</strong>
+          <small>Each GPU has s/P tokens. Ready for the next transformer block.</small>
+        </div>
+      </div>
+    </div>
+
+    <div class="key-insight fade-in" style="max-width:700px;margin:32px auto 0;">
+      <div class="key-insight-title">The Key Guarantee</div>
+      <p><strong>TP+SP together ensure EVERY activation is partitioned</strong> &mdash; no redundancy anywhere. In TP regions, activations are split along the hidden dimension. In non-TP regions (LayerNorm, Dropout, Residual), activations are split along the sequence dimension. The AllGather and ReduceScatter ops handle the transitions seamlessly.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION F: Communication Summary ============ -->
+<section class="section section-dark" id="comm-summary">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <span class="section-label">Section F</span>
+      <h2>Communication <span class="gradient-text">Summary</span></h2>
+      <p class="section-subtitle">All communication ops per transformer block, and why TP+SP has the same bandwidth cost but better memory.</p>
+    </div>
+
+    <div class="fade-in" style="overflow-x:auto;">
+      <table class="comm-table">
+        <thead>
+          <tr>
+            <th>Operation</th>
+            <th>Type</th>
+            <th>Volume</th>
+            <th>Where</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong style="color:var(--orange);">AllGather</strong></td>
+            <td>Before Attention</td>
+            <td><code>O(b &times; s &times; h)</code></td>
+            <td>SP &rarr; TP transition</td>
+          </tr>
+          <tr>
+            <td><strong style="color:var(--orange);">ReduceScatter</strong></td>
+            <td>After Attention</td>
+            <td><code>O(b &times; s &times; h)</code></td>
+            <td>TP &rarr; SP transition</td>
+          </tr>
+          <tr>
+            <td><strong style="color:var(--orange);">AllGather</strong></td>
+            <td>Before MLP</td>
+            <td><code>O(b &times; s &times; h)</code></td>
+            <td>SP &rarr; TP transition</td>
+          </tr>
+          <tr>
+            <td><strong style="color:var(--orange);">ReduceScatter</strong></td>
+            <td>After MLP</td>
+            <td><code>O(b &times; s &times; h)</code></td>
+            <td>TP &rarr; SP transition</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid-2 fade-in" style="max-width:900px;margin:32px auto 0;">
+      <div class="card">
+        <h3 style="color:var(--accent);">TP Alone</h3>
+        <div style="font-family:var(--font-mono);font-size:0.82rem;margin:12px 0;color:var(--secondary);">
+          2 &times; AllReduce per block
+        </div>
+        <p>Each AllReduce = ReduceScatter + AllGather internally. Non-TP regions have <strong>replicated</strong> activations.</p>
+        <div style="margin-top:12px;padding:10px;background:rgba(255,112,67,0.06);border-radius:8px;border:1px solid rgba(255,112,67,0.15);">
+          <span style="font-size:0.78rem;color:var(--red);">Memory: activations replicated in non-TP regions</span>
+        </div>
+      </div>
+      <div class="card" style="border-color:rgba(0,212,106,0.25);">
+        <h3 style="color:var(--primary);">TP + SP</h3>
+        <div style="font-family:var(--font-mono);font-size:0.82rem;margin:12px 0;color:var(--secondary);">
+          2 &times; ReduceScatter + 2 &times; AllGather per block
+        </div>
+        <p><strong>Same total communication volume</strong> as 2 AllReduces! But activations are <strong>always partitioned</strong>.</p>
+        <div style="margin-top:12px;padding:10px;background:rgba(0,212,106,0.06);border-radius:8px;border:1px solid rgba(0,212,106,0.15);">
+          <span style="font-size:0.78rem;color:var(--primary);">Memory: ALL activations partitioned across GPUs</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-info fade-in" style="max-width:800px;margin:24px auto 0;">
+      <strong>All communication runs over NVLink</strong> (900 GB/s on H100 SXM). TP groups are always within a single node. The high bandwidth of NVLink makes these frequent, fine-grained collective ops fast enough to keep GPU utilization high.
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="container">
+    <img src="vizlogo.png" alt="Vizuara" class="footer-logo">
+    <div class="footer-brand">Vizuara 5D Parallelism Workshop</div>
+    <p>Interactive visual guides for distributed GPU training</p>
+    <div class="footer-links">
+      <a href="index.html">All Guides</a>
+      <a href="https://github.com/VizuaraAI/5d-parallelism-visual-guide" target="_blank">GitHub</a>
+      <a href="https://vizuara.ai" target="_blank">Vizuara</a>
+    </div>
+    <p class="footer-muted">Built with pure HTML/CSS/JS &mdash; no frameworks, no dependencies</p>
+  </div>
+</footer>
+
+<script>
+// ============================================================
+// TENSOR PARALLELISM VISUAL GUIDE — Vanilla JS
+// ============================================================
+
+// === IntersectionObserver for fade-in ===
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// === Full flow step animation ===
+const flowObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const steps = entry.target.querySelectorAll('.full-flow-step');
+      steps.forEach((step, i) => {
+        setTimeout(() => step.classList.add('visible'), i * 120);
+      });
+      flowObserver.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.2 });
+
+const fullFlowVis = document.getElementById('full-flow-vis');
+if (fullFlowVis) flowObserver.observe(fullFlowVis);
+
+// === Section A: Column/Row Split Toggle ===
+function showSplit(mode) {
+  const colDiv = document.getElementById('split-column');
+  const rowDiv = document.getElementById('split-row');
+  const btns = document.querySelectorAll('#split-toggle .toggle-btn');
+
+  btns.forEach(b => b.classList.remove('active'));
+
+  if (mode === 'column') {
+    colDiv.style.display = 'block';
+    rowDiv.style.display = 'none';
+    btns[0].classList.add('active');
+  } else {
+    colDiv.style.display = 'none';
+    rowDiv.style.display = 'block';
+    btns[1].classList.add('active');
+  }
+}
+
+// === Build Column Parallel Visualization ===
+function buildColParVis() {
+  const container = document.getElementById('col-par-vis');
+  if (!container) return;
+
+  const gpuColors = ['gpu-colors-0','gpu-colors-1','gpu-colors-2','gpu-colors-3'];
+
+  // Input X (replicated - all same color)
+  let html = '<div class="matrix-block">';
+  html += '<div class="matrix-grid" style="grid-template-columns:repeat(4,32px);grid-template-rows:repeat(4,32px);">';
+  for (let r = 0; r < 4; r++) {
+    for (let c = 0; c < 4; c++) {
+      html += '<div class="matrix-cell gpu-colors-full"></div>';
+    }
+  }
+  html += '</div><div class="matrix-label">X (replicated)<br><span class="matrix-dim">[b&times;s, h]</span></div></div>';
+
+  html += '<div class="matrix-op">&times;</div>';
+
+  // Weight W (column-split)
+  html += '<div class="matrix-block">';
+  html += '<div class="matrix-grid" style="grid-template-columns:repeat(4,32px);grid-template-rows:repeat(4,32px);">';
+  for (let r = 0; r < 4; r++) {
+    for (let c = 0; c < 4; c++) {
+      html += `<div class="matrix-cell ${gpuColors[c]}"></div>`;
+    }
+  }
+  html += '</div><div class="matrix-label">W (column-split)<br><span class="matrix-dim">[h, h]</span></div></div>';
+
+  html += '<div class="matrix-op">=</div>';
+
+  // Output Y (column-split)
+  html += '<div class="matrix-block">';
+  html += '<div class="matrix-grid" style="grid-template-columns:repeat(4,32px);grid-template-rows:repeat(4,32px);">';
+  for (let r = 0; r < 4; r++) {
+    for (let c = 0; c < 4; c++) {
+      html += `<div class="matrix-cell ${gpuColors[c]}"></div>`;
+    }
+  }
+  html += '</div><div class="matrix-label">Y (column-split)<br><span class="matrix-dim">[b&times;s, h]</span></div></div>';
+
+  container.innerHTML = html;
+}
+
+// === Build Row Parallel Visualization ===
+function buildRowParVis() {
+  const container = document.getElementById('row-par-vis');
+  if (!container) return;
+
+  const gpuColors = ['gpu-colors-0','gpu-colors-1','gpu-colors-2','gpu-colors-3'];
+
+  // Input X (column-split to match row-split of W)
+  let html = '<div class="matrix-block">';
+  html += '<div class="matrix-grid" style="grid-template-columns:repeat(4,32px);grid-template-rows:repeat(4,32px);">';
+  for (let r = 0; r < 4; r++) {
+    for (let c = 0; c < 4; c++) {
+      html += `<div class="matrix-cell ${gpuColors[c]}"></div>`;
+    }
+  }
+  html += '</div><div class="matrix-label">X (column-split)<br><span class="matrix-dim">[b&times;s, h]</span></div></div>';
+
+  html += '<div class="matrix-op">&times;</div>';
+
+  // Weight W (row-split)
+  html += '<div class="matrix-block">';
+  html += '<div class="matrix-grid" style="grid-template-columns:repeat(4,32px);grid-template-rows:repeat(4,32px);">';
+  for (let r = 0; r < 4; r++) {
+    for (let c = 0; c < 4; c++) {
+      html += `<div class="matrix-cell ${gpuColors[r]}"></div>`;
+    }
+  }
+  html += '</div><div class="matrix-label">W (row-split)<br><span class="matrix-dim">[h, h]</span></div></div>';
+
+  html += '<div class="matrix-op">&rarr;</div>';
+
+  // Output Y (needs AllReduce)
+  html += '<div class="matrix-block">';
+  html += '<div class="matrix-grid" style="grid-template-columns:repeat(4,32px);grid-template-rows:repeat(4,32px);">';
+  for (let r = 0; r < 4; r++) {
+    for (let c = 0; c < 4; c++) {
+      html += '<div class="matrix-cell" style="background:rgba(255,152,0,0.35);border:1px solid rgba(255,152,0,0.5);"></div>';
+    }
+  }
+  html += '</div><div class="matrix-label">Y = AllReduce(&sum;)<br><span class="matrix-dim">[b&times;s, h]</span></div></div>';
+
+  container.innerHTML = html;
+}
+
+// === Section B: MLP Step Navigation ===
+function showMLPStep(n) {
+  const panels = document.querySelectorAll('#mlp-steps .step-panel');
+  const dots = document.querySelectorAll('#mlp-step-nav .step-dot');
+
+  panels.forEach(p => p.classList.remove('active'));
+  dots.forEach(d => d.classList.remove('active'));
+
+  const panel = document.getElementById('mlp-step-' + n);
+  if (panel) panel.classList.add('active');
+  if (dots[n-1]) dots[n-1].classList.add('active');
+}
+
+// === Section C: Head Distribution Visualization ===
+function buildHeadDist() {
+  const container = document.getElementById('head-dist-vis');
+  if (!container) return;
+
+  const gpuColors = [
+    { bg: 'rgba(59,130,246,0.4)', border: 'rgba(59,130,246,0.6)', label: '#60a5fa' },
+    { bg: 'rgba(0,212,106,0.4)', border: 'rgba(0,212,106,0.6)', label: '#34d399' },
+    { bg: 'rgba(255,152,0,0.4)', border: 'rgba(255,152,0,0.6)', label: '#fbbf24' },
+    { bg: 'rgba(240,98,146,0.4)', border: 'rgba(240,98,146,0.6)', label: '#f472b6' }
+  ];
+
+  let html = '';
+  for (let gpu = 0; gpu < 4; gpu++) {
+    const startHead = gpu * 8;
+    html += `<div class="head-gpu-card" style="border-color:${gpuColors[gpu].border};">`;
+    html += `<div class="head-gpu-label" style="color:${gpuColors[gpu].label};">GPU ${gpu}</div>`;
+    html += `<div style="font-size:0.68rem;color:var(--fg-muted);margin-bottom:8px;">Heads ${startHead}-${startHead+7}</div>`;
+    html += '<div class="head-grid">';
+    for (let h = 0; h < 8; h++) {
+      html += `<div class="head-cell" style="background:${gpuColors[gpu].bg};border:1px solid ${gpuColors[gpu].border};">H${startHead + h}</div>`;
+    }
+    html += '</div>';
+    html += `<div style="font-size:0.62rem;color:var(--fg-muted);margin-top:8px;font-family:var(--font-mono);">Independent attention computation</div>`;
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+// === Section D: SP Toggle ===
+function showSPMode(mode) {
+  const withoutDiv = document.getElementById('sp-without');
+  const withDiv = document.getElementById('sp-with');
+  const btnWithout = document.getElementById('sp-btn-without');
+  const btnWith = document.getElementById('sp-btn-with');
+
+  btnWithout.classList.remove('active', 'active-green');
+  btnWith.classList.remove('active', 'active-green');
+
+  if (mode === 'without') {
+    withoutDiv.style.display = 'block';
+    withDiv.style.display = 'none';
+    btnWithout.classList.add('active');
+  } else {
+    withoutDiv.style.display = 'none';
+    withDiv.style.display = 'block';
+    btnWith.classList.add('active-green');
+  }
+}
+
+// === Initialize all visualizations ===
+document.addEventListener('DOMContentLoaded', () => {
+  buildColParVis();
+  buildRowParVis();
+  buildHeadDist();
+});
+</script>
+</body>
+</html>

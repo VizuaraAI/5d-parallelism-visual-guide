@@ -1,0 +1,1651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mixture of Experts — Visualized</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* ========================================
+   CSS Variables — design system
+   ======================================== */
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #121212;
+  --bg-card-hover: #1a1a1a;
+  --bg-section-alt: #0f0f0f;
+  --fg: #f2f2f2;
+  --fg-muted: #a3a3a3;
+  --border: #262626;
+  --border-light: #333;
+  --primary: #00d46a;
+  --primary-dim: #00a854;
+  --secondary: #00c8e6;
+  --accent: #f59e0b;
+  --accent-dim: #d97706;
+  --red: #ef4444;
+  --orange: #f97316;
+  --yellow: #FFCA28;
+  --blue: #3b82f6;
+  --green: #00d46a;
+  --pink: #ec4899;
+  --purple: #a78bfa;
+  --teal: #14b8a6;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --max-w: 1280px;
+  --glow-opacity: 0.15;
+  /* Expert colors */
+  --e0: #3b82f6;
+  --e1: #00d46a;
+  --e2: #f59e0b;
+  --e3: #a78bfa;
+  --e4: #ec4899;
+  --e5: #14b8a6;
+  --e6: #f97316;
+  --e7: #ef4444;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: var(--font-mono); }
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--primary) 50%, var(--secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ========================================
+   NAVBAR
+   ======================================== */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,10,0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15rem; }
+.nav-brand-logo { width: 30px; height: 30px; object-fit: contain; }
+.brand-tag {
+  font-size: 0.65rem; background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: #fff; padding: 2px 10px; border-radius: 9999px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.nav-links a { color: var(--fg-muted); font-size: 0.82rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+/* ========================================
+   HERO
+   ======================================== */
+.hero {
+  position: relative; min-height: 100vh; display: flex;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 120px 24px 80px; overflow: hidden;
+}
+.hero-bg-orbs { position: absolute; inset: 0; pointer-events: none; }
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.12; }
+.orb-yellow { width: 500px; height: 500px; background: var(--accent); top: 10%; left: 10%; animation: float-slow 20s ease-in-out infinite; }
+.orb-amber { width: 400px; height: 400px; background: #d97706; top: 40%; right: 5%; animation: float-slow 25s ease-in-out infinite reverse; }
+.orb-green { width: 350px; height: 350px; background: var(--primary); bottom: 10%; left: 30%; animation: float-slow 22s ease-in-out infinite; }
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(30px, -20px); }
+  50% { transform: translate(-20px, 30px); }
+  75% { transform: translate(20px, 20px); }
+}
+.hero-content { position: relative; z-index: 1; max-width: 900px; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3);
+  border-radius: 9999px; padding: 6px 18px; font-size: 0.82rem;
+  font-weight: 500; color: var(--accent); margin-bottom: 24px;
+}
+.pulse-dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }
+.hero h1 { font-family: var(--font-serif); font-style: italic; font-size: clamp(2.5rem, 7vw, 4.5rem); font-weight: 400; line-height: 1.1; margin-bottom: 20px; }
+.hero-subtitle { font-size: 1.15rem; color: var(--fg-muted); line-height: 1.7; max-width: 600px; margin: 0 auto 40px; }
+.hero-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.hero-stat-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 12px; transition: border-color 0.3s, transform 0.2s;
+}
+.hero-stat-card:hover { border-color: rgba(245,158,11,0.3); transform: translateY(-2px); }
+.stat-number {
+  font-size: 1.8rem; font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), var(--primary));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.stat-label { font-size: 0.78rem; color: var(--fg-muted); margin-top: 4px; }
+
+/* ========================================
+   SECTIONS
+   ======================================== */
+.section { padding: 100px 0; position: relative; }
+.section-dark { background: var(--bg-section-alt); }
+.section-heading { text-align: center; margin-bottom: 60px; }
+.section-label {
+  display: inline-block; font-size: 0.78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.5px; color: var(--accent); margin-bottom: 12px;
+}
+.section-heading h2 {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; line-height: 1.2; margin-bottom: 16px;
+}
+.section-subtitle { color: var(--fg-muted); font-size: 1.05rem; max-width: 700px; margin: 0 auto; }
+
+/* ========================================
+   CARDS
+   ======================================== */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; transition: border-color 0.3s, transform 0.2s;
+}
+.card:hover { border-color: rgba(245,158,11,0.3); transform: translateY(-3px); }
+.card h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; }
+.card p, .card li { font-size: 0.88rem; color: var(--fg-muted); line-height: 1.6; }
+.card code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.82rem; color: var(--secondary); }
+
+/* ========================================
+   GRIDS
+   ======================================== */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+@media (max-width: 900px) { .grid-2, .grid-3, .hero-cards { grid-template-columns: 1fr; } }
+
+/* ========================================
+   TOGGLE CONTROLS
+   ======================================== */
+.toggle-group {
+  display: inline-flex; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden; margin: 20px 0;
+}
+.toggle-btn {
+  padding: 10px 24px; background: transparent; border: none; color: var(--fg-muted);
+  font-family: var(--font-sans); font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; transition: all 0.3s ease; position: relative;
+}
+.toggle-btn.active {
+  color: #000; background: var(--accent);
+}
+.toggle-btn:hover:not(.active) { color: var(--fg); background: rgba(255,255,255,0.05); }
+
+/* ========================================
+   EQUATION BOX
+   ======================================== */
+.equation-box {
+  background: #0d0d1a; border: 1px solid rgba(245,158,11,0.2); border-radius: 10px;
+  padding: 16px 20px; margin: 16px 0; font-family: var(--font-mono);
+  font-size: 0.88rem; color: var(--accent); text-align: center;
+}
+.eq-label { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--fg-muted); margin-bottom: 8px; font-family: var(--font-sans); }
+.eq-highlight { color: var(--primary); font-weight: 600; }
+
+/* ========================================
+   CALLOUTS
+   ======================================== */
+.callout { border-radius: 12px; padding: 20px 24px; margin: 20px 0; font-size: 0.88rem; line-height: 1.6; }
+.callout-info { background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.2); color: var(--fg); }
+.callout-warn { background: rgba(245,158,11,0.06); border: 1px solid rgba(245,158,11,0.2); }
+.callout-success { background: rgba(0,212,106,0.06); border: 1px solid rgba(0,212,106,0.2); }
+
+/* ========================================
+   SECTION A: DENSE vs SPARSE
+   ======================================== */
+.comparison-container {
+  display: flex; gap: 40px; justify-content: center; align-items: stretch;
+  flex-wrap: wrap; margin: 30px 0;
+}
+.comparison-panel {
+  flex: 1; min-width: 300px; max-width: 500px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 30px; transition: all 0.5s ease;
+  position: relative; overflow: hidden;
+}
+.comparison-panel.active { border-color: var(--accent); }
+.comparison-panel.active::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center, rgba(245,158,11,0.05) 0%, transparent 70%);
+  pointer-events: none;
+}
+.comparison-panel h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 16px; text-align: center; }
+.comparison-panel .param-badge {
+  display: inline-block; padding: 4px 12px; border-radius: 8px;
+  font-size: 0.75rem; font-weight: 600; font-family: var(--font-mono);
+  margin-top: 12px;
+}
+
+/* Architecture Diagram SVGs */
+.arch-diagram { width: 100%; margin: 16px 0; }
+.arch-diagram svg { width: 100%; height: auto; display: block; }
+
+/* Dense FFN blocks */
+.ffn-block {
+  transition: all 0.5s ease;
+}
+.ffn-block.active {
+  filter: drop-shadow(0 0 12px rgba(245,158,11,0.4));
+}
+.ffn-block.dimmed {
+  opacity: 0.2;
+}
+
+/* ========================================
+   SECTION B: INSIDE MOE LAYER
+   ======================================== */
+.step-nav {
+  display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 30px;
+}
+.step-btn {
+  padding: 8px 20px; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; color: var(--fg-muted); font-family: var(--font-sans);
+  font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease;
+}
+.step-btn.active {
+  background: var(--accent); color: #000; border-color: var(--accent);
+}
+.step-btn:hover:not(.active) { border-color: var(--accent); color: var(--fg); }
+
+.moe-canvas-container {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 30px; position: relative;
+  min-height: 480px; overflow: hidden;
+}
+.step-description {
+  text-align: center; margin-bottom: 24px; min-height: 50px;
+}
+.step-description h4 { font-size: 1rem; font-weight: 600; color: var(--fg); margin-bottom: 6px; }
+.step-description p { font-size: 0.85rem; color: var(--fg-muted); }
+
+/* Expert blocks row */
+.experts-row {
+  display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+  margin: 24px 0;
+}
+.expert-block {
+  width: 80px; height: 90px; border-radius: 12px; display: flex;
+  flex-direction: column; align-items: center; justify-content: center;
+  font-size: 0.72rem; font-weight: 600; transition: all 0.5s ease;
+  border: 2px solid transparent; position: relative; overflow: hidden;
+}
+.expert-block .expert-label { font-size: 0.68rem; margin-top: 4px; opacity: 0.8; }
+.expert-block .expert-icon { font-size: 1.4rem; }
+.expert-block.dimmed {
+  opacity: 0.15; transform: scale(0.92);
+}
+.expert-block.selected {
+  transform: scale(1.08);
+  box-shadow: 0 0 30px rgba(var(--glow-rgb), 0.4);
+}
+.expert-block.selected::after {
+  content: ''; position: absolute; inset: -2px; border-radius: 14px;
+  border: 2px solid currentColor; animation: expertPulse 2s ease-in-out infinite;
+}
+@keyframes expertPulse {
+  0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+}
+
+/* Router visualization */
+.router-viz {
+  display: flex; flex-direction: column; align-items: center; gap: 20px;
+  margin: 20px 0;
+}
+.router-scores {
+  display: flex; gap: 6px; align-items: flex-end; justify-content: center;
+  height: 120px; padding: 10px;
+}
+.score-bar-wrapper {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  width: 50px;
+}
+.score-bar {
+  width: 36px; border-radius: 6px 6px 0 0; transition: all 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative; min-height: 4px;
+}
+.score-value {
+  font-size: 0.68rem; font-weight: 600; font-family: var(--font-mono);
+  color: var(--fg-muted); transition: color 0.3s;
+}
+.score-value.top { color: var(--accent); }
+.score-label {
+  font-size: 0.65rem; color: var(--fg-muted); font-weight: 500;
+}
+
+/* Combination weights visual */
+.combination-viz {
+  display: flex; align-items: center; gap: 16px; justify-content: center;
+  flex-wrap: wrap; margin: 20px 0;
+}
+.weight-mult {
+  display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+  background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid var(--border);
+}
+.weight-mult .w-val {
+  font-family: var(--font-mono); font-size: 0.85rem; font-weight: 600;
+}
+.weight-mult .times { color: var(--fg-muted); font-size: 0.8rem; }
+
+/* ========================================
+   SECTION C: TOKEN ROUTING
+   ======================================== */
+.routing-container {
+  display: grid; grid-template-columns: 180px 1fr 180px; gap: 16px;
+  align-items: start; margin: 30px 0; min-height: 450px;
+}
+@media (max-width: 900px) {
+  .routing-container { grid-template-columns: 1fr; }
+}
+
+.token-list {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.token-chip {
+  padding: 10px 16px; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; font-size: 0.82rem; font-weight: 500; cursor: pointer;
+  transition: all 0.3s ease; display: flex; align-items: center; gap: 8px;
+}
+.token-chip:hover { border-color: var(--accent); }
+.token-chip.active { border-color: var(--accent); background: rgba(245,158,11,0.08); color: var(--accent); }
+.token-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+
+.routing-canvas {
+  position: relative; min-height: 400px;
+}
+.routing-canvas svg {
+  width: 100%; height: 100%; position: absolute; inset: 0;
+}
+
+.expert-col {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.expert-chip {
+  padding: 10px 14px; border-radius: 10px; font-size: 0.78rem;
+  font-weight: 600; display: flex; align-items: center; gap: 8px;
+  transition: all 0.3s ease; border: 1px solid transparent;
+}
+.expert-chip .expert-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+
+/* Load bar chart */
+.load-chart {
+  margin: 30px 0;
+}
+.load-chart-title {
+  font-size: 0.85rem; font-weight: 600; margin-bottom: 16px; text-align: center;
+}
+.load-bars {
+  display: flex; gap: 8px; align-items: flex-end; justify-content: center;
+  height: 150px; padding-top: 20px;
+}
+.load-bar-col {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  flex: 1; max-width: 70px;
+}
+.load-bar {
+  width: 100%; border-radius: 6px 6px 0 0; transition: all 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  min-height: 2px; position: relative;
+}
+.load-bar-label {
+  font-size: 0.65rem; font-weight: 600; color: var(--fg-muted);
+}
+.load-bar-count {
+  font-size: 0.7rem; font-weight: 700; font-family: var(--font-mono);
+  position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+  white-space: nowrap;
+}
+.load-warning {
+  display: inline-block; padding: 2px 8px; border-radius: 6px;
+  font-size: 0.65rem; font-weight: 700; margin-top: 4px;
+}
+
+/* Token slider */
+.token-slider-group {
+  display: flex; align-items: center; gap: 16px; justify-content: center;
+  margin: 20px 0;
+}
+.token-slider-group label {
+  font-size: 0.82rem; font-weight: 600; color: var(--fg-muted);
+}
+.token-slider-group input[type="range"] {
+  -webkit-appearance: none; appearance: none; width: 200px; height: 6px;
+  background: var(--border); border-radius: 3px; outline: none;
+}
+.token-slider-group input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 18px; height: 18px;
+  border-radius: 50%; background: var(--accent); cursor: pointer;
+}
+
+/* ========================================
+   SECTION D: LOAD BALANCING
+   ======================================== */
+.balance-comparison {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin: 30px 0;
+}
+@media (max-width: 900px) { .balance-comparison { grid-template-columns: 1fr; } }
+
+.balance-panel {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 24px; transition: all 0.4s ease;
+}
+.balance-panel.active { border-color: var(--accent); }
+.balance-panel h4 {
+  font-size: 0.95rem; font-weight: 700; margin-bottom: 6px; text-align: center;
+}
+.balance-panel .panel-desc {
+  font-size: 0.78rem; color: var(--fg-muted); text-align: center; margin-bottom: 16px;
+}
+.balance-bars {
+  display: flex; gap: 6px; align-items: flex-end; justify-content: center;
+  height: 160px; padding: 10px 0;
+}
+.balance-bar-col {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  width: 44px;
+}
+.balance-bar {
+  width: 32px; border-radius: 6px 6px 0 0; transition: all 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  min-height: 2px; position: relative;
+}
+.balance-bar-label {
+  font-size: 0.6rem; font-weight: 600; color: var(--fg-muted);
+}
+.balance-bar .bar-val {
+  font-size: 0.62rem; font-weight: 700; font-family: var(--font-mono);
+  position: absolute; top: -16px; left: 50%; transform: translateX(-50%);
+  white-space: nowrap; color: var(--fg);
+}
+
+/* ========================================
+   SECTION E: TRANSFORMER LAYOUT
+   ======================================== */
+.transformer-layout {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  margin: 30px 0; padding: 20px;
+}
+.tf-block {
+  width: 320px; padding: 16px 20px; border-radius: 12px;
+  text-align: center; font-size: 0.82rem; font-weight: 600;
+  border: 2px solid; transition: all 0.4s ease; position: relative;
+}
+.tf-block.attn {
+  background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.3); color: var(--blue);
+}
+.tf-block.ffn {
+  background: rgba(163,163,163,0.05); border-color: rgba(163,163,163,0.2); color: var(--fg-muted);
+}
+.tf-block.moe {
+  background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.3); color: var(--accent);
+  box-shadow: 0 0 20px rgba(245,158,11,0.1);
+}
+.tf-block .block-label {
+  font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1px; opacity: 0.6;
+  display: block; margin-bottom: 4px;
+}
+.tf-arrow {
+  width: 2px; height: 24px; background: var(--border); position: relative;
+}
+.tf-arrow::after {
+  content: ''; position: absolute; bottom: -4px; left: -4px;
+  border-left: 5px solid transparent; border-right: 5px solid transparent;
+  border-top: 6px solid var(--border);
+}
+
+.layer-stack {
+  display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin: 30px 0;
+}
+.layer-mini {
+  width: 64px; display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+.layer-mini-block {
+  width: 56px; height: 22px; border-radius: 6px; display: flex;
+  align-items: center; justify-content: center; font-size: 0.55rem;
+  font-weight: 700; transition: all 0.4s ease;
+}
+.layer-mini-block.attn { background: rgba(59,130,246,0.15); color: var(--blue); }
+.layer-mini-block.ffn { background: rgba(163,163,163,0.08); color: var(--fg-muted); }
+.layer-mini-block.moe { background: rgba(245,158,11,0.15); color: var(--accent); }
+.layer-mini .layer-num {
+  font-size: 0.58rem; color: var(--fg-muted); font-weight: 600;
+}
+
+.param-summary {
+  display: flex; gap: 24px; justify-content: center; flex-wrap: wrap;
+  margin: 20px 0;
+}
+.param-pill {
+  padding: 8px 20px; border-radius: 10px; font-size: 0.82rem; font-weight: 600;
+  font-family: var(--font-mono); border: 1px solid;
+}
+
+/* ========================================
+   FOOTER
+   ======================================== */
+.footer { padding: 60px 0 40px; border-top: 1px solid var(--border); text-align: center; }
+.footer-brand { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
+.footer p { font-size: 0.82rem; color: var(--fg-muted); }
+.footer-links { display: flex; gap: 20px; justify-content: center; margin-top: 12px; }
+.footer-links a { font-size: 0.8rem; color: var(--fg-muted); }
+.footer-links a:hover { color: var(--primary); }
+
+/* ========================================
+   SCROLL ANIMATIONS
+   ======================================== */
+.fade-in { opacity: 0; transform: translateY(20px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+
+/* ========================================
+   MISC
+   ======================================== */
+.text-center { text-align: center; }
+.mt-20 { margin-top: 20px; }
+.mb-20 { margin-bottom: 20px; }
+.highlight-box {
+  display: inline-block; padding: 6px 16px; border-radius: 8px;
+  font-size: 0.85rem; font-weight: 700; font-family: var(--font-mono);
+}
+
+/* Canvas for animated routing paths */
+.routing-svg-container {
+  position: relative; width: 100%; min-height: 420px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  overflow: hidden;
+}
+.routing-svg-container svg {
+  width: 100%; height: 420px;
+}
+
+/* Responsive hero stat fix */
+@media (max-width: 600px) {
+  .hero-cards { grid-template-columns: repeat(2, 1fr); }
+  .experts-row { gap: 6px; }
+  .expert-block { width: 60px; height: 70px; }
+  .routing-container { grid-template-columns: 1fr; }
+  .balance-comparison { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ========================================
+     NAVBAR
+     ======================================== -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <img src="vizlogo.png" alt="Vizuara" class="nav-brand-logo">
+      <span>Vizuara</span>
+      <span class="brand-tag">5D Parallelism</span>
+    </div>
+    <div class="nav-links">
+      <a href="index.html">All Guides</a>
+      <a href="expert-parallelism.html">Expert Parallelism &rarr;</a>
+      <a href="https://github.com/VizuaraAI/5d-parallelism-visual-guide" target="_blank">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ========================================
+     HERO
+     ======================================== -->
+<section class="hero">
+  <div class="hero-bg-orbs">
+    <div class="orb orb-yellow"></div>
+    <div class="orb orb-amber"></div>
+    <div class="orb orb-green"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge"><span class="pulse-dot"></span> Mixture of Experts</div>
+    <h1><span class="gradient-text">Mixture of Experts Visualized</span></h1>
+    <p class="hero-subtitle">How sparse models achieve massive capacity with fixed compute cost</p>
+    <div class="hero-cards">
+      <div class="hero-stat-card">
+        <div class="stat-number">8</div>
+        <div class="stat-label">Experts</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">Top-2</div>
+        <div class="stat-label">Routing</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">3x</div>
+        <div class="stat-label">Capacity</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="stat-number">Same</div>
+        <div class="stat-label">FLOPs</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     SECTION A: DENSE vs SPARSE
+     ======================================== -->
+<section class="section section-dark" id="section-a">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Section A</div>
+      <h2>Dense vs Sparse &mdash; The Key Insight</h2>
+      <p class="section-subtitle">A dense model activates every parameter for every token. An MoE model activates only a fraction, achieving more capacity with the same compute.</p>
+    </div>
+
+    <div class="text-center fade-in">
+      <div class="toggle-group" id="dense-moe-toggle">
+        <button class="toggle-btn active" data-mode="dense">Dense FFN</button>
+        <button class="toggle-btn" data-mode="moe">MoE FFN</button>
+      </div>
+    </div>
+
+    <div class="comparison-container fade-in">
+      <!-- Dense Panel -->
+      <div class="comparison-panel" id="dense-panel">
+        <h3 style="color: var(--fg-muted);">Dense Feed-Forward Network</h3>
+        <svg viewBox="0 0 400 260" class="arch-diagram" id="dense-svg">
+          <!-- Input -->
+          <rect x="150" y="10" width="100" height="36" rx="8" fill="rgba(0,200,230,0.15)" stroke="rgba(0,200,230,0.4)" stroke-width="1.5"/>
+          <text x="200" y="33" text-anchor="middle" fill="#00c8e6" font-size="12" font-weight="600" font-family="Inter, sans-serif">Input Token</text>
+          <!-- Arrow -->
+          <line x1="200" y1="46" x2="200" y2="70" stroke="#333" stroke-width="1.5"/>
+          <polygon points="195,68 200,76 205,68" fill="#333"/>
+          <!-- FFN Block -->
+          <rect x="60" y="80" width="280" height="90" rx="12" fill="rgba(163,163,163,0.08)" stroke="rgba(163,163,163,0.3)" stroke-width="1.5" id="dense-ffn-rect"/>
+          <text x="200" y="115" text-anchor="middle" fill="#a3a3a3" font-size="14" font-weight="700" font-family="Inter, sans-serif" id="dense-ffn-text">Single Large FFN</text>
+          <text x="200" y="138" text-anchor="middle" fill="#666" font-size="11" font-family="JetBrains Mono, monospace" id="dense-param-text">N parameters — ALL active</text>
+          <text x="200" y="158" text-anchor="middle" fill="#555" font-size="10" font-family="Inter, sans-serif">100% utilization per token</text>
+          <!-- Arrow -->
+          <line x1="200" y1="170" x2="200" y2="200" stroke="#333" stroke-width="1.5"/>
+          <polygon points="195,198 200,206 205,198" fill="#333"/>
+          <!-- Output -->
+          <rect x="150" y="208" width="100" height="36" rx="8" fill="rgba(0,212,106,0.15)" stroke="rgba(0,212,106,0.4)" stroke-width="1.5"/>
+          <text x="200" y="231" text-anchor="middle" fill="#00d46a" font-size="12" font-weight="600" font-family="Inter, sans-serif">Output</text>
+        </svg>
+        <div class="text-center">
+          <span class="param-badge" style="background: rgba(163,163,163,0.1); border: 1px solid rgba(163,163,163,0.3); color: var(--fg-muted);">N params total = N params active</span>
+        </div>
+      </div>
+
+      <!-- MoE Panel -->
+      <div class="comparison-panel" id="moe-panel">
+        <h3 style="color: var(--accent);">Mixture of Experts FFN</h3>
+        <svg viewBox="0 0 400 340" class="arch-diagram" id="moe-svg">
+          <!-- Input -->
+          <rect x="150" y="5" width="100" height="36" rx="8" fill="rgba(0,200,230,0.15)" stroke="rgba(0,200,230,0.4)" stroke-width="1.5"/>
+          <text x="200" y="28" text-anchor="middle" fill="#00c8e6" font-size="12" font-weight="600" font-family="Inter, sans-serif">Input Token</text>
+          <!-- Arrow to Router -->
+          <line x1="200" y1="41" x2="200" y2="58" stroke="#333" stroke-width="1.5"/>
+          <polygon points="195,56 200,64 205,56" fill="#333"/>
+          <!-- Router -->
+          <rect x="130" y="64" width="140" height="32" rx="8" fill="rgba(245,158,11,0.12)" stroke="rgba(245,158,11,0.4)" stroke-width="1.5"/>
+          <text x="200" y="85" text-anchor="middle" fill="#f59e0b" font-size="11" font-weight="700" font-family="Inter, sans-serif">Router (Gating)</text>
+          <!-- Fan-out lines to experts -->
+          <line x1="200" y1="96" x2="200" y2="112" stroke="rgba(245,158,11,0.3)" stroke-width="1"/>
+          <!-- 8 Expert blocks -->
+          <g id="moe-experts-svg">
+            <!-- Expert 0 -->
+            <rect x="8" y="120" width="40" height="50" rx="6" fill="rgba(59,130,246,0.08)" stroke="rgba(59,130,246,0.25)" stroke-width="1" class="moe-expert-rect" data-idx="0"/>
+            <text x="28" y="142" text-anchor="middle" fill="#3b82f6" font-size="8" font-weight="600" font-family="Inter, sans-serif">E0</text>
+            <text x="28" y="158" text-anchor="middle" fill="#3b82f6" font-size="7" font-family="JetBrains Mono, monospace" opacity="0.6">FFN</text>
+            <!-- Expert 1 — selected -->
+            <rect x="56" y="120" width="40" height="50" rx="6" fill="rgba(0,212,106,0.15)" stroke="rgba(0,212,106,0.5)" stroke-width="2" class="moe-expert-rect selected" data-idx="1"/>
+            <text x="76" y="142" text-anchor="middle" fill="#00d46a" font-size="8" font-weight="700" font-family="Inter, sans-serif">E1</text>
+            <text x="76" y="158" text-anchor="middle" fill="#00d46a" font-size="7" font-family="JetBrains Mono, monospace">FFN</text>
+            <!-- Expert 2 -->
+            <rect x="104" y="120" width="40" height="50" rx="6" fill="rgba(245,158,11,0.08)" stroke="rgba(245,158,11,0.25)" stroke-width="1" class="moe-expert-rect" data-idx="2"/>
+            <text x="124" y="142" text-anchor="middle" fill="#f59e0b" font-size="8" font-weight="600" font-family="Inter, sans-serif">E2</text>
+            <text x="124" y="158" text-anchor="middle" fill="#f59e0b" font-size="7" font-family="JetBrains Mono, monospace" opacity="0.6">FFN</text>
+            <!-- Expert 3 -->
+            <rect x="152" y="120" width="40" height="50" rx="6" fill="rgba(167,139,250,0.08)" stroke="rgba(167,139,250,0.25)" stroke-width="1" class="moe-expert-rect" data-idx="3"/>
+            <text x="172" y="142" text-anchor="middle" fill="#a78bfa" font-size="8" font-weight="600" font-family="Inter, sans-serif">E3</text>
+            <text x="172" y="158" text-anchor="middle" fill="#a78bfa" font-size="7" font-family="JetBrains Mono, monospace" opacity="0.6">FFN</text>
+            <!-- Expert 4 -->
+            <rect x="200" y="120" width="40" height="50" rx="6" fill="rgba(236,72,153,0.08)" stroke="rgba(236,72,153,0.25)" stroke-width="1" class="moe-expert-rect" data-idx="4"/>
+            <text x="220" y="142" text-anchor="middle" fill="#ec4899" font-size="8" font-weight="600" font-family="Inter, sans-serif">E4</text>
+            <text x="220" y="158" text-anchor="middle" fill="#ec4899" font-size="7" font-family="JetBrains Mono, monospace" opacity="0.6">FFN</text>
+            <!-- Expert 5 — selected -->
+            <rect x="248" y="120" width="40" height="50" rx="6" fill="rgba(20,184,166,0.15)" stroke="rgba(20,184,166,0.5)" stroke-width="2" class="moe-expert-rect selected" data-idx="5"/>
+            <text x="268" y="142" text-anchor="middle" fill="#14b8a6" font-size="8" font-weight="700" font-family="Inter, sans-serif">E5</text>
+            <text x="268" y="158" text-anchor="middle" fill="#14b8a6" font-size="7" font-family="JetBrains Mono, monospace">FFN</text>
+            <!-- Expert 6 -->
+            <rect x="296" y="120" width="40" height="50" rx="6" fill="rgba(249,115,22,0.08)" stroke="rgba(249,115,22,0.25)" stroke-width="1" class="moe-expert-rect" data-idx="6"/>
+            <text x="316" y="142" text-anchor="middle" fill="#f97316" font-size="8" font-weight="600" font-family="Inter, sans-serif">E6</text>
+            <text x="316" y="158" text-anchor="middle" fill="#f97316" font-size="7" font-family="JetBrains Mono, monospace" opacity="0.6">FFN</text>
+            <!-- Expert 7 -->
+            <rect x="344" y="120" width="40" height="50" rx="6" fill="rgba(239,68,68,0.08)" stroke="rgba(239,68,68,0.25)" stroke-width="1" class="moe-expert-rect" data-idx="7"/>
+            <text x="364" y="142" text-anchor="middle" fill="#ef4444" font-size="8" font-weight="600" font-family="Inter, sans-serif">E7</text>
+            <text x="364" y="158" text-anchor="middle" fill="#ef4444" font-size="7" font-family="JetBrains Mono, monospace" opacity="0.6">FFN</text>
+          </g>
+          <!-- Routing lines from router to selected experts -->
+          <line x1="200" y1="96" x2="76" y2="120" stroke="rgba(0,212,106,0.6)" stroke-width="2" stroke-dasharray="4,3" class="route-line"/>
+          <line x1="200" y1="96" x2="268" y2="120" stroke="rgba(20,184,166,0.6)" stroke-width="2" stroke-dasharray="4,3" class="route-line"/>
+          <!-- Dimmed lines to non-selected -->
+          <line x1="200" y1="96" x2="28" y2="120" stroke="rgba(255,255,255,0.05)" stroke-width="1" class="route-line-dim"/>
+          <line x1="200" y1="96" x2="124" y2="120" stroke="rgba(255,255,255,0.05)" stroke-width="1" class="route-line-dim"/>
+          <line x1="200" y1="96" x2="172" y2="120" stroke="rgba(255,255,255,0.05)" stroke-width="1" class="route-line-dim"/>
+          <line x1="200" y1="96" x2="220" y2="120" stroke="rgba(255,255,255,0.05)" stroke-width="1" class="route-line-dim"/>
+          <line x1="200" y1="96" x2="316" y2="120" stroke="rgba(255,255,255,0.05)" stroke-width="1" class="route-line-dim"/>
+          <line x1="200" y1="96" x2="364" y2="120" stroke="rgba(255,255,255,0.05)" stroke-width="1" class="route-line-dim"/>
+          <!-- Top-2 label -->
+          <text x="200" y="190" text-anchor="middle" fill="var(--accent)" font-size="9" font-weight="700" font-family="Inter, sans-serif">Top-2 Selected</text>
+          <!-- Arrows from selected experts to Combine -->
+          <line x1="76" y1="170" x2="170" y2="210" stroke="rgba(0,212,106,0.5)" stroke-width="1.5"/>
+          <line x1="268" y1="170" x2="230" y2="210" stroke="rgba(20,184,166,0.5)" stroke-width="1.5"/>
+          <!-- Combine box -->
+          <rect x="140" y="210" width="120" height="32" rx="8" fill="rgba(245,158,11,0.1)" stroke="rgba(245,158,11,0.3)" stroke-width="1.5"/>
+          <text x="200" y="230" text-anchor="middle" fill="#f59e0b" font-size="10" font-weight="600" font-family="Inter, sans-serif">Weighted Sum</text>
+          <!-- Arrow to output -->
+          <line x1="200" y1="242" x2="200" y2="268" stroke="#333" stroke-width="1.5"/>
+          <polygon points="195,266 200,274 205,266" fill="#333"/>
+          <!-- Output -->
+          <rect x="150" y="276" width="100" height="36" rx="8" fill="rgba(0,212,106,0.15)" stroke="rgba(0,212,106,0.4)" stroke-width="1.5"/>
+          <text x="200" y="299" text-anchor="middle" fill="#00d46a" font-size="12" font-weight="600" font-family="Inter, sans-serif">Output</text>
+        </svg>
+        <div class="text-center">
+          <span class="param-badge" style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: var(--accent);">8N params total, only 2N active</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="text-center fade-in" style="margin-top: 20px;">
+      <div class="highlight-box" style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); color: var(--accent); font-size: 1rem;">
+        3x more parameters, same compute cost
+      </div>
+    </div>
+
+    <div class="callout callout-success fade-in" style="max-width: 700px; margin: 30px auto;">
+      <strong>Key Insight:</strong> MoE gives the model a larger "brain" (more total parameters to store knowledge) while keeping per-token computation fixed. Each token only needs to consult 2 out of 8 expert sub-networks, so throughput stays the same as a smaller dense model.
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     SECTION B: INSIDE THE MOE LAYER
+     ======================================== -->
+<section class="section" id="section-b">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Section B</div>
+      <h2>Inside the MoE Layer</h2>
+      <p class="section-subtitle">Walk through each step of the Mixture of Experts forward pass, from token arrival to weighted output.</p>
+    </div>
+
+    <div class="fade-in">
+      <div class="step-nav" id="step-nav">
+        <button class="step-btn active" data-step="0">1. Token Arrives</button>
+        <button class="step-btn" data-step="1">2. Router Scores</button>
+        <button class="step-btn" data-step="2">3. Softmax + Top-K</button>
+        <button class="step-btn" data-step="3">4. Expert Compute</button>
+        <button class="step-btn" data-step="4">5. Weighted Sum</button>
+      </div>
+    </div>
+
+    <div class="moe-canvas-container fade-in" id="moe-step-canvas">
+      <div class="step-description" id="step-desc">
+        <h4>Step 1: Token Arrives</h4>
+        <p>A token embedding vector enters the MoE layer, ready to be routed to the best experts.</p>
+      </div>
+
+      <!-- Token embedding visual -->
+      <div id="token-embed-viz" class="text-center" style="margin-bottom: 20px;">
+        <svg viewBox="0 0 700 60" width="100%" style="max-width:700px; margin: 0 auto; display: block;">
+          <text x="20" y="20" fill="#00c8e6" font-size="11" font-weight="600" font-family="Inter, sans-serif">Token Embedding x</text>
+          <g id="embed-cells">
+            <rect x="20" y="28" width="26" height="26" rx="4" fill="rgba(0,200,230,0.15)" stroke="rgba(0,200,230,0.3)" stroke-width="1"/>
+            <text x="33" y="45" text-anchor="middle" fill="#00c8e6" font-size="8" font-family="JetBrains Mono, monospace">0.3</text>
+            <rect x="50" y="28" width="26" height="26" rx="4" fill="rgba(0,200,230,0.15)" stroke="rgba(0,200,230,0.3)" stroke-width="1"/>
+            <text x="63" y="45" text-anchor="middle" fill="#00c8e6" font-size="8" font-family="JetBrains Mono, monospace">-0.7</text>
+            <rect x="80" y="28" width="26" height="26" rx="4" fill="rgba(0,200,230,0.15)" stroke="rgba(0,200,230,0.3)" stroke-width="1"/>
+            <text x="93" y="45" text-anchor="middle" fill="#00c8e6" font-size="8" font-family="JetBrains Mono, monospace">1.2</text>
+            <rect x="110" y="28" width="26" height="26" rx="4" fill="rgba(0,200,230,0.15)" stroke="rgba(0,200,230,0.3)" stroke-width="1"/>
+            <text x="123" y="45" text-anchor="middle" fill="#00c8e6" font-size="8" font-family="JetBrains Mono, monospace">0.1</text>
+            <rect x="140" y="28" width="26" height="26" rx="4" fill="rgba(0,200,230,0.15)" stroke="rgba(0,200,230,0.3)" stroke-width="1"/>
+            <text x="153" y="45" text-anchor="middle" fill="#00c8e6" font-size="8" font-family="JetBrains Mono, monospace">-0.4</text>
+            <rect x="170" y="28" width="26" height="26" rx="4" fill="rgba(0,200,230,0.15)" stroke="rgba(0,200,230,0.3)" stroke-width="1"/>
+            <text x="183" y="45" text-anchor="middle" fill="#00c8e6" font-size="8" font-family="JetBrains Mono, monospace">0.8</text>
+            <text x="210" y="45" fill="#555" font-size="10" font-family="Inter, sans-serif">...</text>
+            <text x="240" y="45" fill="#555" font-size="9" font-family="JetBrains Mono, monospace">d_model = 4096</text>
+          </g>
+        </svg>
+      </div>
+
+      <!-- Router scores visualization -->
+      <div id="router-scores-viz" style="display: none;">
+        <div class="text-center" style="margin-bottom: 12px;">
+          <span style="font-size: 0.78rem; color: var(--accent); font-weight: 600;">Router: W<sub>g</sub> &middot; x &rarr; 8 scores (one per expert)</span>
+        </div>
+        <div class="router-scores" id="router-bars">
+          <!-- Generated by JS -->
+        </div>
+      </div>
+
+      <!-- Expert blocks row -->
+      <div class="experts-row" id="experts-row">
+        <div class="expert-block" data-expert="0" style="background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.25); color: #3b82f6;">
+          <span class="expert-icon">E0</span>
+          <span class="expert-label">FFN</span>
+        </div>
+        <div class="expert-block" data-expert="1" style="background: rgba(0,212,106,0.08); border-color: rgba(0,212,106,0.25); color: #00d46a;">
+          <span class="expert-icon">E1</span>
+          <span class="expert-label">FFN</span>
+        </div>
+        <div class="expert-block" data-expert="2" style="background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.25); color: #f59e0b;">
+          <span class="expert-icon">E2</span>
+          <span class="expert-label">FFN</span>
+        </div>
+        <div class="expert-block" data-expert="3" style="background: rgba(167,139,250,0.08); border-color: rgba(167,139,250,0.25); color: #a78bfa;">
+          <span class="expert-icon">E3</span>
+          <span class="expert-label">FFN</span>
+        </div>
+        <div class="expert-block" data-expert="4" style="background: rgba(236,72,153,0.08); border-color: rgba(236,72,153,0.25); color: #ec4899;">
+          <span class="expert-icon">E4</span>
+          <span class="expert-label">FFN</span>
+        </div>
+        <div class="expert-block" data-expert="5" style="background: rgba(20,184,166,0.08); border-color: rgba(20,184,166,0.25); color: #14b8a6;">
+          <span class="expert-icon">E5</span>
+          <span class="expert-label">FFN</span>
+        </div>
+        <div class="expert-block" data-expert="6" style="background: rgba(249,115,22,0.08); border-color: rgba(249,115,22,0.25); color: #f97316;">
+          <span class="expert-icon">E6</span>
+          <span class="expert-label">FFN</span>
+        </div>
+        <div class="expert-block" data-expert="7" style="background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.25); color: #ef4444;">
+          <span class="expert-icon">E7</span>
+          <span class="expert-label">FFN</span>
+        </div>
+      </div>
+
+      <!-- Weighted combination visual -->
+      <div id="combination-viz" class="combination-viz" style="display: none;">
+        <div class="weight-mult" id="comb-e1" style="border-color: rgba(0,212,106,0.3);">
+          <span class="w-val" style="color: #00d46a;">0.62</span>
+          <span class="times">&times;</span>
+          <span style="font-size: 0.82rem; color: #00d46a; font-weight: 600;">E1 output</span>
+        </div>
+        <span style="font-size: 1.2rem; color: var(--accent); font-weight: 700;">+</span>
+        <div class="weight-mult" id="comb-e5" style="border-color: rgba(20,184,166,0.3);">
+          <span class="w-val" style="color: #14b8a6;">0.38</span>
+          <span class="times">&times;</span>
+          <span style="font-size: 0.82rem; color: #14b8a6; font-weight: 600;">E5 output</span>
+        </div>
+        <span style="font-size: 1.2rem; color: var(--fg-muted);">=</span>
+        <div style="padding: 10px 16px; background: rgba(0,212,106,0.08); border-radius: 10px; border: 1px solid rgba(0,212,106,0.3);">
+          <span style="font-size: 0.85rem; font-weight: 700; color: var(--primary);">MoE Output</span>
+        </div>
+      </div>
+
+      <!-- Equation for the step -->
+      <div id="step-equation" class="equation-box" style="max-width: 600px; margin: 20px auto; display: none;">
+        <span class="eq-label">MoE Forward Pass</span>
+        <span id="eq-content">y = &sum;<sub>i &isin; Top-K</sub> g(x)<sub>i</sub> &middot; E<sub>i</sub>(x)</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     SECTION C: TOKEN ROUTING IN ACTION
+     ======================================== -->
+<section class="section section-dark" id="section-c">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Section C</div>
+      <h2>Token Routing in Action</h2>
+      <p class="section-subtitle">Watch how a sequence of tokens is distributed across experts. Each token picks its top-2 experts via the router.</p>
+    </div>
+
+    <div class="fade-in">
+      <div class="token-slider-group">
+        <label>Highlight Token:</label>
+        <input type="range" id="token-slider" min="0" max="7" value="0">
+        <span id="token-slider-val" style="font-family: var(--font-mono); color: var(--accent); font-weight: 600;">Token 0</span>
+      </div>
+    </div>
+
+    <div class="routing-svg-container fade-in" id="routing-viz-container">
+      <svg id="routing-svg" viewBox="0 0 900 420"></svg>
+    </div>
+
+    <!-- Load Chart -->
+    <div class="fade-in" style="margin-top: 40px;">
+      <div class="load-chart">
+        <div class="load-chart-title">Expert Load Distribution — How many tokens each expert receives</div>
+        <div class="load-bars" id="load-bars">
+          <!-- Generated by JS -->
+        </div>
+      </div>
+      <div class="callout callout-warn" style="max-width: 600px; margin: 20px auto;">
+        <strong>Load Balancing Problem:</strong> Notice how some experts receive many tokens while others receive few. This imbalance wastes capacity and can bottleneck training throughput.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     SECTION D: LOAD BALANCING & AUX LOSS
+     ======================================== -->
+<section class="section" id="section-d">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Section D</div>
+      <h2>Load Balancing &amp; Auxiliary Loss</h2>
+      <p class="section-subtitle">Without intervention, the router collapses to a few "favorite" experts. An auxiliary loss term encourages uniform routing.</p>
+    </div>
+
+    <div class="text-center fade-in">
+      <div class="toggle-group" id="balance-toggle">
+        <button class="toggle-btn active" data-mode="without">Without Aux Loss</button>
+        <button class="toggle-btn" data-mode="with">With Aux Loss</button>
+      </div>
+    </div>
+
+    <div class="balance-comparison fade-in">
+      <div class="balance-panel" id="panel-without">
+        <h4 style="color: var(--red);">Without Auxiliary Loss</h4>
+        <p class="panel-desc">Router collapses to 2-3 experts. Most experts are underutilized.</p>
+        <div class="balance-bars" id="bars-without">
+          <!-- Generated by JS -->
+        </div>
+      </div>
+      <div class="balance-panel" id="panel-with">
+        <h4 style="color: var(--primary);">With Auxiliary Loss</h4>
+        <p class="panel-desc">Aux loss encourages balanced routing across all experts.</p>
+        <div class="balance-bars" id="bars-with">
+          <!-- Generated by JS -->
+        </div>
+      </div>
+    </div>
+
+    <div class="fade-in" style="max-width: 700px; margin: 30px auto;">
+      <div class="equation-box">
+        <span class="eq-label">Auxiliary Load Balancing Loss</span>
+        L<sub>aux</sub> = <span class="eq-highlight">&alpha;</span> &middot; N &middot; &sum;<sub>i=1</sub><sup>N</sup> f<sub>i</sub> &middot; P<sub>i</sub>
+      </div>
+      <div class="grid-2" style="gap: 16px; margin-top: 16px;">
+        <div class="callout callout-info" style="margin: 0;">
+          <strong>f<sub>i</sub></strong> = fraction of tokens routed to expert i<br>
+          <strong>P<sub>i</sub></strong> = average routing probability for expert i<br>
+          <strong>N</strong> = number of experts
+        </div>
+        <div class="callout callout-success" style="margin: 0;">
+          <strong>Why it works:</strong> The product f<sub>i</sub> &middot; P<sub>i</sub> is minimized when routing is perfectly uniform (f<sub>i</sub> = P<sub>i</sub> = 1/N for all i). Any imbalance increases the loss.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     SECTION E: WHERE MOE GOES IN TRANSFORMER
+     ======================================== -->
+<section class="section section-dark" id="section-e">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Section E</div>
+      <h2>Where MoE Layers Go in the Transformer</h2>
+      <p class="section-subtitle">MoE replaces the standard FFN in transformer blocks. Different architectures choose different placement strategies.</p>
+    </div>
+
+    <!-- Single block view -->
+    <div class="fade-in text-center" style="margin-bottom: 40px;">
+      <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 16px; color: var(--fg-muted);">Standard Transformer Block with MoE</h3>
+      <div class="transformer-layout" id="tf-block-view">
+        <div class="tf-block" style="width: 320px; padding: 10px 20px; border: 1px dashed rgba(163,163,163,0.2); border-radius: 8px; color: var(--fg-muted); font-size: 0.75rem;">Input + Positional Encoding</div>
+        <div class="tf-arrow"></div>
+        <div class="tf-block attn">
+          <span class="block-label">Layer</span>
+          Multi-Head Self-Attention
+        </div>
+        <div class="tf-arrow"></div>
+        <div class="tf-block" style="width: 320px; padding: 10px 20px; border: 1px dashed rgba(163,163,163,0.2); border-radius: 8px; color: var(--fg-muted); font-size: 0.75rem;">Add & Norm</div>
+        <div class="tf-arrow"></div>
+        <div class="tf-block moe" id="moe-ffn-block">
+          <span class="block-label">Replaces Standard FFN</span>
+          MoE Feed-Forward (8 Experts, Top-2)
+        </div>
+        <div class="tf-arrow"></div>
+        <div class="tf-block" style="width: 320px; padding: 10px 20px; border: 1px dashed rgba(163,163,163,0.2); border-radius: 8px; color: var(--fg-muted); font-size: 0.75rem;">Add & Norm &rarr; Output</div>
+      </div>
+    </div>
+
+    <!-- Toggle: Every Layer vs Alternating -->
+    <div class="text-center fade-in">
+      <div class="toggle-group" id="layout-toggle">
+        <button class="toggle-btn active" data-mode="every">Every Layer MoE</button>
+        <button class="toggle-btn" data-mode="alternate">Alternating MoE</button>
+      </div>
+    </div>
+
+    <div class="fade-in" style="margin-top: 24px;">
+      <h3 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 16px; text-align: center; color: var(--fg-muted);" id="layout-title">Every Layer: All FFN layers replaced with MoE</h3>
+      <div class="layer-stack" id="layer-stack">
+        <!-- Generated by JS -->
+      </div>
+      <div class="param-summary" id="param-summary">
+        <!-- Generated by JS -->
+      </div>
+      <div class="callout callout-info fade-in" style="max-width: 650px; margin: 20px auto;">
+        <strong>Design tradeoff:</strong> "Every Layer" maximizes capacity but increases memory and communication overhead.
+        "Alternating" (used by Mixtral, Switch Transformer) balances capacity and efficiency — MoE only on every other layer, dense FFN on the rest.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================
+     FOOTER
+     ======================================== -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-brand">Vizuara &mdash; 5D Parallelism Visual Guide</div>
+    <p>Mixture of Experts &mdash; Architecture Fundamentals</p>
+    <p style="font-size: 0.78rem; color: #555; margin-top: 4px;">Sparse Routing &bull; Load Balancing &bull; Auxiliary Loss &bull; Transformer Integration</p>
+    <div class="footer-links">
+      <a href="index.html">All Guides</a>
+      <a href="expert-parallelism.html">Expert Parallelism &rarr;</a>
+      <a href="https://github.com/VizuaraAI/5d-parallelism-visual-guide" target="_blank">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ========================================
+     JAVASCRIPT
+     ======================================== -->
+<script>
+// ========================================
+// SCROLL REVEAL (IntersectionObserver)
+// ========================================
+const fadeObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.fade-in').forEach(el => fadeObserver.observe(el));
+
+// ========================================
+// EXPERT COLORS
+// ========================================
+const EXPERT_COLORS = [
+  '#3b82f6', '#00d46a', '#f59e0b', '#a78bfa',
+  '#ec4899', '#14b8a6', '#f97316', '#ef4444'
+];
+const EXPERT_NAMES = ['E0','E1','E2','E3','E4','E5','E6','E7'];
+
+// ========================================
+// SECTION A: DENSE vs MOE TOGGLE
+// ========================================
+(function() {
+  const toggleBtns = document.querySelectorAll('#dense-moe-toggle .toggle-btn');
+  const densePanel = document.getElementById('dense-panel');
+  const moePanel = document.getElementById('moe-panel');
+
+  toggleBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      toggleBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const mode = btn.dataset.mode;
+      if (mode === 'dense') {
+        densePanel.classList.add('active');
+        densePanel.style.opacity = '1';
+        moePanel.classList.remove('active');
+        moePanel.style.opacity = '0.4';
+      } else {
+        moePanel.classList.add('active');
+        moePanel.style.opacity = '1';
+        densePanel.classList.remove('active');
+        densePanel.style.opacity = '0.4';
+      }
+    });
+  });
+  // Start with dense highlighted
+  densePanel.classList.add('active');
+  densePanel.style.opacity = '1';
+  moePanel.style.opacity = '0.4';
+})();
+
+// ========================================
+// SECTION B: MOE STEP-BY-STEP
+// ========================================
+(function() {
+  const stepBtns = document.querySelectorAll('#step-nav .step-btn');
+  const stepDesc = document.getElementById('step-desc');
+  const tokenEmbedViz = document.getElementById('token-embed-viz');
+  const routerScoresViz = document.getElementById('router-scores-viz');
+  const expertBlocks = document.querySelectorAll('#experts-row .expert-block');
+  const combinationViz = document.getElementById('combination-viz');
+  const stepEquation = document.getElementById('step-equation');
+  const eqContent = document.getElementById('eq-content');
+  const routerBars = document.getElementById('router-bars');
+
+  // Raw scores (before softmax), chosen to make E1 and E5 the top-2
+  const rawScores = [1.2, 3.8, 0.5, 1.0, 0.8, 3.1, 0.3, 0.6];
+  // Softmax of raw scores
+  const expScores = rawScores.map(s => Math.exp(s));
+  const sumExp = expScores.reduce((a,b) => a+b, 0);
+  const softmaxScores = expScores.map(e => e / sumExp);
+  // Top-2 indices
+  const topK = [1, 5];
+  // Renormalized weights for top-2
+  const topSum = softmaxScores[1] + softmaxScores[5];
+  const weights = { 1: softmaxScores[1] / topSum, 5: softmaxScores[5] / topSum };
+
+  const steps = [
+    {
+      title: 'Step 1: Token Arrives',
+      desc: 'A token embedding vector enters the MoE layer, ready to be routed to the best experts.',
+      showEmbed: true, showRouter: false, showExperts: 'all', showCombine: false,
+      showEq: false, eqText: ''
+    },
+    {
+      title: 'Step 2: Router Computes Scores',
+      desc: 'The router (a small linear layer W_g) multiplies the embedding to produce one score per expert.',
+      showEmbed: true, showRouter: true, showExperts: 'all', showCombine: false,
+      showEq: true, eqText: 'scores = W<sub>g</sub> &middot; x &nbsp;&nbsp;(shape: [num_experts])'
+    },
+    {
+      title: 'Step 3: Softmax + Top-K Selection',
+      desc: 'Softmax normalizes scores into probabilities. Only the top-2 experts are selected; the rest are zeroed out.',
+      showEmbed: false, showRouter: true, showExperts: 'topk', showCombine: false,
+      showEq: true, eqText: 'g(x) = Softmax(Top-K(W<sub>g</sub> &middot; x)) &nbsp;&nbsp;(K=2)'
+    },
+    {
+      title: 'Step 4: Expert Computation',
+      desc: 'The 2 selected experts (independent FFN blocks) each process the token in parallel. The other 6 experts do nothing for this token.',
+      showEmbed: false, showRouter: false, showExperts: 'topk-glow', showCombine: false,
+      showEq: true, eqText: 'E<sub>1</sub>(x), E<sub>5</sub>(x) &nbsp;computed in parallel'
+    },
+    {
+      title: 'Step 5: Weighted Combination',
+      desc: 'Each expert output is multiplied by its routing weight, then summed to produce the final MoE output.',
+      showEmbed: false, showRouter: false, showExperts: 'topk', showCombine: true,
+      showEq: true, eqText: 'y = ' + weights[1].toFixed(2) + ' &middot; E<sub>1</sub>(x) + ' + weights[5].toFixed(2) + ' &middot; E<sub>5</sub>(x)'
+    }
+  ];
+
+  function buildRouterBars(highlightTopK) {
+    routerBars.innerHTML = '';
+    const maxScore = Math.max(...softmaxScores);
+    for (let i = 0; i < 8; i++) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'score-bar-wrapper';
+      const bar = document.createElement('div');
+      bar.className = 'score-bar';
+      const height = (softmaxScores[i] / maxScore) * 100;
+      bar.style.height = height + 'px';
+      bar.style.background = highlightTopK && topK.includes(i)
+        ? EXPERT_COLORS[i]
+        : (highlightTopK ? 'rgba(100,100,100,0.2)' : EXPERT_COLORS[i]);
+      bar.style.opacity = highlightTopK && !topK.includes(i) ? '0.2' : '1';
+      if (highlightTopK && topK.includes(i)) {
+        bar.style.boxShadow = '0 0 12px ' + EXPERT_COLORS[i] + '60';
+      }
+      const val = document.createElement('div');
+      val.className = 'score-value' + (highlightTopK && topK.includes(i) ? ' top' : '');
+      val.textContent = softmaxScores[i].toFixed(3);
+      if (highlightTopK && topK.includes(i)) {
+        val.style.color = EXPERT_COLORS[i];
+      }
+      const label = document.createElement('div');
+      label.className = 'score-label';
+      label.textContent = EXPERT_NAMES[i];
+      label.style.color = EXPERT_COLORS[i];
+      wrapper.appendChild(val);
+      wrapper.appendChild(bar);
+      wrapper.appendChild(label);
+      routerBars.appendChild(wrapper);
+    }
+  }
+
+  function setStep(idx) {
+    const step = steps[idx];
+    stepDesc.querySelector('h4').textContent = step.title;
+    stepDesc.querySelector('p').textContent = step.desc;
+
+    // Token embed
+    tokenEmbedViz.style.display = step.showEmbed ? 'block' : 'none';
+
+    // Router scores
+    routerScoresViz.style.display = step.showRouter ? 'block' : 'none';
+    if (step.showRouter) {
+      buildRouterBars(idx >= 2);
+    }
+
+    // Expert blocks
+    expertBlocks.forEach((block, i) => {
+      block.classList.remove('dimmed', 'selected');
+      block.style.boxShadow = 'none';
+      if (step.showExperts === 'topk' || step.showExperts === 'topk-glow') {
+        if (!topK.includes(i)) {
+          block.classList.add('dimmed');
+        } else {
+          block.classList.add('selected');
+          if (step.showExperts === 'topk-glow') {
+            block.style.boxShadow = '0 0 30px ' + EXPERT_COLORS[i] + '50, 0 0 60px ' + EXPERT_COLORS[i] + '20';
+          }
+        }
+      }
+    });
+
+    // Combination
+    combinationViz.style.display = step.showCombine ? 'flex' : 'none';
+
+    // Equation
+    stepEquation.style.display = step.showEq ? 'block' : 'none';
+    if (step.showEq) eqContent.innerHTML = step.eqText;
+  }
+
+  stepBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      stepBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      setStep(parseInt(btn.dataset.step));
+    });
+  });
+
+  setStep(0);
+})();
+
+// ========================================
+// SECTION C: TOKEN ROUTING VISUALIZATION
+// ========================================
+(function() {
+  const svg = document.getElementById('routing-svg');
+  const slider = document.getElementById('token-slider');
+  const sliderVal = document.getElementById('token-slider-val');
+
+  // Token data: each token has a word and routes to 2 experts with weights
+  const tokens = [
+    { word: 'The', routes: [{ e: 1, w: 0.58 }, { e: 3, w: 0.42 }] },
+    { word: 'quick', routes: [{ e: 5, w: 0.65 }, { e: 2, w: 0.35 }] },
+    { word: 'brown', routes: [{ e: 2, w: 0.52 }, { e: 6, w: 0.48 }] },
+    { word: 'fox', routes: [{ e: 0, w: 0.71 }, { e: 4, w: 0.29 }] },
+    { word: 'jumps', routes: [{ e: 7, w: 0.55 }, { e: 1, w: 0.45 }] },
+    { word: 'over', routes: [{ e: 3, w: 0.60 }, { e: 5, w: 0.40 }] },
+    { word: 'the', routes: [{ e: 1, w: 0.64 }, { e: 6, w: 0.36 }] },
+    { word: 'lazy', routes: [{ e: 4, w: 0.53 }, { e: 2, w: 0.47 }] }
+  ];
+
+  // Calculate expert loads
+  function getLoads() {
+    const loads = new Array(8).fill(0);
+    tokens.forEach(t => t.routes.forEach(r => loads[r.e]++));
+    return loads;
+  }
+
+  const tokenColors = ['#00c8e6','#3b82f6','#f59e0b','#ec4899','#a78bfa','#14b8a6','#f97316','#ef4444'];
+
+  function render(highlightIdx) {
+    const W = 900, H = 420;
+    const tokenX = 100, expertX = 800;
+    const tokenSpacing = H / (tokens.length + 1);
+    const expertSpacing = H / 9;
+
+    let svgContent = '';
+
+    // Draw all routing lines (dimmed)
+    tokens.forEach((t, ti) => {
+      const ty = tokenSpacing * (ti + 1);
+      t.routes.forEach(r => {
+        const ey = expertSpacing * (r.e + 1);
+        const isHighlight = ti === highlightIdx;
+        const opacity = isHighlight ? 0.85 : 0.08;
+        const strokeW = isHighlight ? 2.5 : 0.8;
+        const color = isHighlight ? EXPERT_COLORS[r.e] : '#444';
+
+        // Bezier curve for smooth routing
+        const cx1 = tokenX + 200;
+        const cx2 = expertX - 200;
+        svgContent += `<path d="M${tokenX + 60},${ty} C${cx1},${ty} ${cx2},${ey} ${expertX - 60},${ey}"
+          fill="none" stroke="${color}" stroke-width="${strokeW}" opacity="${opacity}"
+          ${isHighlight ? 'stroke-dasharray="8,4"' : ''}/>`;
+
+        // Weight label on highlighted paths
+        if (isHighlight) {
+          const mx = (tokenX + 60 + expertX - 60) / 2;
+          const my = (ty + ey) / 2;
+          svgContent += `<rect x="${mx - 18}" y="${my - 10}" width="36" height="20" rx="6"
+            fill="rgba(0,0,0,0.8)" stroke="${EXPERT_COLORS[r.e]}" stroke-width="1"/>`;
+          svgContent += `<text x="${mx}" y="${my + 4}" text-anchor="middle" fill="${EXPERT_COLORS[r.e]}"
+            font-size="9" font-weight="700" font-family="JetBrains Mono, monospace">${r.w.toFixed(2)}</text>`;
+        }
+      });
+    });
+
+    // Animated particles on highlighted paths
+    if (highlightIdx >= 0 && highlightIdx < tokens.length) {
+      const t = tokens[highlightIdx];
+      const ty = tokenSpacing * (highlightIdx + 1);
+      t.routes.forEach((r, ri) => {
+        const ey = expertSpacing * (r.e + 1);
+        const cx1 = tokenX + 200;
+        const cx2 = expertX - 200;
+        const pathId = `particle-path-${ri}`;
+        svgContent += `<path id="${pathId}" d="M${tokenX + 60},${ty} C${cx1},${ty} ${cx2},${ey} ${expertX - 60},${ey}" fill="none" stroke="none"/>`;
+        svgContent += `<circle r="4" fill="${EXPERT_COLORS[r.e]}" opacity="0.9">
+          <animateMotion dur="2s" repeatCount="indefinite">
+            <mpath href="#${pathId}"/>
+          </animateMotion>
+        </circle>`;
+        svgContent += `<circle r="3" fill="${EXPERT_COLORS[r.e]}" opacity="0.6">
+          <animateMotion dur="2s" begin="0.5s" repeatCount="indefinite">
+            <mpath href="#${pathId}"/>
+          </animateMotion>
+        </circle>`;
+      });
+    }
+
+    // Draw tokens on left
+    tokens.forEach((t, ti) => {
+      const ty = tokenSpacing * (ti + 1);
+      const isHL = ti === highlightIdx;
+      const bgOpacity = isHL ? 0.15 : 0.05;
+      const borderColor = isHL ? tokenColors[ti] : '#333';
+      const borderW = isHL ? 2 : 1;
+      svgContent += `<rect x="10" y="${ty - 16}" width="90" height="32" rx="8"
+        fill="rgba(${isHL ? '245,158,11' : '255,255,255'},${bgOpacity})"
+        stroke="${borderColor}" stroke-width="${borderW}"
+        style="cursor:pointer" class="token-rect" data-idx="${ti}"/>`;
+      svgContent += `<circle cx="22" cy="${ty}" r="4" fill="${tokenColors[ti]}"/>`;
+      svgContent += `<text x="56" y="${ty + 4}" text-anchor="middle"
+        fill="${isHL ? '#fff' : '#a3a3a3'}" font-size="11" font-weight="${isHL ? '700' : '500'}"
+        font-family="Inter, sans-serif" style="pointer-events:none">${t.word}</text>`;
+    });
+
+    // Draw experts on right
+    for (let i = 0; i < 8; i++) {
+      const ey = expertSpacing * (i + 1);
+      const isTarget = highlightIdx >= 0 && tokens[highlightIdx].routes.some(r => r.e === i);
+      const bgOpacity = isTarget ? 0.2 : 0.06;
+      const glow = isTarget ? `filter: drop-shadow(0 0 8px ${EXPERT_COLORS[i]}40);` : '';
+      svgContent += `<rect x="${expertX - 50}" y="${ey - 18}" width="100" height="36" rx="8"
+        fill="rgba(255,255,255,${bgOpacity})" stroke="${EXPERT_COLORS[i]}"
+        stroke-width="${isTarget ? 2 : 1}" stroke-opacity="${isTarget ? 1 : 0.3}" style="${glow}"/>`;
+      svgContent += `<circle cx="${expertX - 34}" cy="${ey}" r="5" fill="${EXPERT_COLORS[i]}" opacity="${isTarget ? 1 : 0.4}"/>`;
+      svgContent += `<text x="${expertX}" y="${ey + 4}" text-anchor="middle"
+        fill="${EXPERT_COLORS[i]}" font-size="11" font-weight="700"
+        font-family="Inter, sans-serif" opacity="${isTarget ? 1 : 0.5}">Expert ${i}</text>`;
+    }
+
+    // Column headers
+    svgContent += `<text x="55" y="16" text-anchor="middle" fill="#666" font-size="10" font-weight="600" font-family="Inter, sans-serif" text-transform="uppercase" letter-spacing="1">TOKENS</text>`;
+    svgContent += `<text x="${expertX}" y="16" text-anchor="middle" fill="#666" font-size="10" font-weight="600" font-family="Inter, sans-serif" text-transform="uppercase" letter-spacing="1">EXPERTS</text>`;
+
+    svg.innerHTML = svgContent;
+
+    // Click handlers on tokens in SVG
+    svg.querySelectorAll('.token-rect').forEach(rect => {
+      rect.addEventListener('click', () => {
+        const idx = parseInt(rect.dataset.idx);
+        slider.value = idx;
+        sliderVal.textContent = 'Token ' + idx;
+        render(idx);
+      });
+    });
+
+    // Update load bars
+    renderLoadBars(highlightIdx);
+  }
+
+  function renderLoadBars(highlightIdx) {
+    const loadBarsContainer = document.getElementById('load-bars');
+    loadBarsContainer.innerHTML = '';
+    const loads = getLoads();
+    const maxLoad = Math.max(...loads);
+
+    for (let i = 0; i < 8; i++) {
+      const col = document.createElement('div');
+      col.className = 'load-bar-col';
+      const bar = document.createElement('div');
+      bar.className = 'load-bar';
+      const h = maxLoad > 0 ? (loads[i] / maxLoad) * 120 : 0;
+      bar.style.height = h + 'px';
+      bar.style.background = EXPERT_COLORS[i];
+      bar.style.opacity = '0.8';
+
+      const isTarget = highlightIdx >= 0 && highlightIdx < tokens.length &&
+        tokens[highlightIdx].routes.some(r => r.e === i);
+      if (isTarget) {
+        bar.style.opacity = '1';
+        bar.style.boxShadow = '0 0 12px ' + EXPERT_COLORS[i] + '60';
+      }
+
+      const count = document.createElement('div');
+      count.className = 'load-bar-count';
+      count.textContent = loads[i];
+      count.style.color = EXPERT_COLORS[i];
+      bar.appendChild(count);
+
+      const label = document.createElement('div');
+      label.className = 'load-bar-label';
+      label.textContent = 'E' + i;
+      label.style.color = EXPERT_COLORS[i];
+
+      col.appendChild(bar);
+      col.appendChild(label);
+
+      // Warning labels
+      if (loads[i] >= 4) {
+        const warn = document.createElement('div');
+        warn.className = 'load-warning';
+        warn.style.background = 'rgba(239,68,68,0.15)';
+        warn.style.color = '#ef4444';
+        warn.textContent = 'Heavy';
+        col.appendChild(warn);
+      } else if (loads[i] <= 1) {
+        const warn = document.createElement('div');
+        warn.className = 'load-warning';
+        warn.style.background = 'rgba(245,158,11,0.15)';
+        warn.style.color = '#f59e0b';
+        warn.textContent = 'Light';
+        col.appendChild(warn);
+      }
+
+      loadBarsContainer.appendChild(col);
+    }
+  }
+
+  slider.addEventListener('input', () => {
+    const idx = parseInt(slider.value);
+    sliderVal.textContent = 'Token ' + idx;
+    render(idx);
+  });
+
+  render(0);
+})();
+
+// ========================================
+// SECTION D: LOAD BALANCING TOGGLE
+// ========================================
+(function() {
+  const toggleBtns = document.querySelectorAll('#balance-toggle .toggle-btn');
+  const panelWithout = document.getElementById('panel-without');
+  const panelWith = document.getElementById('panel-with');
+  const barsWithout = document.getElementById('bars-without');
+  const barsWith = document.getElementById('bars-with');
+
+  // Without aux loss: collapsed routing
+  const loadsWithout = [0, 45, 2, 1, 0, 42, 3, 7];
+  // With aux loss: balanced routing
+  const loadsWith = [12, 14, 11, 13, 12, 13, 12, 13];
+
+  function renderBalanceBars(container, loads, colors) {
+    container.innerHTML = '';
+    const max = Math.max(...loads);
+    const total = loads.reduce((a,b) => a+b, 0);
+
+    for (let i = 0; i < 8; i++) {
+      const col = document.createElement('div');
+      col.className = 'balance-bar-col';
+      const bar = document.createElement('div');
+      bar.className = 'balance-bar';
+      const h = max > 0 ? (loads[i] / max) * 130 : 0;
+      bar.style.height = h + 'px';
+      bar.style.background = EXPERT_COLORS[i];
+      bar.style.opacity = loads[i] === 0 ? '0.1' : '0.8';
+
+      const val = document.createElement('div');
+      val.className = 'bar-val';
+      val.textContent = loads[i] + '%';
+      val.style.color = EXPERT_COLORS[i];
+      bar.appendChild(val);
+
+      const label = document.createElement('div');
+      label.className = 'balance-bar-label';
+      label.textContent = 'E' + i;
+      label.style.color = EXPERT_COLORS[i];
+
+      col.appendChild(bar);
+      col.appendChild(label);
+      container.appendChild(col);
+    }
+  }
+
+  function setMode(mode) {
+    if (mode === 'without') {
+      panelWithout.classList.add('active');
+      panelWithout.style.opacity = '1';
+      panelWith.classList.remove('active');
+      panelWith.style.opacity = '0.4';
+    } else {
+      panelWith.classList.add('active');
+      panelWith.style.opacity = '1';
+      panelWithout.classList.remove('active');
+      panelWithout.style.opacity = '0.4';
+    }
+  }
+
+  toggleBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      toggleBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      setMode(btn.dataset.mode);
+    });
+  });
+
+  renderBalanceBars(barsWithout, loadsWithout);
+  renderBalanceBars(barsWith, loadsWith);
+  setMode('without');
+})();
+
+// ========================================
+// SECTION E: TRANSFORMER LAYOUT TOGGLE
+// ========================================
+(function() {
+  const toggleBtns = document.querySelectorAll('#layout-toggle .toggle-btn');
+  const layerStack = document.getElementById('layer-stack');
+  const paramSummary = document.getElementById('param-summary');
+  const layoutTitle = document.getElementById('layout-title');
+
+  const numLayers = 12;
+
+  function renderLayout(mode) {
+    layerStack.innerHTML = '';
+    paramSummary.innerHTML = '';
+
+    let moeCount = 0;
+    let denseCount = 0;
+
+    for (let i = 0; i < numLayers; i++) {
+      const layer = document.createElement('div');
+      layer.className = 'layer-mini';
+
+      const attn = document.createElement('div');
+      attn.className = 'layer-mini-block attn';
+      attn.textContent = 'Attn';
+
+      const ffn = document.createElement('div');
+      ffn.className = 'layer-mini-block';
+
+      if (mode === 'every') {
+        ffn.classList.add('moe');
+        ffn.textContent = 'MoE';
+        moeCount++;
+      } else {
+        // Alternating: even layers get MoE, odd get dense FFN
+        if (i % 2 === 0) {
+          ffn.classList.add('moe');
+          ffn.textContent = 'MoE';
+          moeCount++;
+        } else {
+          ffn.classList.add('ffn');
+          ffn.textContent = 'FFN';
+          denseCount++;
+        }
+      }
+
+      const num = document.createElement('div');
+      num.className = 'layer-num';
+      num.textContent = 'L' + i;
+
+      layer.appendChild(attn);
+      layer.appendChild(ffn);
+      layer.appendChild(num);
+      layerStack.appendChild(layer);
+    }
+
+    // Param summary
+    if (mode === 'every') {
+      layoutTitle.textContent = 'Every Layer: All FFN layers replaced with MoE';
+      const p1 = createPill('12 MoE layers', 'rgba(245,158,11,0.15)', 'rgba(245,158,11,0.4)', '#f59e0b');
+      const p2 = createPill('96 expert FFNs total', 'rgba(245,158,11,0.08)', 'rgba(245,158,11,0.2)', '#f59e0b');
+      const p3 = createPill('~8x FFN params', 'rgba(0,212,106,0.08)', 'rgba(0,212,106,0.2)', '#00d46a');
+      paramSummary.appendChild(p1);
+      paramSummary.appendChild(p2);
+      paramSummary.appendChild(p3);
+    } else {
+      layoutTitle.textContent = 'Alternating: MoE on every other layer, dense FFN on the rest';
+      const p1 = createPill('6 MoE + 6 Dense', 'rgba(245,158,11,0.15)', 'rgba(245,158,11,0.4)', '#f59e0b');
+      const p2 = createPill('54 expert FFNs total', 'rgba(245,158,11,0.08)', 'rgba(245,158,11,0.2)', '#f59e0b');
+      const p3 = createPill('~4.5x FFN params', 'rgba(0,212,106,0.08)', 'rgba(0,212,106,0.2)', '#00d46a');
+      paramSummary.appendChild(p1);
+      paramSummary.appendChild(p2);
+      paramSummary.appendChild(p3);
+    }
+  }
+
+  function createPill(text, bg, border, color) {
+    const el = document.createElement('div');
+    el.className = 'param-pill';
+    el.style.background = bg;
+    el.style.borderColor = border;
+    el.style.color = color;
+    el.textContent = text;
+    return el;
+  }
+
+  toggleBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      toggleBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderLayout(btn.dataset.mode);
+    });
+  });
+
+  renderLayout('every');
+})();
+</script>
+
+</body>
+</html>
