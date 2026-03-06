@@ -299,6 +299,7 @@ code { font-family: var(--font-mono); }
       <a href="#zero-series">ZeRO Series</a>
       <a href="#tensor-parallelism">Tensor Parallelism</a>
       <a href="#pipeline-parallelism">Pipeline Parallelism</a>
+      <a href="#5d-capstone">5D Capstone</a>
       <a href="https://github.com/VizuaraAI/5d-parallelism-visual-guide" target="_blank">GitHub</a>
     </div>
   </div>
@@ -777,6 +778,48 @@ code { font-family: var(--font-mono); }
             <span class="feature-chip">4-Step Story</span>
             <span class="feature-chip">GPU Selector</span>
             <span class="feature-chip">Memory Bars</span>
+            <span class="feature-chip">NEW</span>
+          </div>
+        </div>
+        <div class="guide-card-footer">
+          <span class="guide-arrow">Explore guide <span>&rarr;</span></span>
+        </div>
+      </a>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 6: 5D PARALLELISM CAPSTONE
+     ============================================================ -->
+<section class="section section-dark" id="5d-capstone">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <div class="section-label">Capstone</div>
+      <h2><span class="gradient-text">The Full 5D Parallelism Pipeline</span></h2>
+      <p class="section-subtitle">Everything comes together &mdash; TP, PP, DP, ZeRO, CP, and EP in a realistic end-to-end training setup. Follow a startup&rsquo;s journey configuring 64 H100 GPUs to train a 7B-parameter model.</p>
+    </div>
+
+    <div class="guides-grid">
+
+      <!-- 15. 5D Parallelism Journey -->
+      <a href="5d-parallelism-journey.html" class="guide-card fade-in stagger-1">
+        <div class="guide-card-header">
+          <div class="guide-icon" style="background: linear-gradient(135deg, rgba(0,212,106,0.2), rgba(0,200,230,0.1));">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#00d46a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/><polyline points="2 15.5 12 8.5 22 15.5"/></svg>
+          </div>
+          <div>
+            <h3>5D Parallelism: The Complete Journey</h3>
+            <span class="guide-tag" style="background: linear-gradient(135deg, rgba(0,212,106,0.12), rgba(0,200,230,0.08)); color: #00d46a;">5D Capstone</span>
+          </div>
+        </div>
+        <div class="guide-card-body">
+          <p>Follow Vizz AI&rsquo;s startup story: 64 H100s, a 7B SLM, 128K context. Walk through every decision in order &mdash; TP, micro-batch sizing, PP, DP+ZeRO, gradient accumulation, CP, and EP &mdash; with interactive visualizations at each step.</p>
+          <div class="guide-features">
+            <span class="feature-chip">8 Interactive Steps</span>
+            <span class="feature-chip">64-GPU Cluster</span>
+            <span class="feature-chip">Decision Framework</span>
             <span class="feature-chip">NEW</span>
           </div>
         </div>

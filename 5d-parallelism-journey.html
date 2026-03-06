@@ -1,0 +1,2586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vizz AI — 5D Parallelism: A Founder's Training Playbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@1&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============ RESET & BASE ============ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: #0a0a0a;
+  color: #f2f2f2;
+  font-family: 'Inter', system-ui, sans-serif;
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0a0a0a; }
+::-webkit-scrollbar-thumb { background: #262626; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #a3a3a3; }
+
+/* ============ VARIABLES ============ */
+:root {
+  --primary: #00d46a;
+  --primary-dim: rgba(0, 212, 106, 0.15);
+  --secondary: #00c8e6;
+  --secondary-dim: rgba(0, 200, 230, 0.15);
+  --bg: #0a0a0a;
+  --card: #121212;
+  --card-hover: #1a1a1a;
+  --border: #262626;
+  --muted: #a3a3a3;
+  --red: #ef4444;
+  --amber: #f59e0b;
+  --violet: #8b5cf6;
+  --blue: #3b82f6;
+  --pink: #ec4899;
+  --orange: #f97316;
+  --teal: #14b8a6;
+  --font-serif: 'Instrument Serif', serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* ============ GRID BACKGROUND ============ */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+/* ============ LAYOUT ============ */
+.container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+section {
+  min-height: 100vh;
+  padding: 120px 0 80px;
+  position: relative;
+}
+
+/* ============ NAV ============ */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,10,0.8);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  transition: all 0.3s ease;
+}
+nav .nav-inner {
+  max-width: 1200px; margin: 0 auto; padding: 0 24px;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 64px;
+}
+nav .logo {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 1.5rem;
+  color: #f2f2f2;
+  text-decoration: none;
+}
+nav .logo span { color: var(--primary); }
+nav .nav-links { display: flex; gap: 8px; }
+nav .nav-links a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  font-family: var(--font-mono);
+}
+nav .nav-links a:hover { color: #f2f2f2; background: rgba(255,255,255,0.05); }
+nav .nav-links a.active { color: var(--primary); background: var(--primary-dim); }
+
+/* ============ TYPOGRAPHY ============ */
+h1 {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  line-height: 1.1;
+  margin-bottom: 24px;
+}
+h2 {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.2;
+  margin-bottom: 16px;
+}
+h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.section-label {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  padding: 6px 16px;
+  border-radius: 9999px;
+  border: 1px solid;
+  margin-bottom: 24px;
+}
+.label-green { color: var(--primary); border-color: rgba(0,212,106,0.3); background: rgba(0,212,106,0.08); }
+.label-cyan { color: var(--secondary); border-color: rgba(0,200,230,0.3); background: rgba(0,200,230,0.08); }
+.label-amber { color: var(--amber); border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.08); }
+.label-violet { color: var(--violet); border-color: rgba(139,92,246,0.3); background: rgba(139,92,246,0.08); }
+.label-blue { color: var(--blue); border-color: rgba(59,130,246,0.3); background: rgba(59,130,246,0.08); }
+.label-pink { color: var(--pink); border-color: rgba(236,72,153,0.3); background: rgba(236,72,153,0.08); }
+.label-red { color: var(--red); border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.08); }
+
+/* ============ CARDS ============ */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  transition: all 0.3s ease;
+}
+.card:hover {
+  border-color: rgba(0,212,106,0.3);
+  box-shadow: 0 0 20px rgba(0,212,106,0.08), 0 0 60px rgba(0,212,106,0.03);
+}
+.card-grid { display: grid; gap: 16px; }
+.card-grid-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.card-grid-3 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+.card-grid-4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+
+/* ============ GLOW EFFECTS ============ */
+.glow-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(128px);
+  pointer-events: none;
+}
+.glow-green { background: rgba(0,212,106,0.06); }
+.glow-cyan { background: rgba(0,200,230,0.06); }
+
+/* ============ PROBLEM BOX ============ */
+.problem-box {
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: 12px;
+  padding: 24px 28px;
+  margin: 40px 0;
+  position: relative;
+  overflow: hidden;
+}
+.problem-box::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; width: 4px; height: 100%;
+  background: var(--red);
+}
+.problem-box h4 {
+  color: var(--red);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-bottom: 12px;
+}
+.problem-box p { color: #e2e2e5; font-size: 0.95rem; line-height: 1.7; }
+
+/* ============ SOLUTION BOX ============ */
+.solution-box {
+  background: rgba(0,212,106,0.06);
+  border: 1px solid rgba(0,212,106,0.2);
+  border-radius: 12px;
+  padding: 24px 28px;
+  margin: 40px 0;
+  position: relative;
+  overflow: hidden;
+}
+.solution-box::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; width: 4px; height: 100%;
+  background: var(--primary);
+}
+.solution-box h4 {
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-bottom: 12px;
+}
+.solution-box p { color: #e2e2e5; font-size: 0.95rem; line-height: 1.7; }
+
+/* ============ PAUSE BOX ============ */
+.pause-box {
+  background: rgba(139,92,246,0.06);
+  border: 1px solid rgba(139,92,246,0.2);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin: 32px 0;
+}
+.pause-box h4 {
+  color: var(--violet);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-bottom: 8px;
+}
+.pause-box p { color: #ccc; font-size: 0.9rem; }
+
+/* ============ GPU GRID ============ */
+.gpu-cluster {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+.gpu-node-group {
+  display: contents;
+}
+.gpu-cell {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #1a1a1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  color: var(--muted);
+  transition: all 0.5s ease;
+  position: relative;
+  overflow: hidden;
+}
+.gpu-cell .gpu-label {
+  position: relative;
+  z-index: 2;
+}
+.gpu-cell .gpu-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  transition: all 0.8s ease;
+  border-radius: 0 0 5px 5px;
+}
+.gpu-cell.active {
+  border-color: rgba(0,212,106,0.4);
+}
+
+/* Node borders */
+.node-border {
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  position: relative;
+}
+.node-border .node-label {
+  position: absolute;
+  top: -10px;
+  left: 12px;
+  background: var(--bg);
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--muted);
+}
+.nodes-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+@media (max-width: 768px) {
+  .nodes-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ============ MEMORY BAR ============ */
+.memory-bar-container {
+  background: #1a1a1a;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid var(--border);
+}
+.memory-bar-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+}
+.memory-bar-label span:first-child { font-family: var(--font-mono); color: var(--muted); }
+.memory-bar-label span:last-child { font-family: var(--font-mono); font-weight: 600; }
+.memory-bar {
+  height: 32px;
+  background: #262626;
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  position: relative;
+}
+.memory-segment {
+  height: 100%;
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: rgba(255,255,255,0.9);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.memory-bar .limit-line {
+  position: absolute;
+  right: 0;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--red);
+}
+.seg-params { background: #3b82f6; }
+.seg-optimizer { background: #8b5cf6; }
+.seg-gradients { background: #f59e0b; }
+.seg-activations { background: #ef4444; }
+.seg-free { background: transparent; }
+.overflow-indicator {
+  color: var(--red);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: right;
+  margin-top: 6px;
+}
+.memory-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.memory-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+.memory-legend-item .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+/* ============ HERO ============ */
+#hero {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+#hero .hero-content { max-width: 650px; }
+#hero .hero-right {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: center;
+}
+@media (max-width: 900px) {
+  .hero-grid { grid-template-columns: 1fr; }
+}
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 32px;
+}
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  text-align: center;
+}
+.stat-card .stat-value {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+.stat-card .stat-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* ============ LAYER STACK VIS ============ */
+.layer-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 200px;
+  margin: 0 auto;
+}
+.layer-block {
+  height: 12px;
+  border-radius: 4px;
+  transition: all 0.5s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.45rem;
+  color: rgba(255,255,255,0.7);
+}
+
+/* ============ PIPELINE VIS ============ */
+.pipeline-vis {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 24px auto;
+  max-width: 800px;
+  overflow-x: auto;
+}
+.pipeline-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.pipeline-row .stage-label {
+  width: 70px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.pipeline-cell {
+  width: 52px;
+  height: 28px;
+  border-radius: 4px;
+  margin: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  font-weight: 500;
+  transition: all 0.3s;
+}
+.pipeline-cell.bubble {
+  background: rgba(255,255,255,0.03);
+  border: 1px dashed rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.15);
+}
+.pipeline-cell.active-mb {
+  border: 1px solid;
+}
+
+/* ============ MATRIX VIS ============ */
+.matrix-vis {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin: 24px 0;
+}
+.matrix-grid {
+  display: grid;
+  gap: 2px;
+  transition: all 0.5s ease;
+}
+.matrix-cell {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 2px;
+  transition: all 0.5s ease;
+}
+
+/* ============ RING ATTENTION VIS ============ */
+.ring-vis {
+  position: relative;
+  width: 300px;
+  height: 300px;
+  margin: 32px auto;
+}
+.ring-gpu {
+  position: absolute;
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  border: 2px solid;
+  transition: all 0.3s;
+}
+.ring-arrow {
+  position: absolute;
+  width: 40px;
+  height: 2px;
+  transform-origin: left center;
+}
+
+/* ============ MOE VIS ============ */
+.moe-vis {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin: 24px auto;
+  max-width: 600px;
+}
+.moe-router {
+  background: var(--card);
+  border: 2px solid var(--amber);
+  border-radius: 10px;
+  padding: 12px 24px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--amber);
+  font-weight: 600;
+}
+.moe-experts-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+.moe-expert {
+  background: var(--card);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  transition: all 0.3s;
+}
+.moe-expert.active-expert {
+  border-width: 2px;
+  border-style: solid;
+}
+
+/* ============ TOGGLE / CONTROLS ============ */
+.controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 24px 0;
+}
+.toggle-btn {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.3s;
+}
+.toggle-btn:hover { border-color: rgba(0,212,106,0.3); color: #f2f2f2; }
+.toggle-btn.active {
+  border-color: var(--primary);
+  background: var(--primary-dim);
+  color: var(--primary);
+  box-shadow: 0 0 15px rgba(0,212,106,0.1);
+}
+
+/* ============ COMPARISON TABLE ============ */
+.comp-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 24px 0;
+  font-size: 0.85rem;
+}
+.comp-table th {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.comp-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  color: #e2e2e5;
+}
+.comp-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+/* ============ PROS CONS ============ */
+.pros-cons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 24px 0;
+}
+@media (max-width: 600px) { .pros-cons { grid-template-columns: 1fr; } }
+.pros-card, .cons-card {
+  border-radius: 12px;
+  padding: 20px;
+}
+.pros-card {
+  background: rgba(0,212,106,0.05);
+  border: 1px solid rgba(0,212,106,0.15);
+}
+.cons-card {
+  background: rgba(239,68,68,0.05);
+  border: 1px solid rgba(239,68,68,0.15);
+}
+.pros-card h4 { color: var(--primary); font-size: 0.8rem; font-family: var(--font-mono); margin-bottom: 12px; }
+.cons-card h4 { color: var(--red); font-size: 0.8rem; font-family: var(--font-mono); margin-bottom: 12px; }
+.pros-card li, .cons-card li {
+  font-size: 0.85rem;
+  color: #ccc;
+  margin-bottom: 6px;
+  list-style: none;
+  padding-left: 16px;
+  position: relative;
+}
+.pros-card li::before { content: '+'; position: absolute; left: 0; color: var(--primary); font-weight: 700; }
+.cons-card li::before { content: '-'; position: absolute; left: 0; color: var(--red); font-weight: 700; }
+
+/* ============ STAIRCASE VIS ============ */
+.staircase {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-width: 700px;
+  margin: 40px auto;
+}
+.stair-step {
+  display: flex;
+  align-items: stretch;
+  min-height: 70px;
+}
+.stair-problem {
+  flex: 1;
+  padding: 16px 20px;
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.15);
+  border-radius: 8px 0 0 8px;
+  display: flex;
+  align-items: center;
+  font-size: 0.85rem;
+  color: #e2e2e5;
+}
+.stair-arrow {
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 1.2rem;
+}
+.stair-solution {
+  flex: 1;
+  padding: 16px 20px;
+  background: rgba(0,212,106,0.06);
+  border: 1px solid rgba(0,212,106,0.15);
+  border-radius: 0 8px 8px 0;
+  display: flex;
+  align-items: center;
+  font-size: 0.85rem;
+  color: #e2e2e5;
+  font-weight: 600;
+}
+.stair-connector {
+  width: 2px;
+  height: 16px;
+  background: var(--border);
+  margin-left: 50%;
+}
+
+/* ============ FINAL CONFIG ============ */
+.config-card {
+  background: var(--card);
+  border-radius: 16px;
+  border: 2px solid var(--border);
+  padding: 32px;
+  transition: all 0.3s;
+}
+.config-card:hover {
+  border-color: rgba(0,212,106,0.4);
+  box-shadow: 0 0 30px rgba(0,212,106,0.1);
+}
+.config-card.recommended {
+  border-color: var(--primary);
+  box-shadow: 0 0 30px rgba(0,212,106,0.1);
+}
+.config-card .badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  margin-bottom: 16px;
+}
+.config-param {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 0.85rem;
+}
+.config-param .param-name { color: var(--muted); font-family: var(--font-mono); font-size: 0.8rem; }
+.config-param .param-value { font-weight: 600; font-family: var(--font-mono); }
+
+/* ============ ANIMATIONS ============ */
+.fade-in {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 10px rgba(0,212,106,0.1); }
+  50% { box-shadow: 0 0 25px rgba(0,212,106,0.25); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes flow-right {
+  0% { transform: translateX(-100%); opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateX(400%); opacity: 0; }
+}
+@keyframes ring-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.animate-pulse-glow { animation: pulse-glow 2s infinite; }
+.animate-float { animation: float 3s ease-in-out infinite; }
+
+/* ============ DIVIDER ============ */
+.section-divider {
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+  margin: 0;
+}
+
+/* ============ FLOW CONNECTOR ============ */
+.flow-connector {
+  text-align: center;
+  padding: 48px 0;
+  position: relative;
+}
+.flow-connector .line {
+  width: 2px;
+  height: 60px;
+  background: linear-gradient(to bottom, var(--border), var(--primary));
+  margin: 0 auto;
+}
+.flow-connector .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--primary);
+  margin: 0 auto;
+  box-shadow: 0 0 15px rgba(0,212,106,0.4);
+}
+
+/* ============ INTERNODE VIS ============ */
+.bandwidth-legend {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  margin: 16px 0;
+  flex-wrap: wrap;
+}
+.bw-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.bw-line-fast {
+  width: 32px;
+  height: 4px;
+  background: var(--primary);
+  border-radius: 2px;
+}
+.bw-line-slow {
+  width: 32px;
+  height: 2px;
+  background: var(--secondary);
+  border-radius: 2px;
+  opacity: 0.6;
+}
+
+/* ============ INTERACTIVE SLIDER ============ */
+.slider-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+}
+.slider-group label {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+  width: 80px;
+}
+.slider-group input[type="range"] {
+  flex: 1;
+  -webkit-appearance: none;
+  background: #262626;
+  height: 4px;
+  border-radius: 2px;
+  outline: none;
+}
+.slider-group input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(0,212,106,0.3);
+}
+.slider-group .slider-val {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--primary);
+  width: 30px;
+  text-align: right;
+}
+
+/* Two column layout */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  align-items: start;
+}
+@media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+
+.muted { color: var(--muted); }
+.small { font-size: 0.85rem; }
+.mono { font-family: var(--font-mono); }
+.mt-1 { margin-top: 8px; }
+.mt-2 { margin-top: 16px; }
+.mt-3 { margin-top: 24px; }
+.mt-4 { margin-top: 32px; }
+.mb-2 { margin-bottom: 16px; }
+.mb-3 { margin-bottom: 24px; }
+.text-center { text-align: center; }
+</style>
+</head>
+<body class="grid-bg">
+
+<!-- ============ NAV ============ -->
+<nav>
+  <div class="nav-inner">
+    <a href="#hero" class="logo">Vizz AI<span>.</span></a>
+    <div class="nav-links">
+      <a href="#hero" class="active" data-section="hero">Setup</a>
+      <a href="#tp" data-section="tp">TP+SP</a>
+      <a href="#mbs" data-section="mbs">mbs</a>
+      <a href="#pp" data-section="pp">PP</a>
+      <a href="#dp" data-section="dp">DP+ZeRO</a>
+      <a href="#batch" data-section="batch">Batch</a>
+      <a href="#cp" data-section="cp">CP+EP</a>
+      <a href="#config" data-section="config">Config</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ SECTION 0: HERO / SETUP ============ -->
+<section id="hero">
+  <div class="glow-orb glow-green" style="width:400px;height:400px;top:10%;left:-10%;"></div>
+  <div class="glow-orb glow-cyan" style="width:350px;height:350px;bottom:10%;right:-5%;"></div>
+  <div class="container">
+    <div class="hero-grid">
+      <div class="hero-content fade-in">
+        <span class="section-label label-green">The Mission</span>
+        <h1>Train an SLM for <span class="gradient-text">850 million</span> speakers.</h1>
+        <p class="small muted" style="max-width:500px; line-height:1.8;">
+          You're the founding engineer at <strong style="color:#f2f2f2;">Vizz AI</strong>. Your startup just raised Series A to build the first high-quality Small Language Model for the Vizz language &mdash; spoken by 850 million people but virtually absent from ChatGPT, Claude, and every other LLM.
+        </p>
+        <p class="small muted mt-2" style="max-width:500px; line-height:1.8;">
+          You've collected <strong style="color:#f2f2f2;">500 billion tokens</strong> from local publishers, radio transcripts, government records, and web scrapes. Your training data includes documents up to <strong style="color:#f2f2f2;">128K tokens</strong> long &mdash; legal proceedings, parliamentary debates, epic folklore.
+        </p>
+        <p class="small muted mt-2" style="max-width:500px; line-height:1.8;">
+          Your target: a <strong style="color:#f2f2f2;">7 billion parameter</strong> transformer. Your cluster is ready. Now you need to figure out <em>how to actually train this thing</em>.
+        </p>
+        <div class="hero-stats">
+          <div class="stat-card">
+            <div class="stat-value">7B</div>
+            <div class="stat-label">Parameters</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">64</div>
+            <div class="stat-label">H100 GPUs</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">128K</div>
+            <div class="stat-label">Max Seq Len</div>
+          </div>
+        </div>
+      </div>
+      <div class="hero-right fade-in" style="transition-delay:0.2s;">
+        <div class="card" style="padding:20px;">
+          <h3 style="font-size:0.9rem; margin-bottom:12px;">
+            <span class="mono muted" style="font-size:0.7rem; text-transform:uppercase; letter-spacing:0.1em;">Cluster Topology &mdash; 8 Nodes &times; 8 GPUs</span>
+          </h3>
+          <div class="bandwidth-legend mb-2">
+            <div class="bw-item"><div class="bw-line-fast"></div> NVLink 900 GB/s (intra-node)</div>
+            <div class="bw-item"><div class="bw-line-slow"></div> InfiniBand 50 GB/s (inter-node)</div>
+          </div>
+          <div id="hero-gpu-grid" class="nodes-grid" style="grid-template-columns: repeat(4, 1fr); gap: 12px;">
+            <!-- 8 nodes x 8 GPUs generated by JS -->
+          </div>
+        </div>
+        <div class="card" id="hero-memory-card" style="padding:20px;">
+          <h3 style="font-size:0.9rem; margin-bottom:4px;">
+            <span class="mono muted" style="font-size:0.7rem; text-transform:uppercase; letter-spacing:0.1em;">Single GPU Memory &mdash; 80 GB H100</span>
+          </h3>
+          <div class="memory-bar-container" style="border:none; padding:8px 0;">
+            <div class="memory-bar" id="hero-memory-bar" style="height:36px;">
+              <!-- filled by JS -->
+            </div>
+            <div class="overflow-indicator" id="hero-overflow"></div>
+            <div class="memory-legend" id="hero-memory-legend"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="problem-box fade-in" style="max-width:800px; margin-top:48px;">
+      <h4>The Problem</h4>
+      <p>
+        A 7B model in FP16 needs <strong>14 GB</strong> just for parameters. Adam optimizer states add another <strong>28 GB</strong>. Gradients need <strong>14 GB</strong>. And activations at 128K sequence length? That's <strong>~60+ GB</strong> per layer accumulated through the forward pass. <strong>Total: ~116+ GB.</strong> Your H100 has 80 GB. It doesn't fit. You need to distribute this across your 64 GPUs. But <em>how?</em>
+      </p>
+    </div>
+  </div>
+</section>
+
+<div class="flow-connector"><div class="line"></div><div class="dot"></div></div>
+
+<!-- ============ STEP 1: TENSOR PARALLELISM + SP ============ -->
+<section id="tp">
+  <div class="glow-orb glow-cyan" style="width:300px;height:300px;bottom:10%;right:5%;"></div>
+  <div class="container">
+    <div class="fade-in">
+      <span class="section-label label-violet">Step 1</span>
+      <h2>Tensor Parallelism <span class="muted" style="font-size:0.5em;">+ Sequence Parallelism</span></h2>
+      <p class="small muted" style="max-width:650px;">Start from the fastest link. NVLink is 900 GB/s intra-node. Split weight matrices of each layer across 8 GPUs within a node. Each GPU holds 1/8th of each layer.</p>
+    </div>
+
+    <div class="solution-box fade-in">
+      <h4>The Idea</h4>
+      <p>Take each layer's weight matrix and <strong>slice it column-wise</strong> (or row-wise) across 8 GPUs within a node. Each GPU does 1/8th of the matrix multiply, then they combine results with <strong>AllReduce</strong>. Since AllReduce is on the critical compute path, this requires <strong>fast NVLink</strong> &mdash; hence it's kept intra-node. <strong>Sequence Parallelism</strong> (SP) complements TP by splitting activations along the sequence dimension for operations outside TP regions (LayerNorm, Dropout).</p>
+    </div>
+
+    <!-- Weight Matrix Slicing -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">Weight Matrix Slicing</h3>
+      <p class="small muted mb-2">A single layer's weight matrix, split across 8 GPUs in one node:</p>
+      <div class="card" style="padding:24px;">
+        <div class="matrix-vis" id="tp-matrix-vis">
+          <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;justify-content:center;">
+            <div>
+              <p class="mono small muted text-center mb-2">Full Weight Matrix (4096 &times; 4096)</p>
+              <div id="tp-full-matrix" style="display:grid; grid-template-columns:repeat(8,1fr); gap:2px; width:200px; height:200px;"></div>
+            </div>
+            <div style="font-size:2rem;color:var(--muted);">&rarr;</div>
+            <div>
+              <p class="mono small muted text-center mb-2">Split across 8 GPUs (column-wise)</p>
+              <div style="display:flex;gap:4px;" id="tp-split-matrices"></div>
+            </div>
+          </div>
+          <div class="bandwidth-legend mt-2">
+            <div class="bw-item"><div class="bw-line-fast"></div> AllReduce over NVLink after each layer</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- One Node with 8 TP GPUs -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">One Node: 8 GPUs Sharing Every Layer</h3>
+      <p class="small muted mb-2">Each GPU within a node holds 1/8th of every layer's weight matrix. They all work on the same layer together.</p>
+      <div class="card" style="padding:20px;">
+        <div id="tp-node-vis" style="display:flex;flex-direction:column;gap:16px;align-items:center;"></div>
+      </div>
+    </div>
+
+    <!-- SP Explanation -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">Sequence Parallelism (SP)</h3>
+      <div class="card" style="padding:20px;">
+        <p class="small" style="color:#e2e2e5;line-height:1.7;">In TP regions (Attention, MLP), each GPU computes a <strong>slice of the hidden dimension</strong>. But outside TP regions &mdash; LayerNorm, Dropout &mdash; all GPUs would need the full activations. <strong>SP fixes this</strong> by splitting activations along the sequence dimension in non-TP regions.</p>
+        <div class="card-grid card-grid-2 mt-2">
+          <div style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.25);border-radius:8px;padding:16px;">
+            <div class="mono small" style="color:#a78bfa;font-weight:600;">TP Regions (Attention, MLP)</div>
+            <div class="mono" style="font-size:0.75rem;color:var(--muted);margin-top:6px;">Split along <strong style="color:#a78bfa;">hidden dimension</strong></div>
+            <div class="mono" style="font-size:0.7rem;color:var(--muted);margin-top:4px;">Each GPU: full seq, 1/8 hidden</div>
+          </div>
+          <div style="background:rgba(0,200,230,0.08);border:1px solid rgba(0,200,230,0.25);border-radius:8px;padding:16px;">
+            <div class="mono small" style="color:#00c8e6;font-weight:600;">SP Regions (LayerNorm, Dropout)</div>
+            <div class="mono" style="font-size:0.75rem;color:var(--muted);margin-top:6px;">Split along <strong style="color:#00c8e6;">sequence dimension</strong></div>
+            <div class="mono" style="font-size:0.7rem;color:var(--muted);margin-top:4px;">Each GPU: 1/8 seq, full hidden</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bandwidth Comparison -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">Why TP Must Stay Intra-Node</h3>
+      <div class="two-col">
+        <div class="card" style="padding:16px;">
+          <table class="comp-table">
+            <tr><th>Link Type</th><th>Bandwidth</th><th>Latency</th></tr>
+            <tr><td><strong style="color:var(--primary);">NVLink (intra-node)</strong></td><td style="color:var(--primary);font-weight:700;">900 GB/s</td><td>~1 &mu;s</td></tr>
+            <tr><td><strong style="color:var(--secondary);">InfiniBand (inter-node)</strong></td><td style="color:var(--secondary);font-weight:700;">50 GB/s</td><td>~5 &mu;s</td></tr>
+            <tr><td>Ratio</td><td colspan="2"><strong style="color:var(--amber);">18&times; faster intra-node</strong></td></tr>
+          </table>
+        </div>
+        <div>
+          <p class="small" style="color:#e2e2e5;line-height:1.7;">TP AllReduce is on the <strong>critical compute path</strong> &mdash; the GPU <em>blocks</em> waiting for the AllReduce to complete before it can proceed to the next operation. With inter-node links, every single layer computation would stall. This is why TP is <strong>always</strong> kept within a node.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vizz AI Decision -->
+    <div class="solution-box fade-in" style="margin-top:32px;">
+      <h4>Vizz AI Decision</h4>
+      <p><strong>TP = 8</strong> (saturate the node). Each GPU holds 1/8th of every layer's weight matrix. All 8 GPUs within a node communicate via NVLink AllReduce. With 32 attention heads, each GPU handles 4 heads.</p>
+    </div>
+
+    <!-- Problem Revealed -->
+    <div class="problem-box fade-in">
+      <h4>Problem That Remains</h4>
+      <p>
+        TP=8 is set. Each GPU holds 1/8th of weights per layer. But we still have <strong>all 32 layers</strong>, and at <strong>128K sequence length</strong>, how many sequences can we even process at once? How much memory do activations take? Weight matrices are shape [H, H] &mdash; independent of batch size. But activation tensors are shape [<strong style="color:var(--red);">b</strong>, S, H] &mdash; batch size is in every tensor. <em>We need to figure out the maximum micro-batch size before anything else.</em>
+      </p>
+    </div>
+  </div>
+</section>
+
+<div class="flow-connector"><div class="line"></div><div class="dot"></div></div>
+
+<!-- ============ STEP 2: FIND MAX MICRO-BATCH SIZE ============ -->
+<section id="mbs">
+  <div class="glow-orb glow-green" style="width:350px;height:350px;top:15%;left:-5%;"></div>
+  <div class="container">
+    <div class="fade-in">
+      <span class="section-label label-cyan">Step 2</span>
+      <h2>Find Max Micro-Batch Size</h2>
+      <p class="small muted" style="max-width:650px;">GPU memory splits into 4 buckets. Only activations scale with batch size. We need to find the largest micro-batch size (mbs) that fits in memory.</p>
+    </div>
+
+    <!-- THE 4 MEMORY BUCKETS -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">The 4 Memory Buckets</h3>
+      <p class="small muted mb-2">Weight matrices have shapes determined by hidden size H and layers L &mdash; independent of how many sequences you process. Whether mbs = 1 or 100, the weight matrix W remains shape [H, H]. But activation tensors include the batch dimension: shape [<strong style="color:var(--red);">b</strong>, S, H]. Activation memory <strong>grows linearly with b</strong>.</p>
+      <div class="card-grid" style="grid-template-columns:repeat(4,1fr);gap:8px;">
+        <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:8px;padding:16px;text-align:center;">
+          <div class="mono" style="font-size:0.7rem;color:#60a5fa;font-weight:600;">Parameters</div>
+          <div class="mono" style="font-size:1.1rem;color:#60a5fa;font-weight:700;">4N bytes</div>
+          <div class="mono" style="font-size:0.6rem;color:var(--primary);margin-top:4px;">FIXED</div>
+          <div class="mono" style="font-size:0.55rem;color:var(--muted);margin-top:6px;">Shape: [H, H]</div>
+        </div>
+        <div style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.25);border-radius:8px;padding:16px;text-align:center;">
+          <div class="mono" style="font-size:0.7rem;color:#a78bfa;font-weight:600;">Gradients</div>
+          <div class="mono" style="font-size:1.1rem;color:#a78bfa;font-weight:700;">4N bytes</div>
+          <div class="mono" style="font-size:0.6rem;color:var(--primary);margin-top:4px;">FIXED</div>
+          <div class="mono" style="font-size:0.55rem;color:var(--muted);margin-top:6px;">Same shape as params</div>
+        </div>
+        <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:16px;text-align:center;">
+          <div class="mono" style="font-size:0.7rem;color:#fbbf24;font-weight:600;">Optimizer</div>
+          <div class="mono" style="font-size:1.1rem;color:#fbbf24;font-weight:700;">8N bytes</div>
+          <div class="mono" style="font-size:0.6rem;color:var(--primary);margin-top:4px;">FIXED</div>
+          <div class="mono" style="font-size:0.55rem;color:var(--muted);margin-top:6px;">Adam: 2 states per param</div>
+        </div>
+        <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:8px;padding:16px;text-align:center;">
+          <div class="mono" style="font-size:0.7rem;color:#f87171;font-weight:600;">Activations</div>
+          <div class="mono" style="font-size:1rem;color:#f87171;font-weight:700;">f(b, S, H, L)</div>
+          <div class="mono" style="font-size:0.6rem;color:var(--red);margin-top:4px;">SCALES WITH b</div>
+          <div class="mono" style="font-size:0.55rem;color:var(--muted);margin-top:6px;">Shape: [<strong style="color:var(--red);">b</strong>, S, H]</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Key Insight -->
+    <div class="pause-box fade-in">
+      <h4>Key Insight</h4>
+      <p>Weight matrices have shape [H, H] &mdash; <strong>independent of batch size</strong>. Activation tensors have shape [b, S, H] &mdash; <strong>b is in every tensor</strong>. The fixed costs (params + grads + optimizer) total 16N bytes. Everything else scales with how many sequences you try to fit.</p>
+    </div>
+
+    <!-- FORMULA -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">The Memory Formula</h3>
+      <div class="card" style="padding:24px;">
+        <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:16px 20px;">
+          <div class="mono small muted mb-2">Total GPU memory needed:</div>
+          <div class="mono" style="font-size:0.95rem;color:#f2f2f2;text-align:center;padding:8px 0;">
+            M<sub>total</sub> = <span style="color:var(--primary);">16N</span> + <span style="color:var(--red);">L &times; (34 &times; S &times; b &times; H + 5 &times; n<sub>heads</sub> &times; S&sup2; &times; b) &times; 2</span>
+          </div>
+          <div style="display:flex;gap:16px;justify-content:center;margin-top:8px;flex-wrap:wrap;">
+            <span class="mono" style="font-size:0.65rem;color:var(--primary);">Fixed cost: 16N bytes (params + grads + optimizer)</span>
+            <span class="mono" style="font-size:0.65rem;color:var(--red);">Activation cost: scales with b (micro-batch size)</span>
+          </div>
+        </div>
+
+        <!-- SOLVING FOR b_max -->
+        <div style="background:rgba(0,200,230,0.05);border:1px solid rgba(0,200,230,0.15);border-radius:10px;padding:16px 20px;margin-top:12px;">
+          <div class="mono small" style="color:var(--secondary);margin-bottom:8px;font-weight:600;">Solving for maximum batch size:</div>
+          <div class="mono" style="font-size:0.9rem;color:#f2f2f2;text-align:center;padding:8px 0;">
+            b<sub>max</sub> = &lfloor; (M<sub>GPU</sub> &minus; 16N) / (L &times; (34&times;S&times;H + 5&times;n&times;S&sup2;) &times; 2) &rfloor;
+          </div>
+          <p class="mono" style="font-size:0.7rem;color:var(--muted);text-align:center;margin-top:6px;">Take your GPU's total memory, subtract the fixed cost, divide by per-sequence activation cost.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- KEY INSIGHT: S^2 -->
+    <div class="problem-box fade-in" style="border-color:rgba(239,68,68,0.4);">
+      <h4>Key Insight: The S&sup2; Term</h4>
+      <p>The activation formula has an <strong>S&sup2; term from attention</strong> (the QK<sup>T</sup> score matrix). <strong>Doubling sequence length MORE than halves your max batch size.</strong> At 128K, this quadratic term dominates everything. Even mbs=1 might be tight! This is why long-context training is fundamentally harder than short-context training.</p>
+    </div>
+
+    <!-- BINARY SEARCH VISUALIZATION -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">The Empirical Approach: Binary Search</h3>
+      <p class="small muted mb-2">In practice, the formula gives a starting estimate. Then you find the exact max by trial:</p>
+      <div class="card" style="padding:20px;">
+        <div style="display:flex;gap:4px;align-items:end;flex-wrap:wrap;justify-content:center;" id="mbs-binary-search">
+          <!-- Generated by JS -->
+        </div>
+        <p class="mono" style="font-size:0.65rem;color:var(--muted);margin-top:12px;text-align:center;">Start with b=1, then double: 1 &rarr; 2 &rarr; 4 &rarr; 8 ... until OOM. Last successful = your b<sub>max</sub>.</p>
+      </div>
+    </div>
+
+    <!-- MEMORY REDUCTION STRATEGIES -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">If mbs=1 Still Doesn't Fit?</h3>
+      <div class="card-grid card-grid-3">
+        <div class="card" style="padding:16px;">
+          <div class="mono small" style="color:var(--primary);font-weight:600;">Activation Checkpointing</div>
+          <div class="mono" style="font-size:0.75rem;color:var(--muted);margin-top:6px;">Recompute activations in backward pass instead of storing them. <strong style="color:var(--primary);">~90% activation reduction</strong>. Costs ~33% more compute.</div>
+        </div>
+        <div class="card" style="padding:16px;">
+          <div class="mono small" style="color:var(--secondary);font-weight:600;">Mixed Precision (bf16)</div>
+          <div class="mono" style="font-size:0.75rem;color:var(--muted);margin-top:6px;"><strong style="color:var(--secondary);">Halves activation memory</strong> (2 bytes vs 4). Fixed costs remain 16N (fp32 master weights needed for optimizer).</div>
+        </div>
+        <div class="card" style="padding:16px;">
+          <div class="mono small" style="color:var(--amber);font-weight:600;">Add PP (Next Step)</div>
+          <div class="mono" style="font-size:0.75rem;color:var(--muted);margin-top:6px;">Fewer layers per GPU = less activation memory. Each GPU <strong style="color:var(--amber);">only stores activations for its own layers</strong>.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vizz AI Decision -->
+    <div class="solution-box fade-in" style="margin-top:32px;">
+      <h4>Vizz AI Decision</h4>
+      <p>With TP=8, each GPU holds 1/8th of each layer's weights. At 128K sequence length, the S&sup2; attention term is massive. Even with bf16, mbs=1 is tight for 32 layers. We'll need <strong>activation checkpointing</strong> and likely <strong>PP</strong> to split layers. Once those are set: <strong>mbs = 1</strong> (possibly mbs = 2 with aggressive checkpointing).</p>
+    </div>
+
+    <!-- Problem Revealed -->
+    <div class="problem-box fade-in">
+      <h4>Problem That Remains</h4>
+      <p>
+        Even with activation checkpointing, <strong>32 layers of activations at 128K</strong> is a lot for one GPU (set). Each GPU in our TP group still needs to store activations for all 32 layers during the forward pass. Can we <strong>reduce the number of layers per GPU</strong>? If we split layers across different nodes, each node only needs to store activations for its assigned layers.
+      </p>
+    </div>
+  </div>
+</section>
+
+<div class="flow-connector"><div class="line"></div><div class="dot"></div></div>
+
+<!-- ============ STEP 3: PIPELINE PARALLELISM ============ -->
+<section id="pp">
+  <div class="glow-orb glow-green" style="width:350px;height:350px;top:20%;left:-5%;"></div>
+  <div class="container">
+    <div class="fade-in">
+      <span class="section-label label-amber">Step 3</span>
+      <h2>Pipeline Parallelism</h2>
+      <p class="small muted" style="max-width:650px;">Split layers across nodes. Instead of all 32 layers on one GPU set, split into stages. Each stage = a group of layers on a different node. Only activations communicated at boundaries.</p>
+    </div>
+
+    <div class="solution-box fade-in">
+      <h4>The Idea</h4>
+      <p>Divide the 32 transformer layers into <strong>pipeline stages</strong>. Each stage = a group of layers assigned to a different node. Input micro-batches flow through the pipeline like an assembly line. Each node only stores and computes activations for <strong>its own layers</strong>. Communication between stages: just the activation tensor at the boundary &mdash; far less than all-gathering full parameters.</p>
+    </div>
+
+    <!-- Pipeline Schedule -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">Pipeline Schedule Visualization</h3>
+      <p class="small muted mb-2">Watch how micro-batches flow through pipeline stages. Gray cells = bubble (idle time). More micro-batches shrink the bubble.</p>
+      <div class="controls" id="pp-mb-controls">
+        <button class="toggle-btn active" onclick="setPPMicrobatches(4)">4 micro-batches</button>
+        <button class="toggle-btn" onclick="setPPMicrobatches(8)">8 micro-batches</button>
+        <button class="toggle-btn" onclick="setPPMicrobatches(16)">16 micro-batches</button>
+      </div>
+      <div class="card mt-2" style="overflow-x:auto;padding:20px;">
+        <div id="pp-schedule" class="pipeline-vis"></div>
+        <div style="display:flex;justify-content:space-between;margin-top:12px;">
+          <span class="mono small muted">Bubble overhead: <strong id="pp-bubble-pct" style="color:var(--red);">43%</strong></span>
+          <span class="mono small muted">More micro-batches = smaller bubble</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Single Pipeline Detail (NO DP yet — that's the next section) -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">One Pipeline: How Layers Split Across Nodes</h3>
+      <p class="small muted mb-2">With PP=2, one pipeline uses 2 nodes. Each node runs 8 TP GPUs on its layers. Activations flow from Stage 0 to Stage 1.</p>
+      <div class="card" style="padding:20px;">
+        <div id="pp-single-pipeline-vis" style="display:flex;flex-direction:column;gap:16px;align-items:center;"></div>
+        <div style="display:flex;gap:24px;justify-content:center;margin-top:16px;flex-wrap:wrap;">
+          <div class="bw-item"><div style="width:16px;height:16px;border-radius:3px;background:rgba(59,130,246,0.5);"></div><span class="mono" style="font-size:0.7rem;color:var(--muted);">Stage 0 (Layers 0-15)</span></div>
+          <div class="bw-item"><div style="width:16px;height:16px;border-radius:3px;background:rgba(245,158,11,0.5);"></div><span class="mono" style="font-size:0.7rem;color:var(--muted);">Stage 1 (Layers 16-31)</span></div>
+        </div>
+        <div class="bandwidth-legend mt-2">
+          <div class="bw-item"><div class="bw-line-fast"></div> TP AllReduce (intra-node, NVLink)</div>
+          <div class="bw-item"><div class="bw-line-slow"></div> PP activations (inter-node, InfiniBand)</div>
+        </div>
+        <p class="mono small muted mt-2 text-center">This one pipeline uses 2 nodes = 16 GPUs. We have 64 GPUs total. What about the other 48?</p>
+      </div>
+    </div>
+
+    <!-- Minimize PP Rule -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">Rule: Minimize PP Stages</h3>
+      <div class="card" style="padding:20px;">
+        <p class="small" style="color:#e2e2e5;line-height:1.7;"><strong>Fewer stages = less bubble waste.</strong> Only add PP stages until the model fits. The pipeline bubble is the time GPUs sit idle waiting for micro-batches to flow through.</p>
+        <table class="comp-table mt-2">
+          <tr><th>PP Stages</th><th>Layers / Stage</th><th>Nodes / Pipeline</th><th>Bubble (4 mbs)</th></tr>
+          <tr><td><strong style="color:var(--primary);">PP=1</strong></td><td>32</td><td>1 node</td><td style="color:var(--primary);">0% (no bubble)</td></tr>
+          <tr><td><strong style="color:var(--amber);">PP=2</strong></td><td>16</td><td>2 nodes</td><td style="color:var(--amber);">~25%</td></tr>
+          <tr><td><strong style="color:var(--red);">PP=4</strong></td><td>8</td><td>4 nodes</td><td style="color:var(--red);">~43%</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Vizz AI Decision -->
+    <div class="solution-box fade-in" style="margin-top:32px;">
+      <h4>Vizz AI Decision</h4>
+      <p>With TP=8 and activation checkpointing, try <strong>PP=2</strong> first (16 layers per stage). This halves activation memory per GPU-set and uses 2 nodes per pipeline. If it fits &mdash; stop. Don't go to PP=4 unless necessary. <strong>PP = 2.</strong></p>
+    </div>
+
+    <!-- Problem Revealed -->
+    <div class="problem-box fade-in">
+      <h4>Problem That Remains</h4>
+      <p>
+        TP=8, PP=2 uses <strong>16 GPUs per pipeline</strong>. We have 64 GPUs. What about the other 48? They need something to do. <em>This is where Data Parallelism comes in &mdash; not as a choice, but as what remains after TP and PP are set.</em>
+      </p>
+    </div>
+  </div>
+</section>
+
+<div class="flow-connector"><div class="line"></div><div class="dot"></div></div>
+
+<!-- ============ STEP 4: DATA PARALLELISM + ZeRO ============ -->
+<section id="dp">
+  <div class="glow-orb glow-cyan" style="width:300px;height:300px;top:5%;right:10%;"></div>
+  <div class="container">
+    <div class="fade-in">
+      <span class="section-label label-blue">Step 4</span>
+      <h2>Data Parallelism <span class="muted" style="font-size:0.5em;">+ ZeRO</span></h2>
+      <p class="small muted" style="max-width:650px;">DP is not a choice &mdash; it's the remaining GPUs. DP = Total / (TP &times; PP). Each replica processes different data, then gradients are synchronized via AllReduce.</p>
+    </div>
+
+    <div class="solution-box fade-in">
+      <h4>The Idea</h4>
+      <p>After TP and PP are set, the remaining GPUs form DP replicas. Each replica is an independent copy of the full pipeline. They process <strong>different data</strong> in parallel. After each step, gradients are averaged across all DP replicas via <strong>AllReduce</strong>.</p>
+    </div>
+
+    <!-- DP Formula -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">Computing DP</h3>
+      <div class="card" style="padding:24px;">
+        <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:20px;text-align:center;">
+          <div class="mono" style="font-size:1.1rem;color:#f2f2f2;">
+            DP = Total GPUs / (TP &times; PP) = <span style="color:var(--primary);">64</span> / (<span style="color:var(--violet);">8</span> &times; <span style="color:var(--amber);">2</span>) = <strong style="color:var(--blue);font-size:1.4rem;">4</strong>
+          </div>
+        </div>
+        <p class="small muted mt-2 text-center">4 DP replicas. Each processes a different micro-batch. All replicas synchronize gradients via AllReduce after every step.</p>
+      </div>
+    </div>
+
+    <!-- ZeRO -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">ZeRO: Shard Across DP Replicas</h3>
+      <p class="small muted mb-2">ZeRO optimization shards memory across the DP replicas. Start with the cheapest level and only go deeper if you're still memory-desperate.</p>
+      <div class="two-col">
+        <div>
+          <div class="controls" id="zero-controls">
+            <button class="toggle-btn active" onclick="setZero(0)">No ZeRO</button>
+            <button class="toggle-btn" onclick="setZero(1)">ZeRO-1</button>
+            <button class="toggle-btn" onclick="setZero(2)">ZeRO-2</button>
+            <button class="toggle-btn" onclick="setZero(3)">ZeRO-3</button>
+          </div>
+          <div class="memory-bar-container mt-2">
+            <div class="memory-bar-label">
+              <span>Per-GPU Memory (with TP=8, PP=2)</span>
+              <span id="dp-mem-total">~11.3 GB</span>
+            </div>
+            <div class="memory-bar" id="dp-memory-bar" style="height:36px;"></div>
+            <div class="overflow-indicator" id="dp-overflow"></div>
+            <div class="memory-legend" id="dp-memory-legend"></div>
+          </div>
+          <p class="mono small muted mt-2" id="dp-zero-desc">
+            Each GPU: params (0.88 GB) + optimizer (1.75 GB) + gradients (0.88 GB) + activations (~7.5 GB)
+          </p>
+        </div>
+        <div>
+          <table class="comp-table">
+            <tr><th>Level</th><th>Shards</th><th>Overhead</th><th>When</th></tr>
+            <tr>
+              <td><strong style="color:var(--primary);">ZeRO-1</strong></td>
+              <td>Optimizer states</td>
+              <td style="color:var(--primary);">Almost free</td>
+              <td>Always</td>
+            </tr>
+            <tr>
+              <td><strong style="color:var(--amber);">ZeRO-2</strong></td>
+              <td>+ Gradients</td>
+              <td style="color:var(--amber);">Minimal</td>
+              <td>Good default</td>
+            </tr>
+            <tr>
+              <td><strong style="color:var(--red);">ZeRO-3</strong></td>
+              <td>+ Parameters</td>
+              <td style="color:var(--red);">Heavy</td>
+              <td>Last resort</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full Cluster View -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">Full Cluster &mdash; 4 DP Replicas</h3>
+      <p class="small muted mb-2">4 DP replicas, each with 2 PP stages, each stage = 1 node with 8 TP GPUs.</p>
+      <div class="card" style="padding:20px;">
+        <div id="dp-gpu-grid"></div>
+        <p class="mono small muted mt-2 text-center">4 DP replicas &times; 2 PP stages &times; 8 TP GPUs = 64 GPUs total</p>
+      </div>
+    </div>
+
+    <!-- Vizz AI Decision -->
+    <div class="solution-box fade-in" style="margin-top:32px;">
+      <h4>Vizz AI Decision</h4>
+      <p><strong style="color:var(--blue);">DP = 4</strong>, <strong style="color:var(--primary);">ZeRO-1</strong> (free optimizer sharding). With TP=8 and PP=2, memory is already comfortable. No need for ZeRO-2 or ZeRO-3.</p>
+    </div>
+
+    <!-- Problem Revealed -->
+    <div class="problem-box fade-in">
+      <h4>Problem That Remains</h4>
+      <p>
+        We have 4 replicas, each processes mbs sequences per step. Global batch = mbs &times; 4. With mbs=1, that's only <strong>4 sequences per step</strong> &mdash; just 4 &times; 128K = 512K tokens. Our target might be <strong>4M tokens per step</strong> for stable training. <em>How do we hit the target batch size without needing more GPUs?</em>
+      </p>
+    </div>
+  </div>
+</section>
+
+<div class="flow-connector"><div class="line"></div><div class="dot"></div></div>
+
+<!-- ============ STEP 5: HIT TARGET BATCH SIZE ============ -->
+<section id="batch">
+  <div class="glow-orb glow-green" style="width:300px;height:300px;top:10%;left:5%;"></div>
+  <div class="container">
+    <div class="fade-in">
+      <span class="section-label label-pink">Step 5</span>
+      <h2>Hit the Target Batch Size</h2>
+      <p class="small muted" style="max-width:650px;">Use gradient accumulation to bridge the gap between what fits in memory and what training requires.</p>
+    </div>
+
+    <div class="solution-box fade-in">
+      <h4>The Idea</h4>
+      <p><strong>Gradient accumulation</strong> lets you simulate a larger batch by accumulating gradients over multiple forward-backward passes before updating weights. Each pass processes mbs sequences, and you accumulate for grad_acc steps before doing an optimizer step.</p>
+    </div>
+
+    <!-- Formula -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">The Batch Size Formula</h3>
+      <div class="card" style="padding:24px;">
+        <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:20px;text-align:center;">
+          <div class="mono" style="font-size:1.1rem;color:#f2f2f2;">
+            Global Batch = <span style="color:var(--red);">mbs</span> &times; <span style="color:var(--blue);">DP</span> &times; <span style="color:var(--pink);">grad_acc_steps</span>
+          </div>
+        </div>
+        <div class="card-grid card-grid-3 mt-3">
+          <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:8px;padding:16px;text-align:center;">
+            <div class="mono" style="font-size:0.7rem;color:#f87171;font-weight:600;">mbs</div>
+            <div class="mono" style="font-size:1.2rem;color:#f87171;font-weight:700;">1</div>
+            <div class="mono" style="font-size:0.55rem;color:var(--muted);margin-top:4px;">Sequences per GPU per pass</div>
+          </div>
+          <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:8px;padding:16px;text-align:center;">
+            <div class="mono" style="font-size:0.7rem;color:#60a5fa;font-weight:600;">DP</div>
+            <div class="mono" style="font-size:1.2rem;color:#60a5fa;font-weight:700;">4</div>
+            <div class="mono" style="font-size:0.55rem;color:var(--muted);margin-top:4px;">Parallel replicas</div>
+          </div>
+          <div style="background:rgba(236,72,153,0.08);border:1px solid rgba(236,72,153,0.25);border-radius:8px;padding:16px;text-align:center;">
+            <div class="mono" style="font-size:0.7rem;color:#f472b6;font-weight:600;">grad_acc</div>
+            <div class="mono" style="font-size:1.2rem;color:#f472b6;font-weight:700;">8</div>
+            <div class="mono" style="font-size:0.55rem;color:var(--muted);margin-top:4px;">Accumulation steps</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Example -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;">Gradient Accumulation Explained</h3>
+      <div class="card" style="padding:20px;">
+        <p class="small" style="color:#e2e2e5;line-height:1.7;">Instead of updating weights after every forward-backward pass, you <strong>accumulate gradients</strong> over multiple passes. Only after grad_acc passes do you average the accumulated gradients and take an optimizer step.</p>
+        <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:16px;margin-top:16px;">
+          <div class="mono small muted mb-2">Vizz AI example:</div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div class="mono small" style="color:#e2e2e5;">Target: <strong style="color:var(--primary);">4M tokens</strong> per optimizer step</div>
+            <div class="mono small" style="color:#e2e2e5;">Per pass: mbs(1) &times; DP(4) = 4 sequences &times; 128K = <strong>512K tokens</strong></div>
+            <div class="mono small" style="color:#e2e2e5;">Need: 4M / 512K = <strong style="color:var(--pink);">8 accumulation steps</strong></div>
+            <div class="mono small" style="color:#e2e2e5;">Result: 1 &times; 4 &times; 8 &times; 128K = <strong style="color:var(--primary);">4,194,304 tokens per step</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vizz AI Decision -->
+    <div class="solution-box fade-in" style="margin-top:32px;">
+      <h4>Vizz AI Decision</h4>
+      <p><strong style="color:var(--pink);">grad_acc = 8</strong>. Each optimizer step processes 4M tokens. This gives us stable training dynamics without needing more GPUs or larger micro-batches.</p>
+    </div>
+
+    <!-- Problem Revealed -->
+    <div class="problem-box fade-in">
+      <h4>Problem That Remains</h4>
+      <p>
+        Training works! But at 128K sequence length, each attention head computes QK<sup>T</sup> = <strong>128K &times; 128K = 16 billion elements</strong>. That's <strong>~32 GB in FP16</strong> for just one head's attention scores. Even with TP splitting across heads, each head still attends to the <strong>full 128K sequence</strong>. TP splits across heads, <em>not across the sequence</em>. <em>We need to split the sequence itself.</em>
+      </p>
+    </div>
+  </div>
+</section>
+
+<div class="flow-connector"><div class="line"></div><div class="dot"></div></div>
+
+<!-- ============ STEPS 6-7: CP + EP ============ -->
+<section id="cp">
+  <div class="glow-orb glow-cyan" style="width:350px;height:350px;top:10%;right:-5%;"></div>
+  <div class="container">
+    <div class="fade-in">
+      <span class="section-label label-pink">Steps 6-7</span>
+      <h2>Context Parallelism <span class="muted" style="font-size:0.5em;">+ Expert Parallelism</span></h2>
+      <p class="small muted" style="max-width:650px;">CP splits the long sequence across GPUs using Ring Attention. EP distributes MoE experts. These are conditional &mdash; only needed for specific use cases.</p>
+    </div>
+
+    <!-- CONTEXT PARALLELISM -->
+    <div class="fade-in mt-3">
+      <span class="section-label label-pink" style="font-size:0.6rem;">Step 6: Context Parallelism</span>
+      <h3>Split the Sequence with Ring Attention</h3>
+    </div>
+
+    <div class="solution-box fade-in">
+      <h4>The Idea</h4>
+      <p>Divide the 128K token sequence into <strong>8 chunks of 16K tokens each</strong>, one per GPU. For MLP and LayerNorm, each chunk processes independently (no communication). For attention, we use <strong>Ring Attention</strong>: KV blocks circulate around a ring of GPUs so every chunk can attend to every other chunk without any GPU holding the full 128K &times; 128K matrix.</p>
+    </div>
+
+    <div class="two-col mt-3 fade-in">
+      <div>
+        <h3 style="font-size:1rem;">Sequence Splitting</h3>
+        <div class="card" style="padding:20px;">
+          <p class="mono small muted mb-2">128K token sequence &rarr; 8 chunks of 16K</p>
+          <div id="cp-seq-vis" style="display:flex; flex-direction:column; gap:4px;"></div>
+          <div style="background:rgba(0,212,106,0.06);border:1px solid rgba(0,212,106,0.15);border-radius:8px;padding:12px;margin-top:12px;">
+            <p class="mono small" style="color:var(--primary);">Attention per GPU: 16K &times; 16K = <strong>256M elements</strong></p>
+            <p class="mono small" style="color:var(--muted);">vs full: 128K &times; 128K = 16B elements</p>
+            <p class="mono small" style="color:var(--primary);font-weight:600;">That's a 32&times; reduction per head!</p>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h3 style="font-size:1rem;">Ring Attention</h3>
+        <div class="card" style="padding:20px;">
+          <div class="ring-vis" id="ring-attention-vis">
+            <!-- Generated by JS -->
+          </div>
+          <p class="mono small muted text-center">KV blocks circulate around the ring.<br>Each step: compute attention on local Q with received KV, then pass KV to next GPU.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-divider" style="margin:48px 0;"></div>
+
+    <!-- EXPERT PARALLELISM -->
+    <div class="fade-in">
+      <span class="section-label label-amber" style="font-size:0.6rem;">Step 7: Expert Parallelism</span>
+      <h3>Scale Capacity with Mixture of Experts</h3>
+    </div>
+
+    <div class="solution-box fade-in">
+      <h4>A Different Architecture Decision</h4>
+      <p>What if instead of a 7B dense model, Vizz AI switches to a <strong>Mixture of Experts</strong> architecture? The model has 20B+ total parameters, but each token only activates 2 experts (~2B params). EP distributes experts across GPUs. Tokens are <strong>routed</strong> to their assigned expert GPUs via <strong>all-to-all</strong> communication.</p>
+    </div>
+
+    <div class="fade-in mt-3">
+      <div class="card" style="padding:24px;">
+        <h3 style="font-size:1rem; margin-bottom:16px;">Dense vs MoE Architecture</h3>
+        <div class="controls" id="moe-controls">
+          <button class="toggle-btn active" onclick="setArchitecture('dense')">Dense (7B)</button>
+          <button class="toggle-btn" onclick="setArchitecture('moe')">MoE (20B total, 2B active)</button>
+        </div>
+        <div id="moe-vis-container" class="mt-3">
+          <div id="dense-vis" style="text-align:center;">
+            <p class="muted small mb-2">Every token passes through all parameters</p>
+            <div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;">
+              <div style="background:var(--card);border:2px solid var(--blue);border-radius:10px;padding:16px 24px;">
+                <div class="mono small" style="color:var(--blue);">Attention</div>
+                <div class="mono" style="font-size:0.7rem;color:var(--muted);">All heads</div>
+              </div>
+              <div style="font-size:1.5rem;color:var(--muted);display:flex;align-items:center;">&rarr;</div>
+              <div style="background:var(--card);border:2px solid var(--primary);border-radius:10px;padding:16px 24px;">
+                <div class="mono small" style="color:var(--primary);">MLP</div>
+                <div class="mono" style="font-size:0.7rem;color:var(--muted);">Full 7B</div>
+              </div>
+            </div>
+          </div>
+          <div id="moe-vis" style="display:none;">
+            <p class="muted small mb-2 text-center">Each token routed to Top-2 experts out of 8</p>
+            <div class="moe-vis">
+              <div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;align-items:center;">
+                <div style="background:var(--card);border:2px solid var(--blue);border-radius:10px;padding:16px 24px;">
+                  <div class="mono small" style="color:var(--blue);">Attention</div>
+                  <div class="mono" style="font-size:0.7rem;color:var(--muted);">Same as dense</div>
+                </div>
+                <div style="font-size:1.5rem;color:var(--muted);">&rarr;</div>
+                <div class="moe-router">Router</div>
+                <div style="font-size:1.5rem;color:var(--muted);">&rarr;</div>
+              </div>
+              <div class="moe-experts-grid mt-2" id="moe-experts-grid"></div>
+              <p class="mono small muted mt-2 text-center">Each expert on a different GPU. Tokens routed via <strong>all-to-all</strong>.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col mt-3 fade-in">
+      <div class="pros-cons" style="grid-template-columns:1fr;">
+        <div class="pros-card">
+          <h4>+ CP Advantages</h4>
+          <ul>
+            <li>Attention memory reduced from O(S&sup2;) to O(S&sup2;/P) per GPU</li>
+            <li>Enables training with 128K+ sequences</li>
+            <li>MLP/LayerNorm need zero communication</li>
+            <li>Ring Attention overlaps compute and communication</li>
+          </ul>
+        </div>
+        <div class="cons-card" style="margin-top:16px;">
+          <h4>- CP Disadvantages</h4>
+          <ul>
+            <li>Communication overhead in attention layers</li>
+            <li>Only needed for very long sequences (&gt; 32K)</li>
+            <li>Adds complexity to attention implementation</li>
+          </ul>
+        </div>
+      </div>
+      <div class="pros-cons" style="grid-template-columns:1fr;">
+        <div class="pros-card">
+          <h4>+ EP Advantages</h4>
+          <ul>
+            <li>Scale model capacity without scaling per-token compute</li>
+            <li>20B+ total params, only 2B active per token</li>
+            <li>Experts naturally map to different GPUs</li>
+            <li>Better quality for same compute budget</li>
+          </ul>
+        </div>
+        <div class="cons-card" style="margin-top:16px;">
+          <h4>- EP Disadvantages</h4>
+          <ul>
+            <li>Requires MoE architecture (design choice)</li>
+            <li>All-to-all communication for token routing</li>
+            <li>Load balancing across experts is challenging</li>
+            <li>More total parameters = more storage</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vizz AI Decision -->
+    <div class="solution-box fade-in" style="margin-top:32px;">
+      <h4>Vizz AI Decision</h4>
+      <p><strong>CP enabled</strong> for 128K sequences &mdash; Ring Attention splits the sequence across GPUs within each node. <strong>Dense model for now</strong> (EP not needed). If scaling to MoE later, add EP across nodes.</p>
+    </div>
+  </div>
+</section>
+
+<div class="flow-connector"><div class="line"></div><div class="dot"></div></div>
+
+<!-- ============ FINAL CONFIG ============ -->
+<section id="config" style="padding-bottom:120px;">
+  <div class="glow-orb glow-green" style="width:400px;height:400px;top:5%;left:20%;"></div>
+  <div class="glow-orb glow-cyan" style="width:300px;height:300px;bottom:15%;right:10%;"></div>
+  <div class="container">
+    <div class="fade-in">
+      <span class="section-label label-green">The Complete Configuration</span>
+      <h2>The Practical <span class="gradient-text">Decision Framework</span></h2>
+      <p class="small muted" style="max-width:700px;">We walked through every step in the order you'd actually make these decisions. Here's the summary staircase showing how each step solved a problem and revealed the next.</p>
+    </div>
+
+    <!-- SUMMARY STAIRCASE -->
+    <div class="fade-in mt-3">
+      <h3 style="font-size:1rem;margin-bottom:16px;">The Decision Staircase</h3>
+      <div class="staircase">
+        <div class="stair-step">
+          <div class="stair-problem">116 GB doesn't fit in 80 GB</div>
+          <div class="stair-arrow">&rarr;</div>
+          <div class="stair-solution">Setup: 64 H100s (8&times;8)</div>
+        </div>
+        <div class="stair-connector"></div>
+        <div class="stair-step">
+          <div class="stair-problem">Which link to use first?</div>
+          <div class="stair-arrow">&rarr;</div>
+          <div class="stair-solution">TP=8 (NVLink, fastest)</div>
+        </div>
+        <div class="stair-connector"></div>
+        <div class="stair-step">
+          <div class="stair-problem">How many sequences fit?</div>
+          <div class="stair-arrow">&rarr;</div>
+          <div class="stair-solution">mbs=1 (S&sup2; dominates)</div>
+        </div>
+        <div class="stair-connector"></div>
+        <div class="stair-step">
+          <div class="stair-problem">32 layers too many per GPU-set</div>
+          <div class="stair-arrow">&rarr;</div>
+          <div class="stair-solution">PP=2 (16 layers/stage)</div>
+        </div>
+        <div class="stair-connector"></div>
+        <div class="stair-step">
+          <div class="stair-problem">48 GPUs still unused</div>
+          <div class="stair-arrow">&rarr;</div>
+          <div class="stair-solution">DP=4 + ZeRO-1</div>
+        </div>
+        <div class="stair-connector"></div>
+        <div class="stair-step">
+          <div class="stair-problem">Only 512K tokens/step</div>
+          <div class="stair-arrow">&rarr;</div>
+          <div class="stair-solution">grad_acc=8 &rarr; 4M tokens</div>
+        </div>
+        <div class="stair-connector"></div>
+        <div class="stair-step">
+          <div class="stair-problem">128K&times;128K attention explodes</div>
+          <div class="stair-arrow">&rarr;</div>
+          <div class="stair-solution">CP (Ring Attention)</div>
+        </div>
+        <div class="stair-connector"></div>
+        <div class="stair-step">
+          <div class="stair-problem">Want more capacity?</div>
+          <div class="stair-arrow">&rarr;</div>
+          <div class="stair-solution">EP (if switching to MoE)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3 RECOMMENDED CONFIGS -->
+    <div class="fade-in mt-4">
+      <h3 style="font-size:1.1rem;margin-bottom:8px;">Vizz AI: Final Configurations</h3>
+      <p class="small muted mb-3">Three configurations for different architectures, all on 64 H100 GPUs with 128K sequence length.</p>
+      <div class="card-grid card-grid-3">
+        <div class="config-card recommended">
+          <div class="badge" style="color:var(--primary);background:rgba(0,212,106,0.1);border:1px solid rgba(0,212,106,0.3);">Recommended &mdash; Dense 7B</div>
+          <div class="config-param"><span class="param-name">TP</span><span class="param-value" style="color:var(--violet);">8</span></div>
+          <div class="config-param"><span class="param-name">PP</span><span class="param-value" style="color:var(--amber);">2</span></div>
+          <div class="config-param"><span class="param-name">DP</span><span class="param-value" style="color:var(--blue);">4</span></div>
+          <div class="config-param"><span class="param-name">ZeRO</span><span class="param-value">Level 1</span></div>
+          <div class="config-param"><span class="param-name">CP</span><span class="param-value" style="color:var(--pink);">Enabled</span></div>
+          <div class="config-param"><span class="param-name">mbs</span><span class="param-value">1</span></div>
+          <div class="config-param"><span class="param-name">grad_acc</span><span class="param-value">8</span></div>
+          <p class="mono small muted mt-2">TP=8 saturates NVLink. PP=2 minimizes bubble. DP=4 for throughput. ZeRO-1 is free. CP for 128K sequences.</p>
+        </div>
+        <div class="config-card">
+          <div class="badge" style="color:var(--blue);background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);">Alternative &mdash; More DP</div>
+          <div class="config-param"><span class="param-name">TP</span><span class="param-value" style="color:var(--violet);">8</span></div>
+          <div class="config-param"><span class="param-name">PP</span><span class="param-value" style="color:var(--amber);">1</span></div>
+          <div class="config-param"><span class="param-name">DP</span><span class="param-value" style="color:var(--blue);">8</span></div>
+          <div class="config-param"><span class="param-name">ZeRO</span><span class="param-value">Level 2</span></div>
+          <div class="config-param"><span class="param-name">CP</span><span class="param-value" style="color:var(--pink);">Enabled</span></div>
+          <div class="config-param"><span class="param-name">mbs</span><span class="param-value">1</span></div>
+          <div class="config-param"><span class="param-name">grad_acc</span><span class="param-value">4</span></div>
+          <p class="mono small muted mt-2">No pipeline bubble at all. ZeRO-2 needed for gradient memory. More DP replicas = more throughput if comm is fast enough.</p>
+        </div>
+        <div class="config-card">
+          <div class="badge" style="color:var(--amber);background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);">MoE Variant &mdash; 20B</div>
+          <div class="config-param"><span class="param-name">TP</span><span class="param-value" style="color:var(--violet);">8</span></div>
+          <div class="config-param"><span class="param-name">PP</span><span class="param-value" style="color:var(--amber);">2</span></div>
+          <div class="config-param"><span class="param-name">DP</span><span class="param-value" style="color:var(--blue);">4</span></div>
+          <div class="config-param"><span class="param-name">EP</span><span class="param-value" style="color:var(--amber);">8 experts</span></div>
+          <div class="config-param"><span class="param-name">CP</span><span class="param-value" style="color:var(--pink);">Enabled</span></div>
+          <div class="config-param"><span class="param-name">mbs</span><span class="param-value">1</span></div>
+          <div class="config-param"><span class="param-name">grad_acc</span><span class="param-value">8</span></div>
+          <p class="mono small muted mt-2">20B+ total params, 2B active per token. EP distributes experts. DeepSeek-V3 style.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONFIGURATION BUILDER -->
+    <div class="fade-in mt-4">
+      <h3 style="font-size:1rem; margin-bottom:8px;">Interactive Configuration Builder</h3>
+      <p class="small muted mb-3">Play with the sliders to explore other configurations. Constraint: DP &times; TP &times; PP = 64 GPUs.</p>
+      <div class="two-col">
+        <div class="card" style="padding:24px;">
+          <div class="slider-group">
+            <label>TP</label>
+            <input type="range" id="slider-tp" min="1" max="8" value="8" step="1" oninput="updateConfig()">
+            <span class="slider-val" id="val-tp">8</span>
+          </div>
+          <div class="slider-group">
+            <label>PP</label>
+            <input type="range" id="slider-pp" min="1" max="8" value="2" step="1" oninput="updateConfig()">
+            <span class="slider-val" id="val-pp">2</span>
+          </div>
+          <div class="slider-group">
+            <label>DP</label>
+            <input type="range" id="slider-dp" min="1" max="64" value="4" step="1" oninput="updateConfig()">
+            <span class="slider-val" id="val-dp">4</span>
+          </div>
+          <div id="config-constraint" class="mono small mt-2" style="color:var(--primary);">
+            TP(8) &times; PP(2) &times; DP(4) = 64 &check;
+          </div>
+          <div id="config-warnings" class="mono small mt-1" style="color:var(--amber);"></div>
+
+          <div class="section-divider" style="margin:20px 0;"></div>
+
+          <h3 style="font-size:0.85rem; margin-bottom:12px;">Estimated Per-GPU</h3>
+          <div class="config-param"><span class="param-name">Params</span><span class="param-value" id="cfg-params">0.88 GB</span></div>
+          <div class="config-param"><span class="param-name">Optimizer</span><span class="param-value" id="cfg-optim">1.75 GB</span></div>
+          <div class="config-param"><span class="param-name">Gradients</span><span class="param-value" id="cfg-grads">0.88 GB</span></div>
+          <div class="config-param"><span class="param-name">Activations</span><span class="param-value" id="cfg-act">~3.75 GB</span></div>
+          <div class="config-param" style="border-top:1px solid var(--border); padding-top:12px;">
+            <span class="param-name" style="font-weight:600;color:#f2f2f2;">Total</span>
+            <span class="param-value" id="cfg-total" style="font-size:1.1rem;">~7.3 GB</span>
+          </div>
+          <div class="memory-bar mt-2" style="height:24px;" id="cfg-memory-bar"></div>
+        </div>
+        <div>
+          <h3 style="font-size:1rem;">Cluster Layout</h3>
+          <div id="cfg-gpu-grid" class="nodes-grid" style="grid-template-columns: repeat(4, 1fr); gap: 12px;"></div>
+          <div class="bandwidth-legend mt-2">
+            <div class="bw-item"><div class="bw-line-fast"></div> TP (intra-node)</div>
+            <div class="bw-item"><div class="bw-line-slow"></div> PP / DP (inter-node)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SUMMARY TABLE -->
+    <div class="fade-in mt-4">
+      <h3 style="font-size:1rem; margin-bottom:16px;">All 5 Dimensions at a Glance (Practical Order)</h3>
+      <div class="card" style="overflow-x:auto;padding:0;">
+        <table class="comp-table">
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Strategy</th>
+              <th>Splits what?</th>
+              <th>Communication</th>
+              <th>Where?</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>1</strong></td>
+              <td><strong style="color:var(--violet);">Tensor + SP</strong></td>
+              <td>Weight matrices + activations</td>
+              <td>AllReduce (critical path)</td>
+              <td>Intra-node (NVLink)</td>
+            </tr>
+            <tr>
+              <td><strong>2</strong></td>
+              <td><strong style="color:var(--amber);">Pipeline</strong></td>
+              <td>Model layers</td>
+              <td>Activations at boundaries</td>
+              <td>Inter-node</td>
+            </tr>
+            <tr>
+              <td><strong>3</strong></td>
+              <td><strong style="color:var(--blue);">Data + ZeRO</strong></td>
+              <td>Data batches</td>
+              <td>AllReduce gradients</td>
+              <td>Inter-node</td>
+            </tr>
+            <tr>
+              <td><strong>4</strong></td>
+              <td><strong style="color:var(--pink);">Context</strong></td>
+              <td>Sequence chunks</td>
+              <td>Ring Attention KV</td>
+              <td>Intra/Inter (overlapped)</td>
+            </tr>
+            <tr>
+              <td><strong>5</strong></td>
+              <td><strong style="color:var(--amber);">Expert</strong></td>
+              <td>MoE experts</td>
+              <td>All-to-all routing</td>
+              <td>Inter-node</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 3-STEP FRAMEWORK CARDS -->
+    <div class="fade-in mt-4">
+      <h3 style="font-size:1rem; margin-bottom:16px;">The 3-Step Framework</h3>
+      <div class="card-grid card-grid-3">
+        <div class="card" style="border-color:rgba(0,212,106,0.2);padding:24px;">
+          <div style="font-size:1.5rem;margin-bottom:8px;">1</div>
+          <h3 style="font-size:1rem;color:var(--primary);">Fit in Memory</h3>
+          <p class="small muted mt-1">Set TP to saturate NVLink. Find max mbs. Add PP until layers fit. Use activation checkpointing.</p>
+        </div>
+        <div class="card" style="border-color:rgba(59,130,246,0.2);padding:24px;">
+          <div style="font-size:1.5rem;margin-bottom:8px;">2</div>
+          <h3 style="font-size:1rem;color:var(--blue);">Hit Batch Size</h3>
+          <p class="small muted mt-1">DP = remaining GPUs. Use gradient accumulation to reach target global batch size. Add ZeRO-1 for free memory savings.</p>
+        </div>
+        <div class="card" style="border-color:rgba(236,72,153,0.2);padding:24px;">
+          <div style="font-size:1.5rem;margin-bottom:8px;">3</div>
+          <h3 style="font-size:1rem;color:var(--pink);">Max Throughput</h3>
+          <p class="small muted mt-1">Add CP for long sequences. Add EP for MoE. Profile, measure MFU, and iterate on the config.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- CLOSING -->
+    <div class="fade-in mt-4 text-center" style="padding:48px 0;">
+      <p class="muted small mono" style="max-width:550px; margin:0 auto; line-height:1.8;">
+        There is no silver bullet. The framework gives you a working baseline. Then you <strong style="color:#f2f2f2;">run experiments, profile, and iterate</strong>. The best config depends on your model, data, cluster, and network. Measure MFU. Find the bottleneck. Tune.
+      </p>
+      <p class="mt-3" style="font-family:var(--font-serif);font-style:italic;font-size:1.5rem;color:var(--primary);">
+        Now go train that Vizz model.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ JAVASCRIPT ============ -->
+<script>
+// ==========================================
+// GPU GRID RENDERING
+// ==========================================
+const GPU_COLORS = {
+  blue: { bg: 'rgba(59,130,246,0.25)', border: 'rgba(59,130,246,0.5)', text: '#60a5fa' },
+  green: { bg: 'rgba(0,212,106,0.25)', border: 'rgba(0,212,106,0.5)', text: '#00d46a' },
+  amber: { bg: 'rgba(245,158,11,0.25)', border: 'rgba(245,158,11,0.5)', text: '#fbbf24' },
+  violet: { bg: 'rgba(139,92,246,0.25)', border: 'rgba(139,92,246,0.5)', text: '#a78bfa' },
+  pink: { bg: 'rgba(236,72,153,0.25)', border: 'rgba(236,72,153,0.5)', text: '#f472b6' },
+  teal: { bg: 'rgba(20,184,166,0.25)', border: 'rgba(20,184,166,0.5)', text: '#2dd4bf' },
+  orange: { bg: 'rgba(249,115,22,0.25)', border: 'rgba(249,115,22,0.5)', text: '#fb923c' },
+  red: { bg: 'rgba(239,68,68,0.25)', border: 'rgba(239,68,68,0.5)', text: '#f87171' },
+  gray: { bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.1)', text: '#666' },
+};
+const PP_COLORS = ['blue', 'amber', 'violet', 'pink', 'green', 'teal', 'orange', 'red'];
+
+function createGPUGrid(containerId, gpuStates) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '';
+  for (let node = 0; node < 8; node++) {
+    const nodeDiv = document.createElement('div');
+    nodeDiv.className = 'node-border';
+    nodeDiv.innerHTML = '<div class="node-label">Node ' + node + '</div>';
+    for (let gpu = 0; gpu < 8; gpu++) {
+      const idx = node * 8 + gpu;
+      const state = gpuStates[idx] || { color: 'gray', label: 'G' + idx };
+      const c = GPU_COLORS[state.color] || GPU_COLORS.gray;
+      const cell = document.createElement('div');
+      cell.className = 'gpu-cell';
+      cell.style.background = c.bg;
+      cell.style.borderColor = c.border;
+      cell.style.color = c.text;
+      cell.innerHTML = '<span class="gpu-label">' + (state.label || 'G' + idx) + '</span>';
+      if (state.glow) cell.style.boxShadow = '0 0 12px ' + c.border;
+      nodeDiv.appendChild(cell);
+    }
+    container.appendChild(nodeDiv);
+  }
+}
+
+// ==========================================
+// 1. HERO GPU GRID (all gray) + memory bar
+// ==========================================
+function initHeroGrid() {
+  const states = [];
+  for (let i = 0; i < 64; i++) states.push({ color: 'gray', label: '' + i });
+  createGPUGrid('hero-gpu-grid', states);
+
+  const bar = document.getElementById('hero-memory-bar');
+  const total = 116, gpu = 80;
+  const params = 14, optim = 28, grads = 14, act = 60;
+  bar.innerHTML =
+    '<div class="memory-segment seg-params" style="width:' + (params/total*100) + '%"><span>14GB</span></div>' +
+    '<div class="memory-segment seg-optimizer" style="width:' + (optim/total*100) + '%"><span>28GB</span></div>' +
+    '<div class="memory-segment seg-gradients" style="width:' + (grads/total*100) + '%"><span>14GB</span></div>' +
+    '<div class="memory-segment seg-activations" style="width:' + (act/total*100) + '%"><span>60GB</span></div>' +
+    '<div class="limit-line" style="left:' + (gpu/total*100) + '%;right:auto;"></div>';
+  document.getElementById('hero-overflow').textContent = '116 GB needed > 80 GB available \u2014 OVERFLOW';
+  document.getElementById('hero-memory-legend').innerHTML =
+    '<div class="memory-legend-item"><div class="dot" style="background:#3b82f6;"></div> Params 14 GB</div>' +
+    '<div class="memory-legend-item"><div class="dot" style="background:#8b5cf6;"></div> Optimizer 28 GB</div>' +
+    '<div class="memory-legend-item"><div class="dot" style="background:#f59e0b;"></div> Gradients 14 GB</div>' +
+    '<div class="memory-legend-item"><div class="dot" style="background:#ef4444;"></div> Activations ~60 GB</div>' +
+    '<div class="memory-legend-item"><div class="dot" style="background:var(--red);width:2px;height:14px;border-radius:0;"></div> 80 GB limit</div>';
+}
+
+// ==========================================
+// 2. TP MATRIX VISUALIZATION
+// ==========================================
+function initTPMatrixVis() {
+  const tpColors = ['#3b82f6','#00d46a','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316','#ef4444'];
+  var fullMatrix = document.getElementById('tp-full-matrix');
+  if (!fullMatrix) return;
+  fullMatrix.innerHTML = '';
+  for (var col = 0; col < 8; col++) {
+    for (var row = 0; row < 8; row++) {
+      var cell = document.createElement('div');
+      cell.style.background = tpColors[col];
+      cell.style.opacity = '0.5';
+      cell.style.borderRadius = '2px';
+      fullMatrix.appendChild(cell);
+    }
+  }
+  var splitContainer = document.getElementById('tp-split-matrices');
+  if (!splitContainer) return;
+  splitContainer.innerHTML = '';
+  for (var g = 0; g < 8; g++) {
+    var colDiv = document.createElement('div');
+    colDiv.style.display = 'flex';
+    colDiv.style.flexDirection = 'column';
+    colDiv.style.gap = '2px';
+    colDiv.style.alignItems = 'center';
+    for (var r = 0; r < 8; r++) {
+      var c2 = document.createElement('div');
+      c2.style.width = '20px';
+      c2.style.height = '20px';
+      c2.style.background = tpColors[g];
+      c2.style.opacity = '0.7';
+      c2.style.borderRadius = '2px';
+      colDiv.appendChild(c2);
+    }
+    var label = document.createElement('div');
+    label.className = 'mono';
+    label.style.fontSize = '0.5rem';
+    label.style.color = tpColors[g];
+    label.style.marginTop = '4px';
+    label.textContent = 'GPU' + g;
+    colDiv.appendChild(label);
+    splitContainer.appendChild(colDiv);
+  }
+}
+
+// ==========================================
+// 3. TP NODE VISUALIZATION
+// ==========================================
+function initTPNodeVis() {
+  var container = document.getElementById('tp-node-vis');
+  if (!container) return;
+  container.innerHTML = '';
+  var tpColors = ['#3b82f6','#00d46a','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316','#ef4444'];
+
+  var label = document.createElement('div');
+  label.className = 'mono';
+  label.style.cssText = 'font-size:0.7rem;color:var(--muted);margin-bottom:4px;';
+  label.textContent = 'Node 0 \u2014 All 8 GPUs share every layer via TP:';
+  container.appendChild(label);
+
+  var nodeBox = document.createElement('div');
+  nodeBox.style.cssText = 'border:2px solid rgba(0,212,106,0.3);border-radius:12px;padding:12px 14px;display:flex;gap:6px;align-items:center;background:rgba(0,212,106,0.03);position:relative;max-width:700px;width:100%;';
+
+  var nvBadge = document.createElement('div');
+  nvBadge.style.cssText = 'position:absolute;top:-9px;right:12px;background:var(--bg);padding:0 8px;font-family:var(--font-mono);font-size:0.5rem;color:var(--primary);';
+  nvBadge.textContent = 'NVLink 900 GB/s \u2194 AllReduce';
+  nodeBox.appendChild(nvBadge);
+
+  for (var t = 0; t < 8; t++) {
+    var gpuCell = document.createElement('div');
+    gpuCell.style.cssText = 'flex:1;aspect-ratio:1;border-radius:6px;background:' + tpColors[t] + '22;border:1.5px solid ' + tpColors[t] + '55;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--font-mono);min-height:56px;';
+    gpuCell.innerHTML = '<div style="font-size:0.7rem;color:' + tpColors[t] + ';font-weight:600;">T' + t + '</div>' +
+      '<div style="font-size:0.45rem;color:var(--muted);">1/8 weights</div>' +
+      '<div style="font-size:0.4rem;color:var(--muted);">all 32 layers</div>';
+    nodeBox.appendChild(gpuCell);
+  }
+  container.appendChild(nodeBox);
+
+  var note = document.createElement('p');
+  note.className = 'mono small muted';
+  note.style.cssText = 'margin-top:8px;text-align:center;';
+  note.textContent = 'Each GPU holds 1/8th of every layer. They jointly compute each layer via AllReduce.';
+  container.appendChild(note);
+}
+
+// ==========================================
+// 4. MBS BINARY SEARCH VISUALIZATION
+// ==========================================
+function initMBSVis() {
+  var container = document.getElementById('mbs-binary-search');
+  if (!container) return;
+  container.innerHTML = '';
+  var values = [1, 2, 4, 8, 16, 32, 64];
+  var maxFit = 4;
+  values.forEach(function(v, i) {
+    var fits = v <= maxFit;
+    var isOOM = v === maxFit * 2;
+    var bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;';
+    var block = document.createElement('div');
+    var height = 20 + v * 2.5;
+    var color = isOOM ? 'var(--red)' : (fits ? 'var(--primary)' : 'rgba(255,255,255,0.1)');
+    var bg = isOOM ? 'rgba(239,68,68,0.2)' : (fits ? 'rgba(0,212,106,0.15)' : 'rgba(255,255,255,0.03)');
+    var borderColor = isOOM ? 'rgba(239,68,68,0.5)' : (fits ? 'rgba(0,212,106,0.3)' : 'rgba(255,255,255,0.08)');
+    block.style.cssText = 'width:48px;height:' + Math.min(height, 120) + 'px;border-radius:6px;background:' + bg + ';border:1px solid ' + borderColor + ';display:flex;flex-direction:column;align-items:center;justify-content:center;';
+    if (fits) {
+      block.innerHTML = '<div class="mono" style="font-size:0.6rem;color:' + color + ';font-weight:600;">b=' + v + '</div><div class="mono" style="font-size:0.5rem;color:var(--primary);">\u2713</div>';
+    } else if (isOOM) {
+      block.innerHTML = '<div class="mono" style="font-size:0.6rem;color:' + color + ';font-weight:600;">b=' + v + '</div><div class="mono" style="font-size:0.5rem;color:var(--red);">OOM</div>';
+    } else {
+      block.innerHTML = '<div class="mono" style="font-size:0.6rem;color:var(--muted);">b=' + v + '</div><div class="mono" style="font-size:0.5rem;color:var(--muted);">skip</div>';
+    }
+    bar.appendChild(block);
+    if (v === maxFit) {
+      var badge = document.createElement('div');
+      badge.className = 'mono';
+      badge.style.cssText = 'font-size:0.55rem;color:var(--primary);font-weight:600;margin-top:2px;';
+      badge.textContent = 'b_max!';
+      bar.appendChild(badge);
+    }
+    container.appendChild(bar);
+    if (i < values.length - 1 && (fits || isOOM)) {
+      var arrow = document.createElement('div');
+      arrow.style.cssText = 'display:flex;align-items:center;color:var(--muted);font-size:0.8rem;padding-bottom:16px;';
+      arrow.textContent = '\u2192';
+      container.appendChild(arrow);
+    }
+  });
+}
+
+// ==========================================
+// 5. PIPELINE SCHEDULE
+// ==========================================
+var ppMicrobatches = 4;
+
+function setPPMicrobatches(n) {
+  ppMicrobatches = n;
+  document.querySelectorAll('#pp-mb-controls .toggle-btn').forEach(function(btn) {
+    btn.classList.toggle('active', parseInt(btn.textContent) === n);
+  });
+  renderPPSchedule();
+}
+
+function renderPPSchedule() {
+  var container = document.getElementById('pp-schedule');
+  if (!container) return;
+  var stages = 4;
+  var mbs = ppMicrobatches;
+  var mbColors = ['#3b82f6','#8b5cf6','#f59e0b','#ef4444','#00d46a','#00c8e6','#ec4899','#f97316',
+                  '#14b8a6','#6366f1','#84cc16','#06b6d4','#e11d48','#7c3aed','#ea580c','#0891b2'];
+  var html = '';
+  var totalCells = 0, bubbleCells = 0;
+
+  for (var s = 0; s < stages; s++) {
+    html += '<div class="pipeline-row"><div class="stage-label">Stage ' + s + '</div>';
+    for (var t = 0; t < stages + mbs - 1; t++) {
+      var mb = t - s;
+      totalCells++;
+      if (mb >= 0 && mb < mbs) {
+        var color = mbColors[mb % mbColors.length];
+        html += '<div class="pipeline-cell active-mb" style="background:' + color + '22;border-color:' + color + ';color:' + color + ';">F' + mb + '</div>';
+      } else {
+        html += '<div class="pipeline-cell bubble">&nbsp;</div>';
+        bubbleCells++;
+      }
+    }
+    for (var t2 = 0; t2 < stages + mbs - 1; t2++) {
+      var mb2 = t2 - (stages - 1 - s);
+      totalCells++;
+      if (mb2 >= 0 && mb2 < mbs) {
+        var color2 = mbColors[mb2 % mbColors.length];
+        html += '<div class="pipeline-cell active-mb" style="background:' + color2 + '22;border-color:' + color2 + ';color:' + color2 + ';">B' + mb2 + '</div>';
+      } else {
+        html += '<div class="pipeline-cell bubble">&nbsp;</div>';
+        bubbleCells++;
+      }
+    }
+    html += '</div>';
+  }
+  container.innerHTML = html;
+  var bubblePct = Math.round(bubbleCells / totalCells * 100);
+  document.getElementById('pp-bubble-pct').textContent = bubblePct + '%';
+}
+
+// ==========================================
+// 6. PP CLUSTER VISUALIZATION (DP + PP + TP)
+// ==========================================
+function initPPClusterVis() {
+  var ppStageColors = [
+    { bg: 'rgba(59,130,246,0.25)', border: 'rgba(59,130,246,0.5)', text: '#60a5fa', label: 'Stage 0' },
+    { bg: 'rgba(245,158,11,0.25)', border: 'rgba(245,158,11,0.5)', text: '#fbbf24', label: 'Stage 1' },
+  ];
+  var tpSliceColors = ['#3b82f6','#00d46a','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316','#ef4444'];
+
+  // Single pipeline vis — NO DP replicas (DP is introduced in the next section)
+  var container = document.getElementById('pp-single-pipeline-vis');
+  if (!container) return;
+  container.innerHTML = '';
+
+  // Build a single pipeline: Stage 0 (Node 0) → Stage 1 (Node 1)
+  var pipelineRow = document.createElement('div');
+  pipelineRow.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:wrap;';
+
+  for (var s = 0; s < 2; s++) {
+    var c = ppStageColors[s];
+    var nodeBox = document.createElement('div');
+    nodeBox.style.cssText = 'border:2px solid ' + c.border + ';border-radius:12px;padding:16px;min-width:220px;max-width:280px;background:' + c.bg + '33;position:relative;';
+
+    // Stage label
+    var stLabel = document.createElement('div');
+    stLabel.style.cssText = 'position:absolute;top:-10px;left:14px;background:var(--bg);padding:0 8px;font-family:var(--font-mono);font-size:0.7rem;color:' + c.text + ';font-weight:700;';
+    stLabel.textContent = c.label;
+    nodeBox.appendChild(stLabel);
+
+    // Node + layers info
+    var infoDiv = document.createElement('div');
+    infoDiv.style.cssText = 'text-align:center;margin-bottom:8px;margin-top:4px;';
+    infoDiv.innerHTML = '<div class="mono" style="font-size:0.75rem;color:var(--text);">Node ' + s + '</div>' +
+      '<div class="mono" style="font-size:0.55rem;color:var(--muted);margin-top:2px;">Layers ' + (s * 16) + '\u2013' + (s * 16 + 15) + ' (16 layers)</div>';
+    nodeBox.appendChild(infoDiv);
+
+    // 8 TP GPU grid inside each node
+    var gpuGrid = document.createElement('div');
+    gpuGrid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:3px;';
+    for (var tg = 0; tg < 8; tg++) {
+      var cell = document.createElement('div');
+      cell.style.cssText = 'aspect-ratio:1;border-radius:4px;background:' + tpSliceColors[tg] + '22;border:1px solid ' + tpSliceColors[tg] + '55;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:0.55rem;color:' + tpSliceColors[tg] + ';font-weight:600;';
+      cell.textContent = 'T' + tg;
+      gpuGrid.appendChild(cell);
+    }
+    nodeBox.appendChild(gpuGrid);
+
+    // NVLink label inside
+    var nvLabel = document.createElement('div');
+    nvLabel.style.cssText = 'text-align:center;margin-top:6px;font-family:var(--font-mono);font-size:0.5rem;color:var(--muted);';
+    nvLabel.textContent = '\u2194 NVLink (900 GB/s)';
+    nodeBox.appendChild(nvLabel);
+
+    pipelineRow.appendChild(nodeBox);
+
+    // Arrow between stages
+    if (s < 1) {
+      var arrowDiv = document.createElement('div');
+      arrowDiv.style.cssText = 'display:flex;flex-direction:column;align-items:center;padding:0 16px;';
+      arrowDiv.innerHTML = '<div style="font-size:1.5rem;color:var(--accent);">\u2192</div>' +
+        '<div class="mono" style="font-size:0.5rem;color:var(--muted);margin-top:2px;">Activations</div>' +
+        '<div class="mono" style="font-size:0.45rem;color:var(--muted);">via InfiniBand</div>';
+      pipelineRow.appendChild(arrowDiv);
+    }
+  }
+
+  container.appendChild(pipelineRow);
+
+  // Summary caption
+  var caption = document.createElement('div');
+  caption.style.cssText = 'text-align:center;margin-top:16px;font-size:0.75rem;color:var(--muted);';
+  caption.innerHTML = 'One pipeline uses <span class="mono" style="color:var(--accent);">2 nodes (16 GPUs)</span>. ' +
+    'Each node runs 8 TP-parallel GPUs on its half of the layers.<br>' +
+    '<span style="color:var(--muted);font-size:0.65rem;">We have 8 nodes total \u2014 but this pipeline only uses 2. What about the other 6? \u2192 Next section!</span>';
+  container.appendChild(caption);
+}
+
+// ==========================================
+// 7. ZeRO TOGGLE + DP VIEW
+// ==========================================
+var currentZero = 0;
+
+function setZero(level) {
+  currentZero = level;
+  document.querySelectorAll('#zero-controls .toggle-btn').forEach(function(btn, i) {
+    btn.classList.toggle('active', i === level);
+  });
+  updateDPView();
+}
+
+function updateDPView() {
+  var level = currentZero;
+  // DP GPU grid: show 4 DP replicas x 2 PP stages x 8 TP
+  initDPGrid();
+
+  // Memory: with TP=8, PP=2 already applied
+  // Per GPU: 7B / (8*2) = 0.4375B params
+  var baseParams = 14; // GB total for 7B in FP16
+  var perGPUParams = baseParams / 16; // TP=8 * PP=2 = 16
+  var perGPUGrads = perGPUParams;
+  var perGPUOptim = perGPUParams * 2; // Adam: 2 states
+  var act = 7.5; // rough estimate with TP=8, PP=2, activation checkpointing
+  var dpN = 4;
+
+  var params, optim, grads, desc;
+  switch(level) {
+    case 0:
+      params = perGPUParams; optim = perGPUOptim; grads = perGPUGrads;
+      desc = 'Each GPU: params (' + perGPUParams.toFixed(2) + ' GB) + optimizer (' + perGPUOptim.toFixed(2) + ' GB) + gradients (' + perGPUGrads.toFixed(2) + ' GB) + activations (~' + act + ' GB)';
+      break;
+    case 1:
+      params = perGPUParams; optim = perGPUOptim / dpN; grads = perGPUGrads;
+      desc = 'ZeRO-1: optimizer sharded across ' + dpN + ' DP replicas (' + (perGPUOptim/dpN).toFixed(2) + ' GB each). Params & gradients still full.';
+      break;
+    case 2:
+      params = perGPUParams; optim = perGPUOptim / dpN; grads = perGPUGrads / dpN;
+      desc = 'ZeRO-2: optimizer (' + (perGPUOptim/dpN).toFixed(2) + ' GB) + gradients (' + (perGPUGrads/dpN).toFixed(2) + ' GB) sharded. Params still full.';
+      break;
+    case 3:
+      params = perGPUParams / dpN; optim = perGPUOptim / dpN; grads = perGPUGrads / dpN;
+      desc = 'ZeRO-3: everything sharded across ' + dpN + ' DP replicas. But heavy all-gather every step.';
+      break;
+  }
+
+  var total = params + optim + grads + act;
+  var maxDisplay = 80;
+  var bar = document.getElementById('dp-memory-bar');
+  if (bar) {
+    bar.innerHTML =
+      '<div class="memory-segment seg-params" style="width:' + (params/maxDisplay*100) + '%"><span>' + params.toFixed(2) + 'GB</span></div>' +
+      '<div class="memory-segment seg-optimizer" style="width:' + (optim/maxDisplay*100) + '%"><span>' + optim.toFixed(2) + 'GB</span></div>' +
+      '<div class="memory-segment seg-gradients" style="width:' + (grads/maxDisplay*100) + '%"><span>' + grads.toFixed(2) + 'GB</span></div>' +
+      '<div class="memory-segment seg-activations" style="width:' + (act/maxDisplay*100) + '%"><span>' + act.toFixed(1) + 'GB</span></div>';
+  }
+  var memTotal = document.getElementById('dp-mem-total');
+  if (memTotal) {
+    memTotal.textContent = '~' + total.toFixed(1) + ' GB';
+    memTotal.style.color = total > 80 ? 'var(--red)' : 'var(--primary)';
+  }
+  var overflow = document.getElementById('dp-overflow');
+  if (overflow) {
+    overflow.textContent = total > 80 ? total.toFixed(1) + ' GB > 80 GB \u2014 OVERFLOW' : total.toFixed(1) + ' GB / 80 GB \u2014 fits';
+    overflow.style.color = total > 80 ? 'var(--red)' : 'var(--primary)';
+  }
+  var descEl = document.getElementById('dp-zero-desc');
+  if (descEl) descEl.textContent = desc;
+  var legend = document.getElementById('dp-memory-legend');
+  if (legend) {
+    legend.innerHTML =
+      '<div class="memory-legend-item"><div class="dot" style="background:#3b82f6;"></div> Params ' + params.toFixed(2) + ' GB</div>' +
+      '<div class="memory-legend-item"><div class="dot" style="background:#8b5cf6;"></div> Optimizer ' + optim.toFixed(2) + ' GB</div>' +
+      '<div class="memory-legend-item"><div class="dot" style="background:#f59e0b;"></div> Gradients ' + grads.toFixed(2) + ' GB</div>' +
+      '<div class="memory-legend-item"><div class="dot" style="background:#ef4444;"></div> Activations ~' + act.toFixed(1) + ' GB</div>';
+  }
+}
+
+function initDPGrid() {
+  var container = document.getElementById('dp-gpu-grid');
+  if (!container) return;
+  container.innerHTML = '';
+  container.style.cssText = 'display:flex;flex-direction:column;gap:16px;';
+
+  var ppStageColors = [
+    { bg: 'rgba(59,130,246,0.25)', border: 'rgba(59,130,246,0.5)', text: '#60a5fa', label: 'S0' },
+    { bg: 'rgba(245,158,11,0.25)', border: 'rgba(245,158,11,0.5)', text: '#fbbf24', label: 'S1' },
+  ];
+  var tpSliceColors = ['#3b82f6','#00d46a','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316','#ef4444'];
+  var dpColors = ['rgba(59,130,246,0.08)','rgba(0,212,106,0.08)','rgba(245,158,11,0.08)','rgba(139,92,246,0.08)'];
+
+  for (var dp = 0; dp < 4; dp++) {
+    var replicaBox = document.createElement('div');
+    replicaBox.style.cssText = 'border:2px solid var(--border);border-radius:12px;padding:16px;position:relative;background:' + dpColors[dp] + ';';
+
+    var dpLabel = document.createElement('div');
+    dpLabel.style.cssText = 'position:absolute;top:-10px;left:14px;background:var(--bg);padding:0 8px;font-family:var(--font-mono);font-size:0.65rem;color:var(--muted);font-weight:600;';
+    dpLabel.textContent = 'DP Replica ' + dp;
+    replicaBox.appendChild(dpLabel);
+
+    var stagesRow = document.createElement('div');
+    stagesRow.style.cssText = 'display:grid;grid-template-columns:repeat(2,1fr);gap:10px;';
+
+    for (var s = 0; s < 2; s++) {
+      var sc = ppStageColors[s];
+      var nodeIdx = dp * 2 + s;
+      var nodeBox = document.createElement('div');
+      nodeBox.style.cssText = 'border:1px solid ' + sc.border + ';border-radius:8px;padding:6px;position:relative;background:' + sc.bg + '33;';
+
+      var stLabel = document.createElement('div');
+      stLabel.style.cssText = 'text-align:center;margin-bottom:4px;';
+      stLabel.innerHTML = '<span class="mono" style="font-size:0.6rem;color:' + sc.text + ';font-weight:600;">' + sc.label + '</span>' +
+        '<span class="mono" style="font-size:0.45rem;color:var(--muted);"> Node ' + nodeIdx + '</span>';
+      nodeBox.appendChild(stLabel);
+
+      var gpuGrid = document.createElement('div');
+      gpuGrid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:2px;';
+      for (var t = 0; t < 8; t++) {
+        var cell = document.createElement('div');
+        cell.style.cssText = 'aspect-ratio:1;border-radius:3px;background:' + tpSliceColors[t] + '22;border:1px solid ' + tpSliceColors[t] + '44;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:0.45rem;color:' + tpSliceColors[t] + ';';
+        cell.textContent = 'T' + t;
+        gpuGrid.appendChild(cell);
+      }
+      nodeBox.appendChild(gpuGrid);
+      stagesRow.appendChild(nodeBox);
+    }
+    replicaBox.appendChild(stagesRow);
+    container.appendChild(replicaBox);
+  }
+}
+
+// ==========================================
+// 8. CONTEXT PARALLELISM - Sequence split + Ring Attention
+// ==========================================
+function initCPVis() {
+  var cpColors = ['#3b82f6','#00d46a','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316','#ef4444'];
+  var seqVis = document.getElementById('cp-seq-vis');
+  if (!seqVis) return;
+  seqVis.innerHTML = '';
+
+  var fullBar = document.createElement('div');
+  fullBar.style.cssText = 'display:flex;gap:0;border-radius:6px;overflow:hidden;height:32px;';
+  for (var i = 0; i < 8; i++) {
+    var seg = document.createElement('div');
+    seg.style.cssText = 'flex:1;background:' + cpColors[i] + ';display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:0.55rem;color:rgba(0,0,0,0.7);font-weight:600;';
+    seg.textContent = (i*16) + 'K-' + ((i+1)*16) + 'K';
+    fullBar.appendChild(seg);
+  }
+  seqVis.appendChild(fullBar);
+
+  var labelRow = document.createElement('div');
+  labelRow.style.cssText = 'display:flex;gap:0;';
+  for (var j = 0; j < 8; j++) {
+    var label = document.createElement('div');
+    label.style.cssText = 'flex:1;text-align:center;font-family:var(--font-mono);font-size:0.55rem;color:' + cpColors[j] + ';padding-top:4px;';
+    label.textContent = 'GPU ' + j;
+    labelRow.appendChild(label);
+  }
+  seqVis.appendChild(labelRow);
+
+  initRingAttention(cpColors);
+}
+
+function initRingAttention(colors) {
+  var container = document.getElementById('ring-attention-vis');
+  if (!container) return;
+  var cx = 150, cy = 150, r = 115;
+  var html = '<svg width="300" height="300" viewBox="0 0 300 300" style="position:absolute;top:0;left:0;">';
+  html += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>';
+
+  for (var i = 0; i < 8; i++) {
+    var a1 = (i / 8) * Math.PI * 2 - Math.PI / 2;
+    var a2 = ((i + 1) / 8) * Math.PI * 2 - Math.PI / 2;
+    var x1 = cx + Math.cos(a1) * (r - 30);
+    var y1 = cy + Math.sin(a1) * (r - 30);
+    var x2 = cx + Math.cos(a2) * (r - 30);
+    var y2 = cy + Math.sin(a2) * (r - 30);
+    var mx = (x1 + x2) / 2;
+    var my = (y1 + y2) / 2;
+    html += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + mx + '" y2="' + my + '" stroke="' + colors[i] + '" stroke-width="1.5" opacity="0.4"/>';
+    var angle = Math.atan2(y2 - y1, x2 - x1);
+    html += '<polygon points="' + mx + ',' + my + ' ' + (mx-6*Math.cos(angle-0.4)) + ',' + (my-6*Math.sin(angle-0.4)) + ' ' + (mx-6*Math.cos(angle+0.4)) + ',' + (my-6*Math.sin(angle+0.4)) + '" fill="' + colors[i] + '" opacity="0.4"/>';
+  }
+  html += '</svg>';
+
+  for (var k = 0; k < 8; k++) {
+    var ang = (k / 8) * Math.PI * 2 - Math.PI / 2;
+    var gx = cx + Math.cos(ang) * r - 24;
+    var gy = cy + Math.sin(ang) * r - 24;
+    html += '<div class="ring-gpu" style="left:' + gx + 'px;top:' + gy + 'px;background:' + colors[k] + '20;border-color:' + colors[k] + ';color:' + colors[k] + ';">G' + k + '</div>';
+  }
+
+  html += '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;">' +
+    '<div class="mono" style="font-size:0.7rem;color:var(--muted);">KV blocks</div>' +
+    '<div class="mono" style="font-size:0.6rem;color:var(--muted);">circulate</div></div>';
+  container.innerHTML = html;
+}
+
+// ==========================================
+// 9. MOE GRID + TOGGLE
+// ==========================================
+function setArchitecture(type) {
+  document.querySelectorAll('#moe-controls .toggle-btn').forEach(function(btn) {
+    btn.classList.toggle('active', btn.textContent.toLowerCase().includes(type));
+  });
+  document.getElementById('dense-vis').style.display = type === 'dense' ? 'block' : 'none';
+  document.getElementById('moe-vis').style.display = type === 'moe' ? 'block' : 'none';
+}
+
+function initMoEGrid() {
+  var colors = ['#3b82f6','#00d46a','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316','#ef4444'];
+  var grid = document.getElementById('moe-experts-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  for (var i = 0; i < 8; i++) {
+    var expert = document.createElement('div');
+    expert.className = 'moe-expert active-expert';
+    expert.style.borderColor = colors[i];
+    expert.style.background = colors[i] + '15';
+    expert.style.color = colors[i];
+    expert.innerHTML = '<div style="font-weight:600;">Expert ' + i + '</div><div style="font-size:0.55rem;color:var(--muted);margin-top:2px;">GPU ' + i + '</div>';
+    grid.appendChild(expert);
+  }
+}
+
+// ==========================================
+// 10. CONFIG BUILDER WITH SLIDERS
+// ==========================================
+function updateConfig() {
+  var tp = parseInt(document.getElementById('slider-tp').value);
+  var pp = parseInt(document.getElementById('slider-pp').value);
+  var dp;
+
+  document.getElementById('val-tp').textContent = tp;
+  document.getElementById('val-pp').textContent = pp;
+
+  var product = tp * pp;
+  var constraint = document.getElementById('config-constraint');
+  var warnings = document.getElementById('config-warnings');
+
+  if (64 % product !== 0 || product > 64) {
+    dp = '-';
+    document.getElementById('val-dp').textContent = '-';
+    document.getElementById('slider-dp').value = 1;
+    constraint.style.color = 'var(--red)';
+    constraint.textContent = 'TP(' + tp + ') \u00D7 PP(' + pp + ') = ' + product + " \u2014 doesn't divide 64 evenly";
+    warnings.textContent = '';
+    return;
+  }
+
+  dp = 64 / product;
+  document.getElementById('val-dp').textContent = dp;
+  document.getElementById('slider-dp').value = dp;
+  constraint.style.color = 'var(--primary)';
+  constraint.textContent = 'TP(' + tp + ') \u00D7 PP(' + pp + ') \u00D7 DP(' + dp + ') = 64 \u2713';
+
+  var warns = [];
+  if (tp > 8) warns.push('\u26A0 TP > 8 requires inter-node \u2014 will be slow');
+  if (tp > 1 && tp < 8) warns.push('\u2139 TP < 8 doesn\'t fully use intra-node NVLink');
+  if (pp > 4) warns.push('\u26A0 PP > 4 means large pipeline bubble');
+  if (dp < 2) warns.push('\u2139 DP=1 means no data parallelism');
+  warnings.innerHTML = warns.join('<br>');
+
+  var totalParams = 14;
+  var paramsPerGPU = totalParams / (tp * pp);
+  var optimPerGPU = paramsPerGPU * 2;
+  var gradsPerGPU = paramsPerGPU;
+  var actPerGPU = 60 / (tp * pp);
+  var total = paramsPerGPU + optimPerGPU + gradsPerGPU + actPerGPU;
+
+  document.getElementById('cfg-params').textContent = paramsPerGPU.toFixed(2) + ' GB';
+  document.getElementById('cfg-optim').textContent = optimPerGPU.toFixed(2) + ' GB';
+  document.getElementById('cfg-grads').textContent = gradsPerGPU.toFixed(2) + ' GB';
+  document.getElementById('cfg-act').textContent = '~' + actPerGPU.toFixed(2) + ' GB';
+  document.getElementById('cfg-total').textContent = '~' + total.toFixed(1) + ' GB';
+  document.getElementById('cfg-total').style.color = total > 80 ? 'var(--red)' : 'var(--primary)';
+
+  var maxBar = 80;
+  var bar = document.getElementById('cfg-memory-bar');
+  if (bar) {
+    bar.innerHTML =
+      '<div class="memory-segment seg-params" style="width:' + Math.min(paramsPerGPU/maxBar*100, 100) + '%"></div>' +
+      '<div class="memory-segment seg-optimizer" style="width:' + Math.min(optimPerGPU/maxBar*100, 100) + '%"></div>' +
+      '<div class="memory-segment seg-gradients" style="width:' + Math.min(gradsPerGPU/maxBar*100, 100) + '%"></div>' +
+      '<div class="memory-segment seg-activations" style="width:' + Math.min(actPerGPU/maxBar*100, 100) + '%"></div>';
+  }
+
+  updateConfigGrid(tp, pp, dp);
+}
+
+function updateConfigGrid(tp, pp, dp) {
+  var states = [];
+  for (var node = 0; node < 8; node++) {
+    for (var gpu = 0; gpu < 8; gpu++) {
+      var ppStage = Math.floor(node / (8 / pp)) % pp;
+      states.push({
+        color: PP_COLORS[ppStage % PP_COLORS.length],
+        label: 'T' + (gpu % tp),
+        glow: false
+      });
+    }
+  }
+  createGPUGrid('cfg-gpu-grid', states);
+}
+
+// ==========================================
+// 11. SCROLL ANIMATIONS + NAV HIGHLIGHT
+// ==========================================
+function initScrollAnimations() {
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) entry.target.classList.add('visible');
+    });
+  }, { threshold: 0.1, rootMargin: '-50px' });
+  document.querySelectorAll('.fade-in').forEach(function(el) { observer.observe(el); });
+}
+
+function initNavHighlight() {
+  var sections = document.querySelectorAll('section[id]');
+  var navLinks = document.querySelectorAll('nav .nav-links a');
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        navLinks.forEach(function(link) {
+          link.classList.toggle('active', link.getAttribute('data-section') === entry.target.id);
+        });
+      }
+    });
+  }, { threshold: 0.3 });
+  sections.forEach(function(s) { observer.observe(s); });
+}
+
+// ==========================================
+// INIT
+// ==========================================
+document.addEventListener('DOMContentLoaded', function() {
+  initHeroGrid();
+  initTPMatrixVis();
+  initTPNodeVis();
+  initMBSVis();
+  renderPPSchedule();
+  initPPClusterVis();
+  updateDPView();
+  initCPVis();
+  initMoEGrid();
+  updateConfig();
+  initScrollAnimations();
+  initNavHighlight();
+});
+</script>
+</body>
+</html>
